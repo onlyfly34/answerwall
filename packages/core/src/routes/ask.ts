@@ -24,7 +24,11 @@ function every(clock: Clock, intervalMs: number, tick: () => void): () => void {
   return () => cancel();
 }
 
-export function askRoutes({ asks, clock }: Pick<AppDeps, 'asks' | 'clock'>): Hono<AppEnv> {
+export function askRoutes({
+  asks,
+  clock,
+  logger,
+}: Pick<AppDeps, 'asks' | 'clock' | 'logger'>): Hono<AppEnv> {
   const routes = new Hono<AppEnv>();
 
   routes.post('/', async (c) => {
@@ -43,6 +47,7 @@ export function askRoutes({ asks, clock }: Pick<AppDeps, 'asks' | 'clock'>): Hon
       StreamQuerySchema,
       resume === undefined ? c.req.query() : { after: resume },
     );
+    // Aborted when the client goes away. It ends the subscription only; the ask runs on.
     const disconnect = new AbortController();
     const events = await asks.subscribe(c.req.param('askId'), {
       ...(after === undefined ? {} : { after }),
@@ -52,16 +57,36 @@ export function askRoutes({ asks, clock }: Pick<AppDeps, 'asks' | 'clock'>): Hon
     c.header('Content-Type', 'text/event-stream; charset=utf-8');
     c.header('Cache-Control', 'no-store');
     c.header('X-Accel-Buffering', 'no');
-    return stream(c, async (out) => {
-      out.onAbort(() => disconnect.abort());
-      const stopPing = every(clock, SSE_PING_INTERVAL_MS, () => void out.write(': ping\n\n'));
-      try {
-        for await (const event of events) await out.write(formatSseEvent(event));
-      } finally {
-        stopPing();
-        disconnect.abort();
-      }
-    });
+    return stream(
+      c,
+      async (out) => {
+        out.onAbort(() => disconnect.abort());
+        // Each write waits for the client to take it, so a slow client is
+        // never buffered for: the next event is fetched only after the last
+        // one left. Pings are skipped while a write is still waiting.
+        let pending = 0;
+        const write = async (chunk: string): Promise<void> => {
+          pending++;
+          try {
+            await out.write(chunk);
+          } finally {
+            pending--;
+          }
+        };
+        const stopPing = every(clock, SSE_PING_INTERVAL_MS, () => {
+          if (pending === 0) void write(': ping\n\n');
+        });
+        try {
+          for await (const event of events) await write(formatSseEvent(event));
+        } finally {
+          stopPing();
+          disconnect.abort();
+        }
+      },
+      async (error) => {
+        logger.error('ask stream failed', { error: error.name });
+      },
+    );
   });
 
   routes.post('/:askId/cancel', async (c) => {
