@@ -100,6 +100,7 @@ interface ProviderInstance {
   concurrency: number;   // CLI kinds: 1..5 (default 2, agy fixed at 1); openai-compat: 1..32 (default 4)
   models: string[];      // user-editable list; merged with listModels() when available
   defaultModel?: string;
+  // CLI kinds only: useEnvApiKey (§5.1), riskAcknowledged (agy), webSearch (§5.3)
   // openai-compat only: baseUrl, hasApiKey (the key itself lives in SecretStore)
 }
 ```
@@ -151,7 +152,7 @@ anything reaches the API, the log or the database.
     secrets; no CLI needs them, and a CLI whose tools can read its
     environment must never see them);
   - always: the nested-session markers `CLAUDECODE`, `CLAUDE_EFFORT`,
-    `CLAUDE_PID` and every `CLAUDE_CODE_*`, except `CLAUDE_CODE_OAUTH_TOKEN`
+    `CLAUDE_PID`, `AI_AGENT` and every `CLAUDE_CODE_*`, except `CLAUDE_CODE_OAUTH_TOKEN`
     and the billing group below. `CLAUDE_CODE_OAUTH_TOKEN` is the CLI's own
     headless subscription login (rule 2.3): it is passed through as the user
     set it, and its value is never read, logged or stored;
@@ -168,9 +169,12 @@ anything reaches the API, the log or the database.
   CLI's own status reports a subscription login although such variables are
   kept, the page shows that status and a hint that the CLI reports its own
   login (claude with only `ANTHROPIC_BASE_URL`, codex with `OPENAI_API_KEY`).
-  Exception: codex with `CODEX_API_KEY` kept reports billing `unknown` with a
-  hint, because `codex exec` is documented to use that key for a run; P1
-  settles which one wins. Also set `NO_COLOR=1`, `TERM=dumb`.
+  Exception: codex with `CODEX_API_KEY` kept reports billing `api-key`,
+  because the CLI then authenticates with that key whatever login is saved
+  (`codex doctor` reports API key auth while `codex login status` still
+  reports the ChatGPT login; checked on 0.167.0, no prompt was sent with a
+  key). `OPENAI_API_KEY` alone does not replace a ChatGPT login. Also set
+  `NO_COLOR=1`, `TERM=dumb`.
 - Run each CLI in its most restricted question-answering configuration: no
   tools where the CLI allows it, no user customisations, no session
   persistence. Where a CLI cannot disable tools, say so in the provider page
@@ -192,42 +196,82 @@ anything reaches the API, the log or the database.
 - A provider that only emits whole messages reports `streaming: 'block'`; the
   UI shows "generating (this provider does not stream token by token)".
 
-### 5.2 Starting-point invocations
+### 5.2 Invocations
 
-These come from `--help` output and official docs. They have **not** all been
-confirmed with real prompts. Phase P1 confirms each one, records fixtures from
-real runs, and updates this section.
+claude and codex are confirmed: each was run against the real CLI with tiny
+prompts (claude 2.1.330 and codex-cli 0.167.0, both on Linux with a
+subscription login), fixtures were recorded from those runs, and each
+paragraph ends with what is still unconfirmed. Nothing was run on Windows.
+agy and grok are starting points from `--help` output and official docs and
+have **not** been confirmed with real prompts. `tools/mock-clis/README.md`
+lists the evidence item by item.
 
-- **claude** — `claude -p --output-format stream-json --verbose
-  --include-partial-messages --tools "" --strict-mcp-config --safe-mode
-  --disable-slash-commands --no-session-persistence --permission-prompts none
-  --model <m> --effort <e>`, prompt on stdin; env `ENABLE_CLAUDEAI_MCP_SERVERS=false`.
-  Never `--bare` (it ignores subscription login). Not `--permission-mode plan`.
-  Consider `--system-prompt` with a short Q&A prompt. Text deltas:
-  `type=="stream_event"` with `event.delta.type=="text_delta"`. Errors: the
-  `system`/`api_retry` event's `error` field and the final `result` line.
-  Login: `claude auth status` (JSON; exit 0 logged in, 1 not). No model
-  listing command: models come from settings (`fable`, `opus`, `sonnet`,
-  `haiku`, or a full id). P1 must check that the init event reports no tools,
-  no MCP servers, no plugins.
-- **codex** — `codex exec --json --color never --skip-git-repo-check
-  --ephemeral --ignore-user-config --ignore-rules -s read-only -C <workDir>
-  -m <model> -c model_reasoning_effort="<e>"` plus `--disable <feature>` for
-  `shell_tool`, `unified_exec`, `apps`, `plugins`, `hooks`, `multi_agent`,
+- **claude** (confirmed on 2.1.330) — `claude -p --output-format stream-json
+  --verbose --include-partial-messages --tools "" --strict-mcp-config
+  --safe-mode --restricted --disable-slash-commands --no-session-persistence
+  --permission-prompts none --system-prompt <short Q&A prompt> --model <m>
+  --effort <e>`, prompt on stdin; env `ENABLE_CLAUDEAI_MCP_SERVERS=false`.
+  `--verbose` is required with stream-json. Never `--bare` (it ignores
+  subscription login). Not `--permission-mode plan`. `--safe-mode` and
+  `--restricted` are both needed: either alone leaves a built-in extra. The
+  init event then reports no tools, MCP servers, skills or commands; it always
+  lists the plugins the CLI ships with (`path: "builtin"`) and its built-in
+  agent types, which are inert without tools, and the adapter raises a notice
+  for anything else. The CLI attaches the account's e-mail address and the
+  working directory to every question and no flag removes that; the system
+  prompt tells the model never to repeat them. Text deltas:
+  `type=="stream_event"` with `event.delta.type=="text_delta"`. Thinking
+  deltas arrive empty, so there is no reasoning text, only a token count.
+  Errors: an `assistant` line with `is_api_error_message` and an `error`
+  value (shown as the error, never as the answer), the `system`/`api_retry`
+  event's `error` field, and the final `result` line; usage comes from
+  `modelUsage`. Cancel: SIGTERM ends it with exit code 143. Login:
+  `claude auth status --json` (exit 0 when logged in; only `loggedIn`,
+  `authMethod`, `apiProvider` are read). No model listing command: models
+  come from settings (`haiku`, `sonnet`, `opus`, `fable`, or a full id);
+  effort levels `low`, `medium`, `high`, `xhigh`, `max`. Web search: §5.3.
+  Confirmed only as a set: which of `--strict-mcp-config`,
+  `--disable-slash-commands` and the environment variable is redundant was
+  not tested. Unconfirmed: the logged-out, quota and rate-limit failure
+  shapes and `auth status` when logged out (exit 1 is from the CLI
+  reference); `api_retry` in practice; whether a user-level `CLAUDE.md` is
+  suppressed (it rests on the help text of `--safe-mode`); the warning for an
+  unknown effort level; and everything on Windows.
+- **codex** (confirmed on 0.167.0) — `codex exec --json --color never
+  --skip-git-repo-check --ephemeral --ignore-user-config --ignore-rules
+  -s read-only -C <workDir> -m <model> -c model_reasoning_effort="<e>"
+  -c web_search="disabled"`, then `-c` for `project_doc_max_bytes=0`,
+  `skills.bundled.enabled=false`, `skills.include_instructions=false`,
+  `include_permissions_instructions=false`, `include_apps_instructions=false`,
+  `include_environment_context=false`,
+  `include_collaboration_mode_instructions=false`,
+  `tools.experimental_request_user_input.enabled=false`, `agents.max_depth=0`,
+  `features.multi_agent_v2.disable_native_tools=true`,
+  `features.multi_agent_v2.multi_agent_mode_hint_text=""`,
+  `features.multi_agent_v2.root_agent_usage_hint_text=""`, then `--disable`
+  for `shell_tool`, `unified_exec`, `apps`, `plugins`, `hooks`, `multi_agent`,
   `image_generation`, `browser_use`, `computer_use`, `sleep_tool`,
-  `view_image`, then a final `-`; prompt on stdin. These do not remove every
-  tool: `--disable multi_agent` is a no-op for the default model family, and
-  depending on the model family the model is still offered exec, wait,
-  request_user_input and the collaboration tools. `--ignore-user-config`
-  covers `config.toml` only, so the global `AGENTS.md` and skills still load;
-  the provider page says so in codex's detection hint. A feature name the
-  installed codex does not know makes it exit 1 ("Unknown feature flag"); the
-  adapter reports that as `unsupported`. Use
-  `codex debug prompt-input <flags> "hi"` (renders locally, costs nothing) to
-  confirm what each flag removes. Login: `codex login status` (message is on
-  **stderr**). Models: `codex debug models` (JSON; keep `visibility=="list"`).
-  Documented JSONL events are item-level, so codex is probably
-  `streaming: 'block'`; confirm in P1.
+  `view_image`, then a final `-`; prompt on stdin. With these the model gets
+  no shell, no file access, no web search, no skills, no sub-agents and no
+  environment block (so it does not know the date). What cannot be removed:
+  the CLI's own instructions, the user's global `AGENTS.md`, and the
+  `exec`/`wait` script tools, through which only a file edit (refused by the
+  read-only sandbox), empty MCP resource listings and a clock are reachable;
+  the detection hint says so. `CODEX_HOME` is never moved: the login lives
+  there. A feature name or override the installed codex does not accept makes
+  it exit 1; the adapter reports `unsupported`. Output is whole items only
+  (`item.completed`; no `item.updated`, no deltas): `streaming: 'block'`.
+  Reasoning summaries appear only with `-c model_reasoning_summary`, which is
+  not passed. Cancel: SIGTERM ends it by the signal. Login:
+  `codex login status` (message on **stderr**; exit 0 / 1). Models:
+  `codex debug models` (JSON; keep `visibility=="list"`).
+  `codex debug prompt-input <flags> "hi"` renders the prompt locally, costs
+  nothing, and is how each flag is re-checked after a CLI update. Web search:
+  §5.3. Unconfirmed: the usage-limit and rate-limit failure shapes; a prompt
+  billed through `CODEX_API_KEY` and the effect of `CODEX_ACCESS_TOKEN`
+  (which is therefore passed through untouched); `login status` after an
+  API-key login; the listed models that were not run; and everything on
+  Windows, including how the `""` override values survive argument quoting.
 - **agy** (Gemini) — `agy -p "" --input-format stream-json --output-format
   stream-json --print-timeout <n>s --disable-slash-commands --model <slug>
   --effort <e>`, the prompt as one `{"event":"user","message":{"content":…}}`
@@ -260,6 +304,40 @@ real runs, and updates this section.
   A stored API key belongs to the origin it was entered for: changing an
   endpoint's base URL to another scheme, host or port without sending a new
   key deletes the stored one.
+
+### 5.3 Web search switch
+
+With every tool off, answers about recent events are worse than the vendors'
+own apps. Where a CLI's built-in web search was confirmed, by a real run, to
+work while every other tool stays off, that CLI's provider instance has an
+"allow web search" boolean (`webSearch`, default `false`; a stored document
+without it reads as off).
+
+| CLI | Switch | Invocation with the switch on | Confirmed by |
+|---|---|---|---|
+| claude | yes | `--tools WebSearch --allowedTools WebSearch` in place of `--tools ""` | A real run: init reported `tools: ["WebSearch"]`, the model listed no other tool and answered with a current fact. Without the allow rule the search is refused. |
+| codex | yes | `-c web_search="live"` in place of `-c web_search="disabled"` | A real run each way: `"live"` printed a `web_search` item and an answer; with `"disabled"` the model said it had no web access. |
+| agy | no | — | Not confirmed. |
+| grok | no | — | Not confirmed. |
+
+- Never claude's `WebFetch`: it is treated as able to reach private
+  addresses from this machine, and it was never enabled. Both searches appear
+  to run on the vendor's servers.
+- `ProviderStatus.webSearch` says `available`, `unconfirmed` (a CLI without
+  the switch) or `none` (openai-compat has no tools). The settings refuse
+  `webSearch: true` for a kind that is not `available`, repair drops it from
+  a stored document, and the adapters ignore it. The providers page shows the
+  switch for `available` and "not available" with the reason for
+  `unconfirmed`.
+- A search is reported in the stream as a `notice`: claude's with the query
+  (`Searching the web: <query>`), codex's without. With the switch on, the
+  claude adapter accepts `WebSearch` in the init event and still raises a
+  notice for any other tool.
+- The switch changes nothing else in the invocations of §5.2.
+- Unconfirmed: the claude search arguments in the adapter's exact order (the
+  real run used the same flags in another order); whether codex searches by
+  default when `web_search` is not given (the adapter always states it);
+  codex's `cached` and `indexed` values, which are not used.
 
 ## 6. HTTP API
 
@@ -453,7 +531,8 @@ ends with the process, even on `SIGKILL`, so it never goes stale.
   default preset is chosen per device. History: list, search (prompt and
   answers), reopen, delete.
 - Providers page: install and login state, billing source, login instructions
-  (the exact official command to run), refresh button, agy risk notice.
+  (the exact official command to run), refresh button, agy risk notice, the
+  "allow web search" switch where §5.3 has one.
 - Settings: providers, limits, layout, TLS/CA download, devices, language.
 - Pairing/sign-in page; a global 401 handler returns to it.
 - PWA: manifest, icons, service worker that caches static assets only and
@@ -498,11 +577,6 @@ ends with the process, even on `SIGKILL`, so it never goes stale.
 
 Planned additions, not yet scheduled into a phase's contract:
 
-- **Web search switch (P1).** With all tools off, answers to questions about
-  recent events are worse than the vendors' web apps. P1 checks, per CLI,
-  whether its built-in web search can be enabled alone while every other tool
-  stays off. Where that is confirmed, each CLI provider instance gets an
-  "allow web search" switch; where it is not, the provider page says so.
 - **Web cells (P2, desktop app only, off by default).** The owner asked for
   cells that show a vendor's own web app next to CLI and API cells, so the
   web apps' own features (memory, projects, search) stay available.
@@ -545,5 +619,17 @@ Planned additions, not yet scheduled into a phase's contract:
   SIGHUP), it stops the server and every mock CLI and removes its temporary
   directory; killed outright, its server shuts down when the IPC channel
   closes.
-- `pnpm smoke:real`: manual only, never in CI; one tiny prompt per installed
-  and logged-in CLI; asserts an answer and, for claude, an empty tool list.
+- `pnpm smoke:real` (`scripts/smoke-real.mjs`): manual only. It is never run
+  by CI or by another script (a unit test fails when a workflow or another
+  package script mentions it), refuses to run when `CI` is set, and sends
+  nothing without `--yes` or a typed confirmation. It first prints which
+  CLIs it will call and that each call uses the owner's subscription. Then,
+  for each installed and logged-in CLI, it sends one tiny prompt through the
+  compiled adapter (the server's argv builder, child environment and
+  parser), one CLI after the other, no retries. It asserts an answer and a
+  terminal event; for claude that the init event lists no tools, MCP
+  servers, skills or commands and only built-in plugins; for codex that the
+  turn completed without any tool item. `--only <kind>` calls one CLI,
+  `--search` uses the §5.3 variant and also asserts that a search happened.
+  agy, and a CLI whose login state is unknown, are called only when named
+  with `--only`.

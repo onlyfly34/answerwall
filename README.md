@@ -53,13 +53,23 @@ provider.
 AnswerWall runs every CLI in its most restricted question-answering setup.
 Not every CLI can switch its tools off:
 
-| CLI               | Tools                                                                                                                                                                                                                                 |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `claude`          | Switched off (`--tools ""`, no MCP servers, no slash commands).                                                                                                                                                                       |
-| `codex`           | Cannot all be switched off. They run in a read-only sandbox inside an empty directory; depending on the model, some built-in tools (including sub-agents) are still offered, and your global `AGENTS.md` and skills are still loaded. |
-| `agy`             | No documented way to restrict them: unrestricted.                                                                                                                                                                                     |
-| `grok`            | A read-only sandbox on Linux and macOS, applied on a best-effort basis (the CLI continues without it if it cannot be applied); unrestricted on Windows.                                                                               |
-| OpenAI-compatible | None: AnswerWall sends a chat request and nothing else.                                                                                                                                                                               |
+| CLI               | Tools                                                                                                                                                                                                                                                                                                                    |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `claude`          | Switched off (`--tools ""`, no MCP servers, no skills, no slash commands). Not removable: the CLI attaches your account's e-mail address and the working directory to every question; AnswerWall tells the model never to repeat them.                                                                                   |
+| `codex`           | Shell, file reading, web search, skills and sub-agents are switched off, and it runs in a read-only sandbox inside an empty directory. Not removable: the CLI's own instructions and your global `AGENTS.md` still reach the model, and it keeps a script tool whose only real action, a file edit, the sandbox refuses. |
+| `agy`             | No documented way to restrict them: unrestricted.                                                                                                                                                                                                                                                                        |
+| `grok`            | A read-only sandbox on Linux and macOS, applied on a best-effort basis (the CLI continues without it if it cannot be applied); unrestricted on Windows.                                                                                                                                                                  |
+| OpenAI-compatible | None: AnswerWall sends a chat request and nothing else.                                                                                                                                                                                                                                                                  |
+
+The `claude` and `codex` rows were checked against the real CLIs (claude
+2.1.330, codex-cli 0.167.0, on Linux); the `agy` and `grok` rows come from
+their documentation.
+
+**Web search.** `claude` and `codex` each have an "allow web search" switch
+on the providers page, off by default. Switched on, the model may use that
+CLI's built-in web search, which runs on the vendor's servers; everything
+else in the table stays as it is. `agy` and `grok` have no such switch: it
+has not been confirmed that their search can be enabled on its own.
 
 The providers page shows the same information for each provider.
 
@@ -78,6 +88,12 @@ pnpm build
 pnpm smoke:mock  # build, then drive the compiled server against the mock CLIs
 pnpm e2e         # the Playwright suite (once: pnpm --filter ./e2e browsers)
 ```
+
+`pnpm smoke:real` is a manual check against the real CLIs installed on your
+machine: it sends one tiny prompt through each CLI you are logged in to,
+using your own subscription, and never runs in CI. It lists what it will call
+and asks before it sends anything (`--yes` skips the question, `--only <cli>`
+limits it to one, `--search` uses the web search variant).
 
 Releases are described in [docs/RELEASING.md](docs/RELEASING.md).
 

@@ -101,7 +101,11 @@ the compiled server over real sockets: no fake inside the server, the mock
 CLIs on `PATH` and a local OpenAI-compatible stub. `pnpm e2e` runs the
 Playwright suite in `e2e/` against the same compiled server, one server per
 test, in a desktop, a tablet and a phone viewport. Both compose every unit
-as shipped. CI and the release workflow are described in
+as shipped. `pnpm smoke:real` (`scripts/smoke-real.mjs`) is the manual
+counterpart with the real CLIs: one prompt per installed, logged-in CLI
+through the compiled adapters, with `CliContext.onStdoutLine` handing it the
+raw lines so it can check what the CLI itself reported. Nothing else may
+start it; `tools/mock-clis/src/real-smoke-guard.test.ts` checks that. CI and the release workflow are described in
 [RELEASING.md](RELEASING.md).
 
 ## Request pipeline
