@@ -623,8 +623,9 @@ describe('cells', () => {
       'Codex',
       'Gemini (agy) (disabled)',
       'Grok (not logged in)',
+      'OpenCode (disabled)',
     ]);
-    expect(options.map((option) => option.disabled)).toEqual([false, false, true, false]);
+    expect(options.map((option) => option.disabled)).toEqual([false, false, true, false, true]);
     expect(
       within(cellNamed('Grok')).getByRole('link', { name: 'Open Providers' }).getAttribute('href'),
     ).toBe(ROUTES.providers);

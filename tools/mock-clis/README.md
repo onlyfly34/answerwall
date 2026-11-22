@@ -1,6 +1,7 @@
 # Mock CLIs
 
-One fake executable per CLI provider kind (`claude`, `codex`, `agy`, `grok`).
+One fake executable per CLI provider kind (`claude`, `codex`, `agy`, `grok`,
+`opencode`).
 Each accepts the argument shapes of the real CLI, replays a fixture in the
 real CLI's output format, and can misbehave on request, so adapters and
 end-to-end tests never need a real account or the network.
@@ -67,7 +68,8 @@ status subcommands only look at the environment variable.
 | `stubborn-tree`   | Like `tree`, but the CLI itself ignores SIGTERM too, so only SIGKILL ends it.             |
 | `lingering-child` | Answers and exits, while a child it started keeps stdout open.                            |
 
-The mocks that take their prompt on stdin (`claude`, `codex`, `agy`) answer
+The mocks that take their prompt on stdin (`claude`, `codex`, `agy`,
+`opencode`) answer
 only after stdin has been closed, so an adapter that forgets to close it
 hangs here exactly as it would with the real CLI. `grok` never reads stdin.
 
@@ -76,7 +78,7 @@ it: `kind`, `pid`, `argv`, `cwd`, the names of all environment variables, the
 values of a few fixed ones, the scenario and the prompt it received. The
 `tree`, `stubborn-tree` and `lingering-child` scenarios also log `grandchildPid`. That child's
 command line ends with the mock's script path and `stubborn-child`, so
-`pgrep -af 'src/(claude|codex|grok|agy).mjs'` lists it with the mocks when
+`pgrep -af 'src/(claude|codex|grok|agy|opencode).mjs'` lists it with the mocks when
 something has left it behind.
 
 Every line also carries `at`, the time it was written. A suite that looks for
@@ -149,7 +151,8 @@ any other script starts it.
 2.1.330, codex-cli 0.167.0): by reading `--help` output, by running a status
 subcommand, or, where the source column says "real run", by sending a tiny
 prompt and reading what came back. `agy` and `grok` were not installed;
-everything about them comes from their documentation.
+everything about them comes from their documentation. `opencode` was
+confirmed against a local stub endpoint instead of a vendor; see its section.
 
 ### claude
 
@@ -238,6 +241,61 @@ in a real run.
 | The failure message for a usage limit ("You've hit your usage limit. …")                                                                                                                                                                                                                                                                                                                                                                                            | wording in the CLI binary                                     | no (never produced)                                           |
 | The failure message after rate limiting (429)                                                                                                                                                                                                                                                                                                                                                                                                                       | assumption                                                    | no                                                            |
 | `item.updated` events                                                                                                                                                                                                                                                                                                                                                                                                                                               | non-interactive docs                                          | no (never seen; `incremental.synthetic.jsonl` keeps the case) |
+
+### opencode
+
+Confirmed with opencode 2.3.2 (`@opencode/cli`, installed with npm into a
+scratch directory) on Linux arm64, by `--help` output, the official
+documentation, and about forty runs of the real binary. Every run had a
+throwaway home and XDG directories, the proxy variables pointing at a local
+proxy that logged and refused everything, and one provider in the CLI's
+configuration: a local OpenAI-compatible stub endpoint (the wire shape of the
+one in `scripts/smoke-mock.mjs`, with extra models that hang, fail or ask for
+a tool). No vendor, no account and no key was involved. "Run" below means
+such a run; the recordings in `fixtures/opencode` are from runs made with the
+adapter's own arguments and project file.
+
+| Item                                                                                                                                                                                                                                                                                                        | Source                                          | Confirmed                                               |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- | ------------------------------------------------------- |
+| `run --standalone --format json --thinking --archived --title <t> --agent <a> [--model <provider/model[#variant]>]` answers a message that arrives on stdin, with no message argument                                                                                                                       | run                                             | yes                                                     |
+| stdin carries the message when no argument does (252 kB with multi-byte and shell-special characters arrived unchanged); with neither, one `error` line "You must provide a message", exit 1                                                                                                                | run (`run --help` only says "optional")         | yes                                                     |
+| `--standalone` starts `opencode serve --stdio --port 0` as a child in a session and process group of its own; it listens on a random `127.0.0.1` port whose API answers 401 without credentials                                                                                                             | run (`ps`, `ss`, `curl`)                        | yes                                                     |
+| Without `--title` the CLI sends a second request that asks the model for a session title; with it there is one request per question                                                                                                                                                                         | run (requests seen by the stub)                 | yes                                                     |
+| Output lines: `step_start`, `text`, `reasoning` (only with `--thinking`), `tool_use`, `step_finish`, `retry`, `error`; each carries `timestamp` and `sessionID`, most a `part`                                                                                                                              | run                                             | yes                                                     |
+| A text part is printed once, complete, although the endpoint streamed it in pieces; nothing is printed while a half-sent answer is pending                                                                                                                                                                  | run                                             | yes (`streaming: 'block'`)                              |
+| `step_finish.part` has `reason` (`stop`, `tool-calls`) and `tokens` (`input`, `output`, `reasoning`, `cache.read`, `cache.write`); `output` excludes `reasoning`. No event follows the last one; exit code 0                                                                                                | run (`ok.jsonl`, `reasoning.jsonl`)             | yes                                                     |
+| With no project file `run` offers 13 tools and executes a shell command the model asks for, without a prompt                                                                                                                                                                                                | run (the command wrote a file)                  | yes                                                     |
+| With the adapter's `opencode.json` (an agent whose only rule denies `*`, policies denying `tool.use`, `mcp.use`, `skill.use`, `websearch.use`) one tool is offered, `skill`; a call of it ends with `status: "error"`, "Unable to load skill"; no skill is listed; the agent's `system` replaces the prompt | run (`tool-denied.jsonl`, request bodies)       | yes                                                     |
+| A global `permissions` rule and a global `tool.use` policy that allow everything do not reopen a tool for that agent; an MCP server from the global configuration is not started (it is without the file)                                                                                                   | run                                             | yes                                                     |
+| With `OPENCODE_DISABLE_PROJECT_CONFIG=1` the project file is not read: one `error` line `Agent not found: "<a>"`, exit 1, nothing sent                                                                                                                                                                      | run (`agent-not-found.jsonl`)                   | yes                                                     |
+| `agents.<a>.steps: 1` adds a "maximum steps reached, summarise" message to the conversation                                                                                                                                                                                                                 | run                                             | yes (so it is not used)                                 |
+| The system prompt always ends with the model name, the date, the working directory, the platform and the instruction files found: the global `AGENTS.md`, those between the work dir and the home directory, and `CLAUDE.md` where there is no `AGENTS.md`                                                  | run (request bodies)                            | yes                                                     |
+| `OPENCODE_DISABLE_CLAUDE_CODE=1` removes the `CLAUDE.md` files and keeps the `AGENTS.md` ones                                                                                                                                                                                                               | run                                             | yes                                                     |
+| Failures are one `error` line on stdout, exit code 1, nothing on stderr. `error.type`: `provider.auth` (401), `provider.quota` (429 `insufficient_quota`), `provider.invalid-request` (400, 404), `provider.no-route` (model or variant not in the configuration), `unknown` (`Invalid model reference: x`) | run (the fixtures of those names)               | yes                                                     |
+| After a refused connection (`provider.transport`), a 500 (`provider.internal`) or a 429 rate limit (`provider.rate-limit`) the CLI prints `retry` lines with `attempt` 2 to 11 and gives up after 83 to 89 seconds with an `error` line                                                                     | run (`network`, `server-error`, `rate-limited`) | yes                                                     |
+| A variant is selected as `provider/model#variant`, and its `body` reaches the request; an unknown one is `provider.no-route` "Variant unavailable"                                                                                                                                                          | run (`bad-variant.jsonl`)                       | yes                                                     |
+| SIGTERM and SIGKILL to the process group of `run` end it within 0.2 s; the private server, which the signal does not reach, is gone within a second and the request to the endpoint is closed; no process is left                                                                                           | run                                             | yes                                                     |
+| The session of every run is stored in the CLI's database (`debug paths db`); `session list` shows it also with `--archived`; nothing is written into the working directory                                                                                                                                  | run                                             | yes                                                     |
+| Each start requests `models.opencode.ai` (through the proxy when one is set) and probes `127.0.0.1` ports 11434, 1234 and 8000; nothing else was contacted                                                                                                                                                  | run (`strace -e connect`, proxy log)            | yes                                                     |
+| `--version` prints `opencode v<semver>`                                                                                                                                                                                                                                                                     | run                                             | yes                                                     |
+| `auth list --standalone --format json` prints `[{ id, name, connections: [{ type, name }] }]`: a key from an environment variable is a connection of type `env`; nothing configured is `[]`; a provider without a key is not listed and still answers                                                       | run                                             | yes for those three cases                               |
+| What `auth list` prints for an account saved with `auth login` (API key or OAuth)                                                                                                                                                                                                                           | —                                               | no (needs an interactive login)                         |
+| `models --standalone` prints one `provider/model` per line, with the network refused too; on a fresh home only `opencode/…` models                                                                                                                                                                          | run                                             | yes                                                     |
+| A question with no configuration at all (it would go to a model hosted by the CLI's vendor)                                                                                                                                                                                                                 | —                                               | no (never sent)                                         |
+| opencode 1.19.6 answers the adapter's arguments with its usage text on stderr and exit code 1                                                                                                                                                                                                               | run of 1.19.6                                   | yes                                                     |
+| Without `--standalone`, the shared background service                                                                                                                                                                                                                                                       | docs                                            | no (one run; no service stayed in the test environment) |
+| Everything above on macOS and Windows                                                                                                                                                                                                                                                                       | —                                               | no                                                      |
+
+The mock `opencode` reads `opencode.json` from its working directory, as the
+real CLI does, and insists on what the adapter is expected to write: a
+primary agent named `answerwall` with a system prompt and the single rule
+that denies everything, the four policies, and no provider, model, MCP or
+plugin setting. Without the file, or with `OPENCODE_DISABLE_PROJECT_CONFIG=1`
+on a run, it answers `Agent not found` like the real CLI. A model is
+`provider/model`; the scenario is named by the model part
+(`mock/mock-echo`). Its `auth list` and `models` commands are a usage error
+without `--standalone` or without `OPENCODE_DISABLE_PROJECT_CONFIG=1`. Set
+`MOCK_OPENCODE_LEGACY=1` and it behaves like version 1.
 
 ### agy
 

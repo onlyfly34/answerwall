@@ -29,7 +29,7 @@ const SERVER_MAIN = path.join(ROOT, 'apps', 'server', 'dist', 'main.js');
 const PROTOCOL = path.join(ROOT, 'packages', 'core', 'dist', 'protocol', 'index.js');
 const WEB_INDEX = path.join(ROOT, 'packages', 'web', 'dist', 'index.html');
 const MOCK_BIN = path.join(ROOT, 'tools', 'mock-clis', 'bin');
-const MOCK_KINDS = ['claude', 'codex', 'agy', 'grok'];
+const MOCK_KINDS = ['claude', 'codex', 'agy', 'grok', 'opencode'];
 
 const EXPECTED_CSP =
   "default-src 'self'; img-src 'self' data:; connect-src 'self'; script-src 'self'; " +
@@ -540,6 +540,7 @@ async function main() {
       cli('codex', { enabled: true, concurrency: 1 }),
       cli('grok', { enabled: true, concurrency: 1 }),
       cli('agy', { enabled: true, concurrency: 1, riskAcknowledged: true }),
+      cli('opencode', { enabled: true, concurrency: 1 }),
       {
         id: 'stub',
         kind: 'openai-compat',
@@ -604,11 +605,13 @@ async function main() {
       { slotId: 'g2', providerId: 'grok', model: 'mock-echo' },
       { slotId: 'a1', providerId: 'agy', model: 'mock-slow' },
       { slotId: 'a2', providerId: 'agy', model: 'mock-slow' },
+      { slotId: 'p1', providerId: 'opencode', model: 'mock/mock-slow' },
+      { slotId: 'p2', providerId: 'opencode', model: 'mock/mock-echo' },
       { slotId: 'o1', providerId: 'stub' },
       { slotId: 'o2', providerId: 'stub', model: STUB_MODEL },
       { slotId: 'o3', providerId: 'stub', model: STUB_MODEL },
     ];
-    const concurrency = { claude: 2, codex: 1, grok: 1, agy: 1, stub: 1 };
+    const concurrency = { claude: 2, codex: 1, grok: 1, agy: 1, opencode: 1, stub: 1 };
     const submitted = await api.post(API_PATHS.ask, { prompt: PROMPT, targets });
     check(
       submitted.status === 200 && typeof submitted.json.askId === 'string',
@@ -744,7 +747,21 @@ async function main() {
     );
 
     const slot = (id) => final.json.slots.find((s) => s.slotId === id);
-    for (const id of ['c2', 'c3', 'c4', 'x1', 'x2', 'g1', 'g2', 'a1', 'o1', 'o2', 'o3']) {
+    for (const id of [
+      'c2',
+      'c3',
+      'c4',
+      'x1',
+      'x2',
+      'g1',
+      'g2',
+      'a1',
+      'p1',
+      'p2',
+      'o1',
+      'o2',
+      'o3',
+    ]) {
       check(
         slot(id).status === 'done' && slot(id).text.length > 0,
         `slot ${id} finished with an answer`,
@@ -766,13 +783,16 @@ async function main() {
     );
     check(slot('c3').reasoning.length > 0, 'reasoning is streamed separately from the answer');
     check(
-      slot('x1').streaming === 'block' && slot('c2').streaming === 'token',
-      'codex is reported as block streaming, claude as token streaming',
+      slot('x1').streaming === 'block' &&
+        slot('p1').streaming === 'block' &&
+        slot('c2').streaming === 'token',
+      'codex and opencode are reported as block streaming, claude as token streaming',
     );
     check(
       slot('g2').text.includes(PROMPT),
       'the prompt reached grok intact through its prompt file',
     );
+    check(slot('p2').text.includes(PROMPT), 'the prompt reached opencode intact on stdin');
     for (const id of ['o1', 'o2', 'o3']) {
       check(
         slot(id).text === stub.expectedText && slot(id).reasoning === 'Count.',
@@ -911,6 +931,7 @@ async function main() {
         ['codex', 'available'],
         ['grok', 'unconfirmed'],
         ['agy', 'unconfirmed'],
+        ['opencode', 'unconfirmed'],
         ['stub', 'none'],
       ]),
       'the provider list says which providers have a web search switch',

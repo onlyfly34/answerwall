@@ -19,7 +19,7 @@
 // The main run starts docker/compose.yaml as shipped (read-only root file
 // system, no capabilities, built-in TLS) with the mock CLIs on PATH, pairs a
 // device with the code from the log and one from `answerwall pair`, sends one
-// ask across the four mocks, cancels and stops while mocks are running, and
+// ask across the five mocks, cancels and stops while mocks are running, and
 // checks that nothing is left behind, that state survives a re-create, that
 // the image holds no AI command-line tool and that nothing runs as root.
 
@@ -37,7 +37,7 @@ import { FORBIDDEN_PACKAGE_REGEX } from '../../scripts/forbidden-packages.mjs';
 const ROOT = path.resolve(fileURLToPath(new URL('../..', import.meta.url)));
 const DOCKER_DIR = path.join(ROOT, 'docker');
 const MOCK_CLIS = path.join(ROOT, 'tools', 'mock-clis');
-const CLI_KINDS = ['claude', 'codex', 'grok', 'agy'];
+const CLI_KINDS = ['claude', 'codex', 'grok', 'agy', 'opencode'];
 const SERVICE = 'answerwall';
 const CONTAINER_PORT = 7717;
 const NGINX_IMAGE = 'nginx:1.30.7-alpine';
@@ -373,7 +373,7 @@ async function enableMocks(client) {
     providers,
     limits: { slotTimeoutMs: 60_000 },
   });
-  check(saved.status === 200, 'the four CLI providers are enabled', saved.json);
+  check(saved.status === 200, 'the five CLI providers are enabled', saved.json);
   check((await client.post('/api/providers/refresh', {})).status === 200, 'provider refresh runs');
   return until('provider detection', async () => {
     const list = (await client.get('/api/providers')).json.providers;
@@ -386,7 +386,8 @@ async function askAcrossMocks(client, target, models) {
   const targets = CLI_KINDS.map((kind) => ({
     slotId: kind,
     providerId: kind,
-    model: models[kind] ?? 'mock-slow',
+    // opencode names a model as provider/model.
+    model: models[kind] ?? (kind === 'opencode' ? 'mock/mock-slow' : 'mock-slow'),
   }));
   const submitted = await client.post('/api/ask', { prompt: PROMPT, targets });
   check(

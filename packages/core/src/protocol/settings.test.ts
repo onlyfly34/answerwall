@@ -40,7 +40,7 @@ const issues = (value: unknown) =>
   ProviderInstanceSchema.safeParse(value).error?.issues.map((issue) => issue.path.join('.')) ?? [];
 
 describe('default settings', () => {
-  test('are valid, with agy disabled and every limit at its documented default', () => {
+  test('are valid, with agy and opencode disabled and every limit at its documented default', () => {
     const settings = createDefaultSettings();
     expect(SettingsSchema.parse(settings)).toEqual(settings);
     expect(settings.providers.map((p) => [p.id, p.enabled, p.concurrency])).toEqual([
@@ -48,6 +48,7 @@ describe('default settings', () => {
       ['codex', true, 2],
       ['agy', false, 1],
       ['grok', true, 2],
+      ['opencode', false, 2],
     ]);
     expect(settings.limits).toMatchObject({
       maxTargetsPerAsk: 32,
@@ -121,6 +122,9 @@ describe('provider instances', () => {
     expect(issues({ ...claude, id: 'codex', kind: 'codex', webSearch: true })).toEqual([]);
     expect(issues({ ...agy, webSearch: true })).toEqual(['webSearch']);
     expect(issues({ ...agy, id: 'grok', kind: 'grok', webSearch: true })).toEqual(['webSearch']);
+    expect(issues({ ...claude, id: 'opencode', kind: 'opencode', webSearch: true })).toEqual([
+      'webSearch',
+    ]);
     expect(issues({ ...claude, webSearch: 'yes' })).toEqual(['webSearch']);
     expect(ProviderInstanceSchema.parse({ ...endpoint, webSearch: true })).not.toHaveProperty(
       'webSearch',
@@ -128,6 +132,7 @@ describe('provider instances', () => {
     expect(PROVIDER_KINDS.map(webSearchSupport)).toEqual([
       'available',
       'available',
+      'unconfirmed',
       'unconfirmed',
       'unconfirmed',
       'none',

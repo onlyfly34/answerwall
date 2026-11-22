@@ -1,0 +1,2 @@
+# recorded from opencode 2.3.2, scrubbed (the adapter's invocation and project file against a local OpenAI-compatible stub endpoint; a model the CLI's configuration does not list; exit code 1, nothing was sent)
+{"type":"error","timestamp":1700000000000,"sessionID":"ses_0000000000000000000000","error":{"type":"provider.no-route","message":"Model unavailable: stub/nope"}}

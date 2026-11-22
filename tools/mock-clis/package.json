@@ -8,7 +8,8 @@
     "agy": "src/agy.mjs",
     "claude": "src/claude.mjs",
     "codex": "src/codex.mjs",
-    "grok": "src/grok.mjs"
+    "grok": "src/grok.mjs",
+    "opencode": "src/opencode.mjs"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"

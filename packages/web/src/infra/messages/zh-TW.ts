@@ -101,6 +101,7 @@ export const zhTW: Record<keyof typeof en, string> = {
   'app.providers.kind.codex': 'CLI',
   'app.providers.kind.agy': 'CLI',
   'app.providers.kind.grok': 'CLI',
+  'app.providers.kind.opencode': 'CLI',
   'app.providers.kind.openai-compat': 'OpenAI 相容',
   'app.providers.login.label': '登入狀態',
   'app.providers.login.yes': '已登入',

@@ -453,9 +453,9 @@ describe('update', () => {
 
       expect(
         updated.providers.map((provider) => 'webSearch' in provider && provider.webSearch),
-      ).toEqual([false, true, false, false]);
+      ).toEqual([false, true, false, false, false]);
       expect(JSON.stringify(await storage.settings.load())).toContain('"webSearch":true');
-      for (const id of ['agy', 'grok']) {
+      for (const id of ['agy', 'grok', 'opencode']) {
         expect(await rejection(service.update(withSearch(id)))).toMatchObject({
           code: 'bad_request',
         });

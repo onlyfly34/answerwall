@@ -114,6 +114,7 @@ describe('routes delegate to their units', () => {
       ['codex', null],
       ['agy', null],
       ['grok', null],
+      ['opencode', null],
     ]);
 
     const refreshed = ProvidersResponseSchema.parse(

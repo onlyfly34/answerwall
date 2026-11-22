@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { ProviderEvent, RunRequest } from '../contracts/index.ts';
+import { CLI_PROVIDER_KINDS } from '../protocol/index.ts';
 import type { CliProviderInstance, CliProviderKind } from '../protocol/index.ts';
 import { systemClock } from '../system.ts';
 import { createMemoryLogger } from '../testing/index.ts';
@@ -97,7 +98,7 @@ export async function createMockCliHarness(
   const logFile = path.join(root, 'invocations.jsonl');
   if (process.platform !== 'win32') {
     // An archive without permission bits must not make every test fail with "not installed".
-    for (const kind of ['claude', 'codex', 'agy', 'grok']) {
+    for (const kind of CLI_PROVIDER_KINDS) {
       const launcher = path.join(MOCK_BIN_DIR, kind);
       if (((await stat(launcher)).mode & 0o111) === 0) await chmod(launcher, 0o755);
     }

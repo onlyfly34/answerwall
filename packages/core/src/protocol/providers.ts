@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { TimestampSchema } from './common.ts';
 
-export const CLI_PROVIDER_KINDS = ['claude', 'codex', 'agy', 'grok'] as const;
+export const CLI_PROVIDER_KINDS = ['claude', 'codex', 'agy', 'grok', 'opencode'] as const;
 export const CliProviderKindSchema = z.enum(CLI_PROVIDER_KINDS);
 export type CliProviderKind = z.infer<typeof CliProviderKindSchema>;
 
@@ -24,6 +24,8 @@ export const LOGIN_COMMANDS: Readonly<Record<CliProviderKind, string>> = {
   // The CLI has no login subcommand: starting it interactively signs in.
   agy: 'agy',
   grok: 'grok login --device-auth',
+  // Connects one provider account; a provider set up in the CLI's own configuration needs none.
+  opencode: 'opencode auth login',
 };
 
 /** Kinds whose first enable requires the user to acknowledge the vendor's wording. */

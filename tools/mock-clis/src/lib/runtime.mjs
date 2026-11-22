@@ -157,10 +157,14 @@ export function logInvocation(kind, extra = {}) {
     cwd: process.cwd(),
     envNames: Object.keys(process.env).sort(),
     env: Object.fromEntries(
-      ['NO_COLOR', 'TERM', 'ENABLE_CLAUDEAI_MCP_SERVERS', 'GROK_MEMORY'].map((name) => [
-        name,
-        process.env[name] ?? null,
-      ]),
+      [
+        'NO_COLOR',
+        'TERM',
+        'ENABLE_CLAUDEAI_MCP_SERVERS',
+        'GROK_MEMORY',
+        'OPENCODE_DISABLE_CLAUDE_CODE',
+        'OPENCODE_DISABLE_PROJECT_CONFIG',
+      ].map((name) => [name, process.env[name] ?? null]),
     ),
     ...extra,
   });
@@ -169,7 +173,7 @@ export function logInvocation(kind, extra = {}) {
 /**
  * A descendant that ignores SIGTERM and inherits stdout: only a tree kill
  * removes it. Its command line names the mock's script, unused, so that the
- * search for leftover mocks (`pgrep -f 'src/(claude|codex|grok|agy).mjs'`)
+ * search for leftover mocks (`pgrep -f 'src/(claude|codex|grok|agy|opencode).mjs'`)
  * finds it too.
  */
 function spawnStubbornChild() {

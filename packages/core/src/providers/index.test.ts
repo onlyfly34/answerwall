@@ -76,6 +76,26 @@ describe('createProviderRegistry', () => {
     // Off until its notice is acknowledged: the mock was never started.
     expect(byId.agy?.detection).toBeNull();
     expect((await harness.invocations()).some((call) => call.kind === 'agy')).toBe(false);
+    // Disabled by default, so a refresh of everything leaves it alone.
+    expect(byId.opencode?.detection).toBeNull();
+    expect((await harness.invocations()).some((call) => call.kind === 'opencode')).toBe(false);
+    await registry.shutdown();
+  });
+
+  test('opencode is detected when it is asked for, with the models its CLI lists', async () => {
+    harness = await createMockCliHarness();
+    const registry = build();
+
+    const list = await registry.refresh('opencode');
+
+    const status = list.find((entry) => entry.instance.id === 'opencode');
+    expect(status).toMatchObject({
+      detection: { installed: true, version: '2.3.2', loggedIn: 'yes', streaming: 'block' },
+      toolAccess: 'disabled',
+      webSearch: 'unconfirmed',
+      loginCommand: 'opencode auth login',
+    });
+    expect(status?.models.map((model) => model.id)).toEqual(['mock/mock-large', 'mock/mock-fast']);
     await registry.shutdown();
   });
 

@@ -404,7 +404,7 @@ describe('shim parsing', () => {
 describe('the mock CLI launchers', () => {
   const bin = new URL('../../../../../tools/mock-clis/bin/', import.meta.url);
 
-  test.each(['claude', 'codex', 'agy', 'grok'])(
+  test.each(['claude', 'codex', 'agy', 'grok', 'opencode'])(
     'the %s .cmd and .ps1 shims reduce to the mock script',
     async (kind) => {
       const cmd = await readFile(new URL(`${kind}.cmd`, bin), 'utf8');

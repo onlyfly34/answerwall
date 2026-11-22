@@ -123,10 +123,10 @@ RUN ln -s /opt/answerwall/dist/main.js "/usr/local/bin/$CLI_NAME" \
 
 ARG PORT
 # The vendors' installers put their tools into ~/.local/bin (claude, codex,
-# agy) and ~/.grok/bin (grok). They come last, so nothing in the volume can
-# stand in for a system command.
+# agy), ~/.grok/bin (grok) and ~/.opencode/bin (opencode). They come last, so
+# nothing in the volume can stand in for a system command.
 ENV HOME=/home/answerwall \
-    PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/home/answerwall/.local/bin:/home/answerwall/.grok/bin \
+    PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/home/answerwall/.local/bin:/home/answerwall/.grok/bin:/home/answerwall/.opencode/bin \
     ANSWERWALL_HOST=0.0.0.0 \
     ANSWERWALL_PORT=${PORT} \
     ANSWERWALL_DATA_DIR=/data \

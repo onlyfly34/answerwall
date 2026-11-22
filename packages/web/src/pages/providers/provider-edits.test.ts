@@ -44,6 +44,7 @@ describe('provider list edits', () => {
       ['codex', false],
       ['agy', false],
       ['grok', true],
+      ['opencode', false],
       ['lab', true],
     ]);
 
@@ -58,9 +59,17 @@ describe('provider list edits', () => {
       apiKey: 'k',
     };
     const list = withProvider(providers, added);
-    expect(list.map((p) => p.id)).toEqual(['claude', 'codex', 'agy', 'grok', 'lab', 'new']);
-    expect(list[4]).not.toHaveProperty('hasApiKey');
-    expect(list[5]).toMatchObject({ apiKey: 'k' });
+    expect(list.map((p) => p.id)).toEqual([
+      'claude',
+      'codex',
+      'agy',
+      'grok',
+      'opencode',
+      'lab',
+      'new',
+    ]);
+    expect(list[5]).not.toHaveProperty('hasApiKey');
+    expect(list[6]).toMatchObject({ apiKey: 'k' });
   });
 
   test('removing drops only that provider', () => {
@@ -69,6 +78,7 @@ describe('provider list edits', () => {
       'codex',
       'agy',
       'grok',
+      'opencode',
     ]);
   });
 

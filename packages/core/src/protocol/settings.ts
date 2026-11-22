@@ -84,6 +84,9 @@ const CLI_DEFAULTS: Record<CliProviderKind, { label: string; enabled: boolean; m
     codex: { label: 'Codex', enabled: true, models: [] },
     agy: { label: 'Gemini (agy)', enabled: false, models: [] },
     grok: { label: 'Grok', enabled: true, models: [] },
+    // Off until the user turns it on: without a configuration of its own the CLI
+    // answers with a hosted default model the user never chose.
+    opencode: { label: 'OpenCode', enabled: false, models: [] },
   };
 
 /** Settings of a fresh installation. */

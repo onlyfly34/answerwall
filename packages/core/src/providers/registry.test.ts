@@ -107,12 +107,13 @@ describe('provider registry', () => {
       'codex',
       'agy',
       'grok',
+      'opencode',
       'local',
     ]);
     expect(first.every((entry) => entry.detection === null && entry.detectedAt === null)).toBe(
       true,
     );
-    expect(t.detectCalls()).toEqual([0, 0, 0, 0, 0]);
+    expect(t.detectCalls()).toEqual([0, 0, 0, 0, 0, 0]);
     expect(() => ProvidersResponseSchema.parse({ providers: first })).not.toThrow();
   });
 
@@ -148,6 +149,7 @@ describe('provider registry', () => {
       ['codex', 'available'],
       ['agy', 'unconfirmed'],
       ['grok', 'unconfirmed'],
+      ['opencode', 'unconfirmed'],
       ['local', 'none'],
     ]);
   });
@@ -158,8 +160,8 @@ describe('provider registry', () => {
 
     const list = await t.registry.refresh();
 
-    // agy is disabled by default.
-    expect(t.detectCalls()).toEqual([1, 1, 0, 1, 1]);
+    // agy and opencode are disabled by default.
+    expect(t.detectCalls()).toEqual([1, 1, 0, 1, 0, 1]);
     expect(list).toEqual(t.registry.list());
     expect(t.status('codex')).toMatchObject({
       detection: READY_DETECTION,
@@ -190,7 +192,7 @@ describe('provider registry', () => {
 
     await t.registry.refresh('grok');
 
-    expect(t.detectCalls()).toEqual([0, 0, 0, 1, 0]);
+    expect(t.detectCalls()).toEqual([0, 0, 0, 1, 0, 0]);
     expect(t.status('grok').detection).toEqual(READY_DETECTION);
     expect(t.status('claude').detection).toBeNull();
   });
@@ -202,7 +204,7 @@ describe('provider registry', () => {
 
     expect(error).toBeInstanceOf(AppError);
     expect((error as AppError).code).toBe('unknown_provider');
-    expect(t.detectCalls()).toEqual([0, 0, 0, 0, 0]);
+    expect(t.detectCalls()).toEqual([0, 0, 0, 0, 0, 0]);
   });
 
   test('agy is never started before its notice is acknowledged, not even for detection', async () => {
@@ -393,7 +395,7 @@ describe('provider registry', () => {
     expect(t.status('local').detection).toBeNull();
     expect(t.status('codex').detection).toEqual(READY_DETECTION);
     // Staleness never triggers a detection by itself.
-    expect(t.detectCalls()).toEqual([1, 1, 0, 1, 1]);
+    expect(t.detectCalls()).toEqual([1, 1, 0, 1, 0, 1]);
   });
 
   test('forgets a removed instance, so a new one with the same id starts undetected', async () => {
@@ -441,7 +443,7 @@ describe('provider registry', () => {
 
     const list = await t.registry.refresh();
 
-    expect(t.detectCalls()).toEqual([0, 0, 0, 0, 0]);
+    expect(t.detectCalls()).toEqual([0, 0, 0, 0, 0, 0]);
     expect(list.every((entry) => entry.detection === null)).toBe(true);
   });
 });

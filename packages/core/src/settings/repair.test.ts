@@ -177,6 +177,7 @@ describe('repairSettings', () => {
         ['codex', true],
         ['agy', false],
         ['grok', false],
+        ['opencode', false],
       ]);
       expect(
         provider(repairSettings({ providers: [{ id: 'claude', webSearch: 'yes' }] }), 'claude'),
@@ -203,6 +204,7 @@ describe('repairSettings', () => {
         'claude',
         'codex',
         'agy',
+        'opencode',
       ]);
     });
 

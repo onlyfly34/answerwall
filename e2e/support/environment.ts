@@ -15,14 +15,14 @@ export const WEB_INDEX = path.join(ROOT, 'packages', 'web', 'dist', 'index.html'
 export const MOCK_ROOT = path.join(ROOT, 'tools', 'mock-clis');
 export const MOCK_BIN = path.join(MOCK_ROOT, 'bin');
 
-export const CLI_KINDS = ['claude', 'codex', 'agy', 'grok'] as const;
+export const CLI_KINDS = ['claude', 'codex', 'agy', 'grok', 'opencode'] as const;
 export type CliKind = (typeof CLI_KINDS)[number];
 
 /** Which mock CLIs a server finds on its `PATH`. */
 export type MockSet = 'all' | 'without-grok';
 const MOCK_SETS: Record<MockSet, readonly CliKind[]> = {
   all: CLI_KINDS,
-  'without-grok': ['claude', 'codex', 'agy'],
+  'without-grok': ['claude', 'codex', 'agy', 'opencode'],
 };
 
 /** Set by the global setup; workers inherit it. */

@@ -148,8 +148,8 @@ describe('start-up', () => {
     await heading('History page');
 
     expect(wallMounts).toEqual([
-      { page: 'Wall page', settingsLoaded: true, providers: 4 },
-      { page: 'History page', settingsLoaded: true, providers: 4 },
+      { page: 'Wall page', settingsLoaded: true, providers: 5 },
+      { page: 'History page', settingsLoaded: true, providers: 5 },
     ]);
   });
 

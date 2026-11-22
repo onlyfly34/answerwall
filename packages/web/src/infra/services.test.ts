@@ -93,7 +93,7 @@ describe('the real services, wired together', () => {
     expect(services.shell.phase()).toBe('ready');
     expect(services.meta()?.version).toBe(TEST_VERSION);
     expect(services.settings.settings()).toEqual(createDefaultSettings());
-    expect(services.providers.providers()).toHaveLength(4);
+    expect(services.providers.providers()).toHaveLength(5);
   });
 
   test('the language of the server settings wins once it is known, and is remembered here', async () => {

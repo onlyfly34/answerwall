@@ -66,6 +66,13 @@ test.describe('providers page', () => {
     await expect(agy).toContainText('third-party wrappers are not supported under consumer plans');
     await expect(agy.getByLabel('Parallel requests')).toBeDisabled();
 
+    // Also off until the user enables it, and therefore not checked at the start.
+    const opencode = card(page, 'OpenCode');
+    await expect(opencode.getByLabel('Enabled')).not.toBeChecked();
+    await expect(opencode).toContainText('Not checked yet. Press Refresh.');
+    await expect(opencode.locator('code.app-code')).toHaveText('opencode auth login');
+    expect(server.mockInvocations().some((entry) => entry.kind === 'opencode')).toBe(false);
+
     // The mocks report an account e-mail, an organisation and a config path; none reaches the page.
     const body = await page.locator('body').innerText();
     for (const secret of ['mock.user@example.com', 'Mock Organisation', 'org-mock', '/home/mock']) {
@@ -74,6 +81,55 @@ test.describe('providers page', () => {
     const api = JSON.stringify(await server.providers());
     for (const secret of ['mock.user@example.com', 'Mock Organisation', 'org-mock', '/home/mock']) {
       expect(api).not.toContain(secret);
+    }
+  });
+
+  test('opencode, once enabled, is detected and answers without tools through its own agent', async ({
+    wallPage: page,
+    server,
+    device,
+  }) => {
+    await server.setProviders({ opencode: { enabled: true } });
+    await page.reload();
+    await openProviders(page);
+
+    const opencode = card(page, 'OpenCode');
+    await expect(fact(opencode, 'Installed')).toHaveText('Yes version 2.3.2');
+    await expect(fact(opencode, 'Logged in')).toHaveText('Yes');
+    await expect(fact(opencode, 'Billing source')).toHaveText('Unknown');
+    await expect(fact(opencode, 'Streaming')).toHaveText(
+      'Whole messages (this provider does not stream token by token)',
+    );
+    await expect(opencode).toContainText('Tool access: tools are switched off for every question.');
+    await expect(opencode).toContainText('Web search: not available.');
+    // The mock names an account in its status output; only the fact of a connection is kept.
+    const body = await page.locator('body').innerText();
+    for (const secret of ['jane.doe@example.com', 'MOCK_GATEWAY_KEY']) {
+      expect(body).not.toContain(secret);
+      expect(JSON.stringify(await server.providers())).not.toContain(secret);
+    }
+
+    await nav(page, 'Wall').click();
+    await arrange(page, server, [
+      { slotId: 'p1', providerId: 'opencode', model: 'mock/mock-echo' },
+      { slotId: 'p2', providerId: 'opencode', model: 'mock/mock-tool-denied' },
+    ]);
+    await send(page, 'Why is the sky blue?');
+    await expectPhases(page, { p1: 'done', p2: 'done' });
+
+    const echoed = await showCell(page, device, 'p1');
+    await expect(echoed.locator('.wall-markdown')).toHaveText('You said: Why is the sky blue?');
+    const refused = await showCell(page, device, 'p2');
+    await expect(refused.locator('.wall-markdown')).toHaveText('I cannot use tools here.');
+    await expect(refused).toContainText('Tools are switched off, so the call was refused.');
+
+    const runs = server
+      .mockInvocations()
+      .filter((entry) => entry.kind === 'opencode' && typeof entry.prompt === 'string');
+    expect(runs).toHaveLength(2);
+    for (const run of runs) {
+      expect(run.argv?.join(' ')).not.toContain('sky');
+      expect(run.argv).toEqual(expect.arrayContaining(['--standalone', '--agent', 'answerwall']));
     }
   });
 
@@ -156,7 +212,7 @@ test.describe('providers page', () => {
     for (const label of ['Claude', 'Codex']) {
       await expect(card(page, label).getByLabel('Allow web search')).not.toBeChecked();
     }
-    for (const label of ['Grok', 'Gemini (agy)']) {
+    for (const label of ['Grok', 'Gemini (agy)', 'OpenCode']) {
       await expect(card(page, label).getByLabel('Allow web search')).toHaveCount(0);
       await expect(card(page, label)).toContainText('Web search: not available.');
     }
@@ -171,7 +227,7 @@ test.describe('providers page', () => {
           'webSearch' in status.instance ? status.instance.webSearch : null,
         ),
       )
-      .toEqual([true, true, false, false]);
+      .toEqual([true, true, false, false, false]);
 
     await nav(page, 'Wall').click();
     await arrange(page, server, [

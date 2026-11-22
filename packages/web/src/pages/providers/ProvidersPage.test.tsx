@@ -339,6 +339,7 @@ describe('enabling and disabling', () => {
       ['codex', true],
       ['agy', false],
       ['grok', true],
+      ['opencode', false],
     ]);
     await waitFor(() => expect(box.checked).toBe(false));
   });
@@ -613,7 +614,7 @@ describe('OpenAI-compatible endpoints', () => {
       baseUrl: 'https://llm.example/v1',
       apiKey: 'sk-secret-value',
     });
-    expect(savedProviders(services)).toHaveLength(5);
+    expect(savedProviders(services)).toHaveLength(6);
     expect(services.toasts).toContainEqual({ kind: 'success', message: 'Saved.' });
 
     const added = card('My LiteLLM (home)');
@@ -705,6 +706,7 @@ describe('OpenAI-compatible endpoints', () => {
       'codex',
       'agy',
       'grok',
+      'opencode',
     ]);
     await waitFor(() => expect(screen.queryByRole('region', { name: 'Home LLM' })).toBeNull());
     expect(services.toasts).toContainEqual({ kind: 'success', message: 'Home LLM was removed.' });

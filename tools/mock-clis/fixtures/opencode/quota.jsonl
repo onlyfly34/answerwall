@@ -1,0 +1,3 @@
+# recorded from opencode 2.3.2, scrubbed (the adapter's invocation and project file against a local OpenAI-compatible stub endpoint that answers 429 with the code insufficient_quota; exit code 1)
+{"type":"step_start","timestamp":1700000000000,"sessionID":"ses_0000000000000000000000","part":{"id":"prt_00000000000000000000000001","sessionID":"ses_0000000000000000000000","messageID":"msg_00000000000000000000000001","type":"step-start"}}
+{"type":"error","timestamp":1700000000000,"sessionID":"ses_0000000000000000000000","error":{"type":"provider.quota","message":"You exceeded your current quota","status":429,"response":{"body":"{\"error\":{\"message\":\"You exceeded your current quota\",\"type\":\"insufficient_quota\",\"code\":\"insufficient_quota\"}}"}}}

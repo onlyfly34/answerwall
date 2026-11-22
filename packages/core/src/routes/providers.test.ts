@@ -35,6 +35,7 @@ describe('GET /api/providers', () => {
       'codex',
       'agy',
       'grok',
+      'opencode',
     ]);
     expect(providers.every((status) => status.detection === null)).toBe(true);
     expect(t.claude.detectCalls + t.codex.detectCalls).toBe(0);

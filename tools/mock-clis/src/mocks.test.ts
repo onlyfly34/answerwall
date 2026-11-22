@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
-const KINDS = ['claude', 'codex', 'agy', 'grok'] as const;
+const KINDS = ['claude', 'codex', 'agy', 'grok', 'opencode'] as const;
 type Kind = (typeof KINDS)[number];
 
 const CODEX_FEATURES = [
@@ -40,10 +40,23 @@ const CODEX_OVERRIDES = [
   'features.multi_agent_v2.root_agent_usage_hint_text=""',
 ].flatMap((override) => ['-c', override]);
 
+/** The project file the opencode adapter writes into the work dir: one agent without any permission. */
+function opencodeProject() {
+  const deny = (action: string) => ({ action, resource: '*', effect: 'deny' });
+  return {
+    agents: {
+      answerwall: { mode: 'primary', system: 'Answer the question.', permissions: [deny('*')] },
+    },
+    policies: ['tool.use', 'mcp.use', 'skill.use', 'websearch.use'].map(deny),
+    snapshots: false,
+  };
+}
+
 let workDir: string;
 beforeEach(async () => {
   workDir = await mkdtemp(path.join(os.tmpdir(), 'mock-cli-test-'));
   await writeFile(path.join(workDir, 'prompt.txt'), 'ping');
+  await writeFile(path.join(workDir, 'opencode.json'), JSON.stringify(opencodeProject()));
 });
 afterEach(() => rm(workDir, { recursive: true, force: true }));
 
@@ -115,6 +128,19 @@ function validArgs(kind: Kind): string[] {
         '--tools',
         '',
       ];
+    case 'opencode':
+      return [
+        'run',
+        '--standalone',
+        '--format',
+        'json',
+        '--thinking',
+        '--archived',
+        '--title',
+        'AnswerWall',
+        '--agent',
+        'answerwall',
+      ];
   }
 }
 
@@ -123,6 +149,7 @@ const REQUIRED_ENV: Record<Kind, Record<string, string>> = {
   codex: {},
   agy: { AGY_CLI_DISABLE_AUTO_UPDATE: 'true' },
   grok: { GROK_MEMORY: '0' },
+  opencode: { OPENCODE_DISABLE_CLAUDE_CODE: '1' },
 };
 
 const stdinFor = (kind: Kind, prompt: string): string =>
@@ -205,6 +232,7 @@ describe.each(KINDS)('the mock %s CLI', (kind) => {
       codex: '--ephemeral',
       agy: '--disable-slash-commands',
       grok: '--no-plan',
+      opencode: '--standalone',
     }[kind];
     const result = await runMock(
       kind,
@@ -240,10 +268,12 @@ describe.each(KINDS)('the mock %s CLI', (kind) => {
   test('selects the scenario from the model name or the environment', async () => {
     const modelFlag = kind === 'codex' || kind === 'grok' ? '-m' : '--model';
     const args = validArgs(kind);
+    // opencode names a model as provider/model.
+    const model = kind === 'opencode' ? 'mock/mock-exit-nonzero' : 'mock-exit-nonzero';
     const withModel =
       kind === 'codex'
-        ? [...args.slice(0, -1), modelFlag, 'mock-exit-nonzero', '-']
-        : [...args, modelFlag, 'mock-exit-nonzero'];
+        ? [...args.slice(0, -1), modelFlag, model, '-']
+        : [...args, modelFlag, model];
 
     expect((await runMock(kind, withModel)).code).toBe(3);
     expect((await runMock(kind, args, { env: { MOCK_CLI_SCENARIO: 'exit-nonzero' } })).code).toBe(
@@ -302,7 +332,7 @@ describe.each(KINDS)('the mock %s CLI', (kind) => {
 });
 
 describe('stdin handling', () => {
-  test.each(['claude', 'codex', 'agy'] as const)(
+  test.each(['claude', 'codex', 'agy', 'opencode'] as const)(
     'the mock %s CLI waits until stdin is closed before it answers',
     async (kind) => {
       const child = start(kind, validArgs(kind));
@@ -417,6 +447,7 @@ describe('status subcommands', () => {
     ['codex', ['--version'], /^codex-cli \d+\.\d+\.\d+/],
     ['agy', ['--version'], /\d+\.\d+\.\d+/],
     ['grok', ['version'], /\d+\.\d+\.\d+/],
+    ['opencode', ['--version'], /^opencode v\d+\.\d+\.\d+/],
   ] as const)('%s prints its version', async (kind, args, pattern) => {
     const result = await runMock(kind, [...args]);
 
@@ -536,5 +567,126 @@ describe('status subcommands', () => {
   test('an unknown subcommand is a usage error', async () => {
     expect((await runMock('codex', ['login'])).code).toBe(64);
     expect((await runMock('grok', ['login', '--device-auth'])).code).toBe(64);
+  });
+});
+
+describe('the mock opencode CLI and its project file', () => {
+  const args = validArgs('opencode');
+  const writeProject = (config: unknown) =>
+    writeFile(path.join(workDir, 'opencode.json'), JSON.stringify(config));
+  const lastEvent = (result: Finished) => jsonLines(result.stdout).at(-1);
+
+  test('answers with whole parts and the usage of the step, as the real CLI does', async () => {
+    const result = await runMock('opencode', args);
+
+    expect(jsonLines(result.stdout).map((line) => line.type)).toEqual([
+      'step_start',
+      'text',
+      'step_finish',
+    ]);
+    expect(lastEvent(result)).toMatchObject({ part: { reason: 'stop', tokens: { input: 18 } } });
+  });
+
+  test('without the project file the agent does not exist: one error line, exit code 1', async () => {
+    await rm(path.join(workDir, 'opencode.json'));
+
+    const result = await runMock('opencode', args);
+
+    expect(result.code).toBe(1);
+    expect(lastEvent(result)).toMatchObject({
+      type: 'error',
+      error: { message: 'Agent not found: "answerwall"' },
+    });
+  });
+
+  test('with project configuration switched off the file is not read', async () => {
+    const result = await runMock('opencode', args, {
+      env: { OPENCODE_DISABLE_PROJECT_CONFIG: '1' },
+    });
+
+    expect(result.code).toBe(1);
+    expect(lastEvent(result)).toMatchObject({
+      error: { message: 'Agent not found: "answerwall"' },
+    });
+  });
+
+  test('refuses an agent that allows something, a missing policy and provider settings', async () => {
+    const project = opencodeProject();
+    const allow = { action: 'read', resource: '*', effect: 'allow' };
+    const variants = [
+      {
+        ...project,
+        agents: {
+          answerwall: {
+            ...project.agents.answerwall,
+            permissions: [...project.agents.answerwall.permissions, allow],
+          },
+        },
+      },
+      { ...project, policies: project.policies.slice(1) },
+      { ...project, providers: { acme: {} } },
+    ];
+
+    for (const variant of variants) {
+      await writeProject(variant);
+      expect((await runMock('opencode', args)).code).toBe(64);
+    }
+  });
+
+  test('a model is provider/model, with the scenario in the model part and an optional variant', async () => {
+    const log = path.join(workDir, 'log.jsonl');
+
+    const echoed = await runMock('opencode', [...args, '--model', 'mock/mock-echo#high'], {
+      env: { MOCK_CLI_LOG: log },
+    });
+    const bare = await runMock('opencode', [...args, '--model', 'mock-echo']);
+
+    expect(JSON.stringify(jsonLines(echoed.stdout))).toContain('You said: ping');
+    expect(jsonLines(await readFile(log, 'utf8'))[0]).toMatchObject({
+      scenario: 'echo',
+      variant: 'high',
+    });
+    expect(bare.code).toBe(1);
+    expect(lastEvent(bare)).toMatchObject({
+      error: { message: 'Invalid model reference: mock-echo' },
+    });
+  });
+
+  test('a message as an argument is a usage error: the prompt arrives on stdin', async () => {
+    expect((await runMock('opencode', [...args, 'What is 2 + 2?'])).code).toBe(64);
+  });
+
+  test('the status and listing commands insist on a private server and no project configuration', async () => {
+    const off = { env: { OPENCODE_DISABLE_PROJECT_CONFIG: '1' } };
+    const list = ['auth', 'list', '--standalone', '--format', 'json'];
+
+    const listed = await runMock('opencode', list, off);
+    const none = await runMock('opencode', list, {
+      env: { ...off.env, MOCK_CLI_SCENARIO: 'logged-out' },
+    });
+    const models = await runMock('opencode', ['models', '--standalone'], off);
+
+    expect(JSON.parse(listed.stdout)).toMatchObject([{ connections: [{ type: 'env' }] }]);
+    expect(JSON.parse(none.stdout)).toEqual([]);
+    expect(models.stdout).toBe('mock/mock-large\nmock/mock-fast\n');
+    for (const refused of [
+      await runMock('opencode', list),
+      await runMock('opencode', ['models', '--standalone']),
+      await runMock('opencode', ['models'], off),
+      await runMock('opencode', ['auth', 'list', '--standalone'], off),
+    ]) {
+      expect(refused.code).toBe(64);
+    }
+  });
+
+  test('as version 1 it knows none of the arguments and prints its usage text', async () => {
+    const legacy = { env: { MOCK_OPENCODE_LEGACY: '1' } };
+
+    expect((await runMock('opencode', ['--version'], legacy)).stdout).toBe('1.19.6\n');
+    expect(await runMock('opencode', args, legacy)).toMatchObject({
+      code: 1,
+      stdout: '',
+      stderr: expect.stringContaining('opencode run [message..]') as unknown,
+    });
   });
 });

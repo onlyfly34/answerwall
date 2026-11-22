@@ -2,7 +2,7 @@
 # answerwall-install-cli: installs one AI command-line tool into the home
 # volume of the container, with the vendor's own installer.
 #
-#   docker exec -it <container> answerwall-install-cli <claude|codex|grok|agy>
+#   docker exec -it <container> answerwall-install-cli <claude|codex|grok|agy|opencode>
 #
 # It is never run automatically. For the tool you name it
 #   1. prints the vendor's terms and the exact command it is about to run,
@@ -27,7 +27,7 @@
 set -euo pipefail
 
 readonly PROGRAM=answerwall-install-cli
-readonly SUPPORTED="claude codex grok agy"
+readonly SUPPORTED="claude codex grok agy opencode"
 # Everything of the environment that an installer gets, when it is set: where
 # to install, how to find programs, how to print, and how to reach the
 # network (a proxy and the certificates to trust). A proxy address is passed
@@ -85,6 +85,21 @@ Secret Service on Linux). This image has no keyring service, so signing in
 with a Google account inside the container is not supported: the tool will
 install, and that is all that is known to work here.
 Read \"agy in a container\" in docs/deploy-docker.md before you continue."
+      ;;
+    opencode)
+      vendor="OpenCode"
+      source_url="https://opencode.ai/docs/"
+      command='curl -fsSL https://opencode.ai/v2/install | bash'
+      terms="https://opencode.ai/legal/terms-of-service
+https://opencode.ai/legal/privacy-policy
+https://github.com/anomalyco/opencode/blob/dev/LICENSE"
+      executable="$HOME/.opencode/bin/opencode"
+      login="opencode auth login"
+      note="opencode is a client for many model providers. Which one answers, and
+whose terms and prices apply, depends on what you configure in opencode
+itself; without any configuration it only offers models hosted by its
+vendor. AnswerWall keeps it disabled until you enable it.
+Read \"opencode\" in docs/providers.md before you continue."
       ;;
     *) return 1 ;;
   esac
@@ -170,7 +185,8 @@ fi
 # Every vendor publishes Linux builds for these two architectures and no
 # other (claude: "x64 or ARM64 processor"; codex: x86_64 and aarch64 release
 # archives; grok: "Linux (x86_64 or arm64)"; agy: its installer accepts amd64
-# and arm64, its documentation does not list architectures for the CLI).
+# and arm64, its documentation does not list architectures for the CLI;
+# opencode: Linux x64 and arm64 archives, glibc and musl).
 machine="$(uname -m)"
 case "$machine" in
   x86_64 | amd64 | aarch64 | arm64) ;;

@@ -27,12 +27,13 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 const CORE = path.join(ROOT, 'packages', 'core', 'dist');
-const KINDS = ['claude', 'codex', 'agy', 'grok'];
+const KINDS = ['claude', 'codex', 'agy', 'grok', 'opencode'];
 const ADAPTER_FACTORIES = {
   claude: 'createClaudeAdapter',
   codex: 'createCodexAdapter',
   agy: 'createAgyAdapter',
   grok: 'createGrokAdapter',
+  opencode: 'createOpencodeAdapter',
 };
 
 const PROMPT = 'Reply with the single word OK and nothing else.';
@@ -283,7 +284,38 @@ function codexChecks(lines, _events, search) {
   return checks;
 }
 
-const KIND_CHECKS = { claude: claudeChecks, codex: codexChecks };
+/**
+ * opencode: the run prints a tool part only when the model asks for a tool,
+ * so the check is that the answer ended in a step without one. The `skill`
+ * tool stays listed for the model and cannot load anything.
+ */
+function opencodeChecks(lines) {
+  const records = jsonLines(lines);
+  const tools = records.filter((record) => record.type === 'tool_use');
+  const finished = records.filter((record) => record.type === 'step_finish');
+  const last = finished.at(-1);
+  return [
+    {
+      name: 'the answer ended with a finished step',
+      ok: isRecord(last?.part) && last.part.reason !== 'tool-calls',
+    },
+    {
+      name: 'the model called no tool',
+      ok: tools.length === 0,
+      detail: tools.length === 0 ? undefined : `${tools.length} tool part(s)`,
+    },
+    {
+      name: 'usage was reported',
+      ok: isRecord(last?.part) && isRecord(last.part.tokens),
+      detail:
+        isRecord(last?.part) && isRecord(last.part.tokens)
+          ? `${String(last.part.tokens.input)} input tokens`
+          : undefined,
+    },
+  ];
+}
+
+const KIND_CHECKS = { claude: claudeChecks, codex: codexChecks, opencode: opencodeChecks };
 
 // -------------------------------------------------------------------- main
 

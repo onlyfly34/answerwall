@@ -105,6 +105,7 @@ export const en = {
   'app.providers.kind.codex': 'CLI',
   'app.providers.kind.agy': 'CLI',
   'app.providers.kind.grok': 'CLI',
+  'app.providers.kind.opencode': 'CLI',
   'app.providers.kind.openai-compat': 'OpenAI-compatible',
   'app.providers.login.label': 'Logged in',
   'app.providers.login.yes': 'Yes',

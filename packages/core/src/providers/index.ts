@@ -11,6 +11,7 @@ import type { CliContext } from './cli/run-cli.ts';
 import { createCodexAdapter } from './codex.ts';
 import { createGrokAdapter } from './grok.ts';
 import { createOpenAiCompatAdapter } from './openai-compat.ts';
+import { createOpencodeAdapter } from './opencode.ts';
 import { createRegistry } from './registry.ts';
 
 export interface ProviderRegistryDeps {
@@ -39,6 +40,7 @@ export function createProviderRegistry(deps: ProviderRegistryDeps): ProviderRegi
     createCodexAdapter(cli),
     createAgyAdapter(cli),
     createGrokAdapter(cli),
+    createOpencodeAdapter(cli),
     createOpenAiCompatAdapter({
       secrets: deps.secrets,
       clock: deps.clock,
