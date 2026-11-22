@@ -37,6 +37,13 @@ cell, no follow-up turns, no file attachments.
 - **Several devices.** Up to 8 devices pair with a server through one-time
   codes and can be revoked one by one. The web UI can be installed as an app
   (PWA) when it is served over HTTPS.
+- **Web cells (optional, off by default).** A browser extension for Chrome
+  and Edge shows the vendors' own web apps (Claude, ChatGPT, Gemini, Grok,
+  Z.ai) as cells next to the others, in the browser where you are signed in
+  to them. Two separate switches let it type your prompt into those pages and
+  read the finished answer into the history. Read
+  [Web cells](#web-cells-the-vendors-web-apps-in-a-browser-extension) before
+  you switch anything on.
 - **Languages.** English and Traditional Chinese.
 
 ## Three ways to run it
@@ -141,6 +148,51 @@ than in the vendors' own apps. `claude` and `codex` therefore each have an
 on, the model may use that CLI's built-in web search, which runs on the
 vendor's servers; everything else in the table stays as it is.
 
+## Web cells: the vendors' web apps in a browser extension
+
+Everything above goes through a command-line tool or an API. A web cell is
+different: it is the vendor's own web page, in a frame, in your own browser.
+It keeps what the web apps have and the CLIs lack (memory, projects, their
+own search), and it exists only on the wall page of the AnswerWall browser
+extension. The server's own page, the Windows app and phones show the
+answers a web cell stored, not the cell itself.
+
+- **It is off until you switch it on**, in three steps on the server
+  (**Settings > Web cells**): the master switch, the sites, and the ID of
+  the extension that may connect. The extension is a zip in the release,
+  loaded unpacked; it is in no store.
+- **Two more switches decide what it does for you**, both off by default:
+  **Fill in the prompt** (the extension types your prompt into each page and
+  submits it) and **Read the answer** (it reads the finished answer from the
+  page and stores it in the history). With both off a web cell is just the
+  page, used by hand.
+- **The terms of these sites restrict automated access to their web apps.**
+  Two of the passages quoted in the next section are about exactly this:
+  Anthropic's Consumer Terms on access "through automated or non-human
+  means, whether through a bot, script, or otherwise", and OpenAI's Terms of
+  Use on "Automatically or programmatically extract data or Output". We did
+  not collect the wording of Google, xAI and Z.ai for their web apps; read
+  their terms yourself. **AnswerWall does not tell you that either switch is
+  permitted by any of them. Whether to switch them on is your decision, and
+  the risk to your account is the one described below.**
+- **What the extension does and does not do.** It frames the listed sites
+  inside its own page, and for that removes two response headers
+  (`X-Frame-Options`, `Content-Security-Policy`) from those frames only. It
+  has no access to cookies, changes no request, never sets a user agent, and
+  does nothing on a site you open in a normal tab. It talks to one server:
+  yours.
+- **The rules for the real sites are unverified.** Where the message box and
+  the answer are on each site is written down in a data file per site, from
+  the publicly visible structure of the pages. No rule has been run against
+  a real site yet, and a site can change at any time. The cell says
+  "Unverified rule", and when a rule fails the cell still works by hand and
+  nothing is stored.
+  [docs/verify-web-cells.md](docs/verify-web-cells.md) is the checklist for
+  checking a site by hand.
+
+Installing, the exact permissions and why, and what is known not to work:
+[docs/providers.md](docs/providers.md#web-cells).
+
 ## Using your subscriptions: read this first
 
 AnswerWall starts each vendor's own, unmodified command-line tool in its
@@ -225,6 +277,13 @@ can tell you otherwise.
   working directory path, the date and any `AGENTS.md` it finds, to whichever
   provider you configured in it, and keeps the question and the answer in
   its own database.
+- **Web cells.** A site in a web cell is loaded by your browser as that
+  site, with your sign-in to it: the site sees your visit like any other,
+  and can see that its page is inside a frame. The extension sends nothing
+  to the site itself; it types into the page when you allowed that. With
+  **Read the answer** on, the text of the answer goes from the page to your
+  AnswerWall server and is stored there. The extension stores your server's
+  address and its device token in the browser, and nothing else.
 - **Third parties.** The only request AnswerWall itself can make to anyone
   else is the Windows app's check for a new release on GitHub, which you can
   switch off in Settings. The server makes no such request.
@@ -251,6 +310,11 @@ The full list, per file and per provider: [docs/privacy.md](docs/privacy.md).
 - **Answers are untrusted.** Markdown is sanitised, remote images are never
   loaded, and the page's content security policy allows no connection to
   another origin.
+- **The browser extension is one more device**, accepted only while web
+  cells are on and only when its ID is listed. It pairs with a code like any
+  device and is revoked the same way. Inside a web cell the site runs
+  without its own content security policy, because the header that carries
+  it is the one that refuses framing; that is a real cost of web cells.
 
 Details, the reverse-proxy setup and how to report a vulnerability:
 [docs/security.md](docs/security.md).
@@ -284,6 +348,8 @@ installs one, and the check can be switched off.
 | [docs/privacy.md](docs/privacy.md)                     | What is stored, what is sent and to whom               |
 | [docs/security.md](docs/security.md)                   | Sign-in, TLS, network exposure, the CLIs' tools        |
 | [docs/verify-on-windows.md](docs/verify-on-windows.md) | A checklist for trying a release on a real Windows PC  |
+| [docs/verify-web-cells.md](docs/verify-web-cells.md)   | A checklist for checking web cells on the real sites   |
+| [docs/web-cells.md](docs/web-cells.md)                 | How web cells work (developers)                        |
 | [apps/server/README.md](apps/server/README.md)         | Every server option                                    |
 | [docs/DECISIONS.md](docs/DECISIONS.md)                 | The engineering decisions                              |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)           | The module map                                         |

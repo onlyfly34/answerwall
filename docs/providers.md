@@ -12,6 +12,9 @@ Before you use a subscription login here, read
 [Using your subscriptions](../README.md#using-your-subscriptions-read-this-first)
 in the README.
 
+A fifth kind is not run by the server at all: a [web cell](#web-cells) shows
+a vendor's own web app in a browser extension. It is the last section.
+
 ## What is the same for every CLI
 
 - **You install it and you log in.** AnswerWall contains no vendor CLI and no
@@ -594,3 +597,151 @@ server and collect a key they could never read.
 it as `reasoning_content` or `reasoning`. Some servers reject the option
 that asks for token usage in a stream; AnswerWall then sends the same
 request once more without it.
+
+## Web cells
+
+A web cell shows a vendor's own web app (claude.ai, chatgpt.com,
+gemini.google.com, grok.com, chat.z.ai) in a frame, as one cell among the
+others. It runs in your own Chrome or Edge, through the AnswerWall browser
+extension, with the sign-in you already have in that browser. The server
+does not run it and never contacts those sites; it only stores the answer
+the extension hands it.
+
+**The terms of these sites restrict automated access to their web apps.**
+The extension can type your prompt into a page and read the answer from it;
+both are separate switches, both off by default, and whether to switch them
+on is your decision. AnswerWall makes no statement about what any site's
+terms permit. Read
+[Web cells](../README.md#web-cells-the-vendors-web-apps-in-a-browser-extension)
+and [Using your subscriptions](../README.md#using-your-subscriptions-read-this-first)
+in the README first.
+
+### What it does, and what it does not
+
+It does:
+
+- open a page of its own (the wall) that is the AnswerWall web UI, connected
+  to your server;
+- show each listed site in a frame of that page. A site refuses to be
+  framed with two response headers, `X-Frame-Options` and
+  `Content-Security-Policy`; the extension removes those two from the
+  documents of frames on the listed hosts, in the tab of its wall page, and
+  nowhere else;
+- with **Fill in the prompt** on: type your prompt into the page's message
+  box and press its send control, once per Send;
+- with **Read the answer** on: wait until the page's answer has finished,
+  read its text and send it to your server, which stores it in the history.
+
+It does not:
+
+- read, copy, export or send a cookie or a sign-in. It has no access to
+  cookies. Your browser sends the site's own cookies to the site, as it does
+  in a normal tab;
+- change any request: no header is added, changed or removed on the way to
+  a site, and the user agent is your browser's;
+- do anything on a site you open in a normal tab, or in any frame that is
+  not directly under its own wall page;
+- send anything anywhere except to the one AnswerWall server you paired it
+  with;
+- retry, schedule, or press Send for you. One Send, one prompt per cell.
+
+### Permissions, exactly
+
+The whole list from the extension's manifest:
+
+| Permission                                                                                                                                     | Why                                                                                                                                                                                                                                                 |
+| ---------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `declarativeNetRequestWithHostAccess`                                                                                                          | The one rule that removes the two frame-refusing response headers. This variant can only act on hosts the extension has host permission for.                                                                                                        |
+| `storage`                                                                                                                                      | Keeps your server's address and the device token in the extension's own storage, which web pages cannot read.                                                                                                                                       |
+| Host permission for `https://claude.ai/*`, `https://chatgpt.com/*`, `https://gemini.google.com/*`, `https://grok.com/*`, `https://chat.z.ai/*` | Needed for the header rule and for the content script on those five hosts. The browser's wording for it is "read and change your data" on these sites; what the extension does with it is the list above.                                           |
+| Optional host permission, asked for when you pair                                                                                              | The one address of your AnswerWall server. The manifest has to declare the widest form (`http://*/*`, `https://*/*`) because your server's address is not known in advance; nothing is granted until you enter an address, and then only that host. |
+
+Not requested: `cookies`, `webRequest`, `tabs`, `scripting`, `history`,
+`<all_urls>`, or anything else.
+
+### Installing
+
+1. Download `answerwall-extension-<version>.zip` from the
+   [release](https://github.com/onlyfly34/answerwall/releases) that matches
+   your server, check it against `SHA256SUMS`, and unpack it. Keep the
+   folder: the browser loads the extension from it every time.
+2. Open `chrome://extensions` (Edge: `edge://extensions`), switch on
+   **Developer mode**, choose **Load unpacked** and pick the unpacked folder
+   (the one that holds `manifest.json`). The browser may remind you at each
+   start that an extension in developer mode is loaded. The extension is in
+   no store and does not update itself: for a new version, replace the
+   folder's content and press the reload button on the extensions page.
+3. On the server, signed in on any device: **Settings > Web cells**. Switch
+   **Allow web cells** on, tick the sites, and add the extension's ID. The
+   ID is `nffcmlcjkacklpololkpdmhcfokannom` for every copy of this extension
+   (the first page of the extension shows it with a copy button).
+4. Click the extension's toolbar icon. On its first page enter the server's
+   address and a pairing code (**Settings > Devices > Create pairing code**,
+   or `answerwall pair` on the server). The browser asks whether the
+   extension may reach that address; allow it. The extension now appears
+   under **Settings > Devices** and is revoked there like any device.
+5. Sign in to each site in a normal tab first. Then add cells for them on
+   the extension's wall ("Add cell", then pick the site as provider).
+
+The Windows app in local mode cannot be used with the extension: its server
+has a new address and token at every start. Use a server.
+
+### The two switches
+
+Both are under **Settings > Web cells** on the server and apply to every
+site.
+
+| Fill in the prompt | Read the answer | What Send does with a web cell                                                                                                                                      |
+| ------------------ | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| off                | off             | Nothing. The cell is the site's page, used by hand; it is not part of the ask and nothing of it is stored.                                                          |
+| on                 | off             | The prompt is typed into the page and submitted. The cell is not part of the ask; the answer stays in the page and is not stored.                                   |
+| off                | on              | The cell is part of the ask and waits. You type and send in the page yourself; when the answer has finished it is read and stored. Cancel the cell to stop waiting. |
+| on                 | on              | The prompt is typed in and submitted, and the finished answer is read and stored in the history, where every device sees it.                                        |
+
+A web cell waits its turn like any cell (the site's **Parallel requests**
+setting), and the time limit of a cell applies from the moment it starts.
+The wall page reads the switches when it loads: reload it after changing
+one.
+
+### Site rules, and why they are marked unverified
+
+Where a site has its message box, its send control and its answers, and how
+to tell that an answer has finished, is a data file per site in
+`apps/extension/rules/`. **None of the five rules has been run against the
+real site**: they were written from the publicly visible structure of the
+pages, and each carries `"verified": false`. The cell shows "Unverified
+rule" until a rule was checked by hand and marked with the date.
+[verify-web-cells.md](verify-web-cells.md) is the checklist for that, and
+says what to report when a selector does not match.
+
+When a rule does not match (now, or after a site changes its page):
+
+- the cell's slot ends as failed, with a message that says which part was
+  not found (the message box, the send control, the answer);
+- nothing of the page is stored for that ask;
+- the page in the cell is not touched and keeps working by hand.
+
+### Known limits
+
+- **Nothing here has been tried on a real site.** The mechanism (framing,
+  sign-in inside the frame, filling in, reading, the header rule's reach) is
+  tested against a stand-in site in Chromium on Linux. Branded Chrome, Edge,
+  Windows and macOS have not been run.
+- **A site can still refuse.** Its server sees that the page is requested
+  for a frame and may answer differently; its script may compare itself with
+  the top window. Nothing in the extension hides either, on purpose.
+- **Sign-in on another host** (Gemini signs in at `accounts.google.com`)
+  cannot happen inside a cell. Sign in in a normal tab first.
+- **The site's own content security policy is gone inside the cell**: the
+  header that carries it is the one that refuses framing, and the browser's
+  rule can remove a header but not edit it. The page is as protected as a
+  site without such a policy.
+- **Dragging a web cell to another position reloads its page** (maximising
+  a cell does not); the conversation itself stays on the site. Leaving the wall (History, Settings) while a web cell is answering
+  cancels that cell, with a note saying so.
+- **Markdown is reconstructed** from the rendered answer: headings, lists,
+  code blocks, tables, quotes, links, emphasis and formulas. Anything else
+  is stored as its text.
+- **No model or effort picker**: you choose those in the site's own page.
+- **Quota and rate-limit messages of a site are not recognised**; such an
+  ask ends as a rule failure or runs into the time limit.

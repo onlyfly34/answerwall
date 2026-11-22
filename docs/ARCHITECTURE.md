@@ -7,15 +7,16 @@ and are not repeated here.
 
 ## Packages
 
-| Package           | Role                                                                                                                                                                 |
-| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `packages/core`   | Server library. Entry points: `.` (server), `./protocol` (browser-safe wire protocol), `./testing` (in-memory fakes), `./brand`.                                     |
-| `packages/web`    | SolidJS UI. Imports only `@answerwall/core/protocol` from core.                                                                                                      |
-| `apps/server`     | Process entry: environment → `AppConfig` → `createServer`; the `pair` command calls `createPairingCode`.                                                             |
-| `apps/desktop`    | Electron shell: main process, the core host (core's server in a utility process), the connection page; see [desktop.md](desktop.md).                                 |
-| `tools/mock-clis` | Fake CLIs for tests; put `tools/mock-clis/bin` and a directory holding only `node` on the `env.PATH` given to `createServer`.                                        |
-| `e2e`             | Playwright suite against the compiled server and the mock CLIs, three viewports, and the web-cell tests with an unpacked test extension; see its README.             |
-| `docker/`         | Not a package: compose files, entry point, health check and CLI install helper of the image built by `apps/server/Dockerfile`; [deploy-docker.md](deploy-docker.md). |
+| Package           | Role                                                                                                                                                                                      |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/core`   | Server library. Entry points: `.` (server), `./protocol` (browser-safe wire protocol), `./testing` (in-memory fakes), `./brand`.                                                          |
+| `packages/web`    | SolidJS UI. Imports only `@answerwall/core/protocol` from core.                                                                                                                           |
+| `apps/server`     | Process entry: environment → `AppConfig` → `createServer`; the `pair` command calls `createPairingCode`.                                                                                  |
+| `apps/desktop`    | Electron shell: main process, the core host (core's server in a utility process), the connection page; see [desktop.md](desktop.md).                                                      |
+| `apps/extension`  | Browser extension (Manifest V3) for web cells: a wall page that mounts `packages/web` through its `embed` entry, a content script and a service worker; see [web-cells.md](web-cells.md). |
+| `tools/mock-clis` | Fake CLIs for tests; put `tools/mock-clis/bin` and a directory holding only `node` on the `env.PATH` given to `createServer`.                                                             |
+| `e2e`             | Playwright suite against the compiled server and the mock CLIs, three viewports, and the web-cell tests with an unpacked test extension; see its README.                                  |
+| `docker/`         | Not a package: compose files, entry point, health check and CLI install helper of the image built by `apps/server/Dockerfile`; [deploy-docker.md](deploy-docker.md).                      |
 
 Workspace packages resolve to each other's TypeScript sources through the
 `answerwall-source` export condition (set in `tsconfig.base.json`, the Vite
@@ -60,6 +61,17 @@ are fixed. Every unit is built, and `createServer` wires the real ones.
 | web-infra | `packages/web` except `src/wall/**` and `src/contracts/**`: build setup, `src/main.tsx`, `src/app/**`, `src/infra/**`, `src/pages/**`, `src/pwa/**`, `public/**` | `AppServices` and everything in it (`ApiClient`, `AskStreamStore`, `SettingsStore`, `ProvidersStore`, `Notifier`, and `I18n` through the shared `createI18n`); the shell that provides `ServicesContext` and mounts the wall's pages. `ShellContext`, `Shell` and `DevicesStore` are internal to the unit | `@answerwall/core/protocol`; `WallPage`, `HistoryPage`                                                                       |
 | web-wall  | `packages/web/src/wall/**`                                                                                                                                       | `WallPage`, `HistoryPage` exported from `wall/index.tsx`; its strings in `wall/messages/`                                                                                                                                                                                                                 | `useServices()` from `src/contracts/services.ts`; `@answerwall/core/protocol`                                                |
 
+The extension is a unit of its own (`apps/extension/**`). It implements
+`WebCellHost` from `packages/web/src/contracts/services.ts` (which frame
+belongs to which content script, one run at a time per frame) and hands it
+to `mountEmbedded`; the wall (`wall/state/web-runner.ts`) joins it with the
+ask: it runs a web slot in its cell's frame when the server starts the slot
+and submits the one result. Site rules are data files in
+`apps/extension/rules/`; `src/content/engine.ts` applies one to a page.
+Like the web app, the extension imports only `@answerwall/core/protocol`
+from core, and its content script imports nothing from core or web at run
+time.
+
 Rules that keep the units independent (enforced by ESLint):
 
 - A core unit imports other units only through `contracts/`; never
@@ -81,6 +93,7 @@ pnpm vitest run --project core packages/core/src/storage packages/core/src/setti
 pnpm vitest run --project core packages/core/src/providers
 pnpm vitest run --project server
 pnpm vitest run --project web packages/web/src/wall
+pnpm vitest run --project extension
 ```
 
 Every unit tests against `@answerwall/core/testing` rather than another

@@ -60,6 +60,14 @@ The one-time pairing code for the first device is written to it.
 the arrangement of your wall and your default preset, and a cached copy of
 the page itself (never of an answer or any other API response).
 
+**In the browser extension** (only if you installed it for
+[web cells](providers.md#web-cells)): the address of your server and the
+extension's device token, in the extension's own storage, and the same
+per-page items as above (language, arrangement of the wall, default preset).
+It stores no prompt, no answer, no cookie and nothing about the sites.
+**Change server** on its wall page deletes the address and the token;
+removing the extension removes everything.
+
 ## What leaves the machine
 
 ### Through a CLI
@@ -100,6 +108,24 @@ contact the vendor is up to the CLI.
 For each cell: the model name, your prompt and, if you stored one, the API
 key, to the base URL you entered. For a check: a request for the model list,
 with the key. Nothing goes to any other address.
+
+### Through a web cell
+
+A web cell is a vendor's own web page in a frame of the browser extension.
+
+- **Your browser** loads that page as it does in a normal tab, with the
+  site's own cookies and your sign-in to it. The site sees your visit, your
+  IP address and your account, and its server can see that the page was
+  requested for a frame. Everything you type there, and with **Fill in the
+  prompt** on everything the extension types for you, goes to that site
+  under that account, with whatever the site's own page adds.
+- **The extension** sends nothing to the site. It makes no request to it,
+  adds nothing to the page's requests and has no access to its cookies.
+- **Your AnswerWall server** receives, with **Read the answer** on, the text
+  of the finished answer, and stores it in the history like any answer. With
+  it off, nothing of the page reaches the server. The server itself never
+  contacts the site.
+- Nothing goes to anyone else: not to this project, not to another server.
 
 ### To anyone else
 

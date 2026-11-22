@@ -121,8 +121,10 @@ Details per CLI: [providers.md](providers.md).
 
 ## Web cells and the browser extension
 
-Off by default, and the extension is not part of a release yet; what is
-described here is the server side, which exists.
+Off by default. The extension is a zip in the release, loaded unpacked
+([providers.md](providers.md#web-cells) has the steps and the full
+permission list). This section is first about the server, then about the
+extension itself.
 
 A web cell shows a site's own web app inside the wall page of the AnswerWall
 browser extension, in the browser where you are signed in to that site.
@@ -158,8 +160,51 @@ IDs of the extensions that may connect, and the sites.
   sees your sign-in to them and never sees their cookies.
 - **Terms.** These sites restrict automated access to their web apps, more
   explicitly than for their command-line tools. That is why filling in the
-  prompt and reading the answer are separate switches that start off.
-  AnswerWall makes no statement about what a site's terms permit.
+  prompt and reading the answer are separate switches that start off, and
+  why switching them on is your decision. AnswerWall makes no statement
+  about what a site's terms permit.
+
+The extension itself:
+
+- **What it may do** is its manifest: `declarativeNetRequestWithHostAccess`,
+  `storage`, host permission for the five listed sites, and, asked for when
+  you pair, the one address of your server. No `cookies`, no `webRequest`,
+  no `tabs`, no access to all sites.
+- **One header rule.** A site refuses to be framed with `X-Frame-Options`
+  and `Content-Security-Policy`. The extension removes these two response
+  headers, for the documents of frames on the listed hosts, in the tab of
+  its own wall page, when the frame was opened by the wall page or
+  navigated by a listed site. It is a session rule: it exists while that
+  tab shows the wall page, is removed when the tab is closed or goes
+  elsewhere, and is gone when the browser closes. A web page in any tab,
+  the wall's included, still cannot frame these sites. No request header is
+  ever changed.
+- **The cost of that rule.** The whole `Content-Security-Policy` header goes,
+  not only the part about framing; the browser's rule cannot edit a header.
+  Inside a web cell the site therefore runs without the protection its own
+  policy gives it against injected script. Outside the cell, in every
+  normal tab, nothing changes.
+- **Where its script runs.** The content script is declared for the listed
+  hosts and does nothing unless its frame is directly under the extension's
+  own wall page. In a normal tab of the same site, under a web page, or
+  nested deeper, it returns at once. It types and reads only when the wall
+  page tells it to, which happens only on Send and only for the switches
+  you turned on.
+- **What it cannot reach.** Your cookies and sign-ins: the browser sends a
+  site's cookies to that site and never shows them to the extension.
+- **Its ID is fixed** (`nffcmlcjkacklpololkpdmhcfokannom`), from a public
+  key in its manifest, so that the ID you list does not depend on the
+  folder you unpacked to. The ID is not a secret and proves nothing by
+  itself: anyone can build an extension with that ID. What makes yours a
+  client of your server is the pairing code, and it can only be loaded into
+  your browser by someone who already controls that browser.
+- **Loaded unpacked, it is not reviewed or signed by anyone.** Take the zip
+  from this repository's release and check it against `SHA256SUMS`.
+- **Rules can be wrong.** A rule written for an older version of a site may
+  find the wrong element. It can then type the prompt into the wrong box of
+  that page or read the wrong text; it cannot act outside that page. The
+  rules for the real sites are unverified until checked by hand
+  ([verify-web-cells.md](verify-web-cells.md)).
 
 ## Answers and the page
 

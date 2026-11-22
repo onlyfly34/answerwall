@@ -3,14 +3,17 @@
 Web cells show a vendor's own web app in a frame of the wall page of a
 browser extension, next to the CLI and API cells
 ([DECISIONS.md](DECISIONS.md) §11 for the plan, §5.4, §6, §6.1 and §7 for
-the binding rules). This file is the hand-over between the two halves of the
-work:
+the binding rules). This file holds what was
+proven about the mechanism, the contract between the extension and the
+server, how the extension is built, and where the evidence ends.
 
-- **Built** (part 1): the proof of the mechanism in a real Chromium, the
-  protocol and the server side, and the web UI's ability to run from the
-  extension's origin.
-- **Not built** (part 2): `apps/extension` itself, the site rules, and web
-  cells in the wall.
+- **Built**: the proof of the mechanism in a real Chromium, the protocol and
+  the server side, the web UI's ability to run from the extension's origin,
+  the extension itself (`apps/extension`), the site rules as data files, and
+  web cells in the wall.
+- **Not done**: no rule has been run against a real site. All five are
+  marked unverified; [verify-web-cells.md](verify-web-cells.md) is the hand
+  check.
 
 Nothing here says that driving a vendor's web app through this is permitted
 by that vendor. Their terms restrict automated access to their web apps; the
@@ -68,7 +71,13 @@ Details that matter for part 2:
   its redirect, in the test) has the site as its initiator, keeps its
   headers and is refused. A **session rule with `tabIds: [<the wall's tab>]`**
   covers every sub-frame request of that tab and of no other. That is the
-  rule the test extension installs (`extension/wall.js`, `installRule`):
+  rule the test extension installs (`extension/wall.js`, `installRule`).
+  The real extension adds `initiatorDomains: [<extension id>, ...<listed
+hosts>]` to the same condition (`apps/extension/src/shared/frame-rule.ts`):
+  the tab **and** an initiator that is the wall page or a listed site, so
+  that a page of any other site that ends up in the wall's tab gets nothing.
+  Signing in inside the frame works with it (`e2e/extension/wall.spec.ts`).
+  The test extension's rule:
 
   ```js
   chrome.declarativeNetRequest.updateSessionRules({
@@ -285,7 +294,7 @@ mountEmbedded({
   root, // HTMLElement
   server, // the server's origin, e.g. 'https://wall.example.com'
   tokens, // { get(): string | undefined | Promise<…>; set(token | undefined): void | Promise<void> }
-  webProviders: true, // offer web providers to the wall (off by default)
+  webCells, // a WebCellHost: this page can frame the vendors' sites
 });
 ```
 
@@ -298,46 +307,101 @@ It returns `{ services, unmount }`. In this mode
 - `api.pair` stores the returned token and does not pass it on; `api.signIn`
   stores the typed token once the server accepted it; `api.logout` forgets
   it; a `401` for the current token forgets it;
-- routes live in the fragment (`#/history`), no service worker is
+- routes live in the fragment (`#/history`), plain links to a route point
+  there too (`hrefOf` in `contracts/routes.ts`), no service worker is
   registered, and the page is "stale" only when `apiVersion` differs (the
   status screen then asks for an update instead of reloading);
-- `services.remote` is `true`.
-
-`ApiClient.submitWebResult(askId, slotId, result)` exists, and
-`AskRequest.runsWebSlots` is part of the request the stream store passes on.
+- `services.remote` is `true`, and `services.webCells` is the host.
 
 `@answerwall/web/embed` is exported for the `answerwall-source` condition
-only: the consumer builds it from source with Vite. A build that works, from
-`e2e/support/global-setup.ts`:
+only: the consumer builds it from source with Vite (`apps/extension/build.mjs`).
+
+### 2.6 Web cells in the wall
+
+The wall (`packages/web/src/wall`) knows web cells through one interface,
+`WebCellHost` in `contracts/services.ts`, which only the extension's page
+provides:
 
 ```ts
-build({
-  root,
-  base: './',
-  plugins: [solid()],
-  define: { __APP_VERSION__: JSON.stringify(version) },
-  resolve: { conditions: ['answerwall-source', ...defaultClientConditions] },
-  build: { outDir, target: 'es2023' },
-});
+interface WebCellHost {
+  site(site: WebSiteId): { url: string; verified: boolean } | undefined;
+  attach(frame: HTMLIFrameElement, site: WebSiteId): WebCellFrame;
+}
+interface WebCellFrame {
+  connection(): 'loading' | 'ready' | 'unreachable';
+  run(options: { prompt; fill; read; signal; onStage? }): Promise<WebCellRunResult>;
+  dispose(): void;
+}
 ```
 
-Choosing the server (the address field, and asking for its host permission)
-is the extension's own screen: `mountEmbedded` is called once the origin is
-known.
+- **With a host**, a cell whose provider is a web provider renders the frame
+  (`components/WebCellFrame.tsx`: the `<iframe>`, reload, open in a tab, the
+  connection, the "Unverified rule" mark) and no model picker. The frame is
+  keyed by the site alone, so it survives every other change to the
+  provider.
+- **`wall/state/web-runner.ts`** joins frames and slots for the ask this
+  wall sent: `follow(askId, prompt, slots)` runs a web slot's frame once the
+  slot is `running`, submits `done` / `failed` / `cancelled`, and stops
+  waiting when the slot ended some other way. The slots it started are
+  remembered in the session storage, so a reloaded page cancels a running
+  slot with a reason instead of typing again. An answer larger than
+  `limits.maxRequestBodyBytes` is cut to fit, with a marker line.
+- **The switches** (`WallPage.tsx`): with `readAnswer` on, web cells are
+  targets of the ask and the request carries `runsWebSlots`. With it off
+  they are left out; `fillPrompt` then still types the prompt
+  (`runner.fillOnly`) and the cell shows a local note. With both off, and
+  nothing but web cells on the wall, Send is disabled with a reason.
+- **Without a host** (the server's own page, the desktop app, the PWA) the
+  providers store still lists web providers, and the wall treats them as
+  `extension_only`: a notice in the cell, disabled in the pickers, left out
+  of an ask and of a fresh wall. A stored ask shows the web slot's answer
+  like any other.
 
-### 2.6 What part 2 must change in `packages/web`
+Known behaviour that follows from this design: leaving the wall (another
+page, or a past ask) unmounts the cells and therefore cancels web slots that
+are running; dragging a web cell moves its frame in the document, which
+reloads it.
 
-- With `webProviders: true` the wall sees web providers as it sees any
-  other: it would offer them in pickers and default slots and send them
-  without `runsWebSlots`. The wall has to learn what a web cell is (the
-  frame, the request flag, the result).
-- Without it (the server's own page, the PWA, the desktop app) the providers
-  store leaves web providers out. A stored ask with a web slot opens from
-  the history and renders (tested); a wall cell or preset that names a web
-  provider is treated like one whose provider no longer exists (from the
-  code, not tested). Both may deserve better wording.
-- `API_VERSION` is now 2: `Settings` gained `webCells` and `ProviderKind`
-  gained `web`, which an older page cannot parse.
+### 2.7 The extension
+
+| Path (`apps/extension/`)   | Content                                                                                                                                          |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `manifest.mjs`             | The manifest as data: permissions, hosts, the public key that fixes the ID (`nffcmlcjkacklpololkpdmhcfokannom`).                                 |
+| `build.mjs`                | Three Vite builds into one directory: the wall page, the content script and the worker (each one classic script). `--test` makes the test build. |
+| `rules/<site>.json`        | One rule per site of `WEB_SITES`, plus `standin.json` for the tests. `src/rules/schema.ts` says what a rule is and validates one.                |
+| `src/page/main.tsx`        | The wall page: first-run page or `mountEmbedded`, the header rule, the strip under the wall.                                                     |
+| `src/page/pairing.ts`      | The server's address, the optional host permission, pairing, what is kept in `chrome.storage.local` (`server`, `deviceToken`).                   |
+| `src/page/host.ts`         | `WebCellHost`: binds a content script's port to its frame, tracks the connection, one run at a time, resumes a read when the page was replaced.  |
+| `src/content/main.ts`      | The content script: returns unless `isUnderWall`, then connects and runs the rule for its host.                                                  |
+| `src/content/engine.ts`    | Applies a rule: find the message box, fill it, submit, wait for the new answer to finish, read it.                                               |
+| `src/content/markdown.ts`  | Rendered answer back to Markdown.                                                                                                                |
+| `src/shared/frame-rule.ts` | The header rule, installing, removing and sweeping it.                                                                                           |
+| `src/worker/main.ts`       | Opens the wall on a click on the toolbar button; removes the rule of a tab that no longer shows a wall.                                          |
+
+**Frame and port.** A port from `chrome.runtime.connect` says which tab its
+content script is in, not which frame element. The content script therefore
+sends one random value twice: over the port, and with `postMessage` to its
+parent, addressed to the extension's origin. The page uses a port only when
+both arrived, the port is from its own tab, the message's `source` is the
+window of one of its frames, and its origin is the site that frame was
+opened for. A page's own script cannot open a port to the extension.
+
+**A rule** lists selectors for the message box, the send control and the
+answers, and says how to recognise "finished": no `busy` element anywhere,
+the `done` mark when the rule has one, and text that stood still for
+`quietMs`. Every list is tried in order; the first selector that matches is
+used. What is on the page before a run is not its answer: a run reads the
+answer that appears after it. Filling a field goes through the native value
+setter and an `input` event; a rich editor gets a paste event, then
+`execCommand('insertText')`, then its text content.
+
+**The test build** (`node build.mjs --test`, used by `e2e/extension`) is the
+same code with `__TEST_SITE__` set: the rule of the stand-in site takes the
+place of the site `claude`, at the origin a test writes into the extension's
+storage; the manifest also lists `http://vendor.localhost/*` and
+`http://127.0.0.1/*` (a test cannot answer the permission prompt). A release
+build contains none of it: `build.mjs`, the packaging script and a unit test
+check that.
 
 ## 3. The test harness, and how to extend it
 
@@ -355,12 +419,18 @@ UI into `app/` there, so the source directory stays clean. The
 `blockThirdPartyCookies` fixture option writes the profile preference before
 the browser starts.
 
-When `apps/extension` exists, the same specs should run against it: load its
-build in place of the test extension and keep the stand-in. The site list is
-fixed in the protocol and has no test site, so the extension's test build
-needs a rule that points one of the real site ids (the tests use
-`web-claude`) at `http://vendor.localhost:<port>`. Rules for real sites
-cannot be tested here and stay marked unverified until checked by hand.
+The extension itself is tested in the project `extension`
+(`pnpm --filter ./e2e test:extension`):
+
+| Path                                | Content                                                                                                                                                   |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `e2e/extension/support/fixtures.ts` | A Chromium with the test build of `apps/extension`, on top of the fixtures above.                                                                         |
+| `e2e/extension/wall.spec.ts`        | First run and pairing, a mixed ask, both kinds of message box, a failing rule, the switches, cancel, sign-in inside a cell, the reach of the header rule. |
+
+The global setup builds the test build into the run directory. The stand-in
+answers slowly for a prompt that contains `[slow]`, and `?layout=changed`
+serves the same chat page under other ids, which the stand-in's rule no
+longer finds.
 
 ## 4. Open questions and limits of the evidence
 
@@ -385,23 +455,33 @@ cannot be tested here and stay marked unverified until checked by hand.
 5. **A server that is not on loopback.** From an extension page to plain
    HTTP on a LAN address, or to HTTPS with a private CA, nothing was tested:
    mixed-content rules and the browser's local-network permission may apply.
-6. **`optional_host_permissions`.** The test extension declares its host
-   permissions in the manifest. The planned flow, where the user grants the
-   server's origin at run time, is untested.
-7. **Markdown.** The content script reads `textContent`. Turning a site's
-   rendered answer back into Markdown (code blocks, lists, tables) is site
-   rule work and decides how good the stored answer looks.
+6. **`optional_host_permissions`.** The extension asks for the server's
+   origin when the user pairs (`chrome.permissions.request`). No automated
+   test can answer that prompt, so the test build declares the loopback
+   server in its manifest and the request itself is covered only by unit
+   tests with a fake permissions API and by the hand check.
+7. **Markdown.** The content script reconstructs Markdown from the rendered
+   answer (`src/content/markdown.ts`, unit-tested on hand-written markup).
+   How well that fits each site's real markup is unknown until checked.
 8. **Finished detection** in the stand-in is an attribute the page sets.
-   Real sites need a rule per site, and a way to tell "still thinking" from
-   "done" that survives their changes.
+   The real rules rely on a "stop" control being present while the site
+   answers and on the text standing still; whether those selectors match,
+   and whether a model that pauses mid-answer is read too early, is unknown.
 9. **`fillPrompt` is enforced only by the extension.** The server stores the
    switch; it cannot know whether a prompt was typed by hand.
 10. **The removed policy.** Removing the site's `Content-Security-Policy`
     for its frame weakens that page's own defences inside the frame. No
     narrower rule is possible with `declarativeNetRequest`.
-11. **User docs.** README, `privacy.md` and `providers.md` (English and
-    zh-TW) do not mention web cells yet; `security.md` does. They need the
-    plain statement about vendor terms when the extension ships.
-12. **Distribution.** The release zip, a stable extension id (a `key` in the
-    manifest, so the id a user lists does not depend on the folder it was
-    unpacked to) and the release workflow are not started.
+11. **Rules for real sites.** All five were written from the publicly
+    visible page structure and from general knowledge of these apps, without
+    signing in and without running them. Expect several to be wrong in
+    detail. Quota and rate-limit pages are not recognised.
+12. **Reordering and leaving the wall.** Moving a frame in the document
+    reloads it; leaving the wall cancels running web slots (§2.6).
+13. **The worker's second line.** The wall page removes its header rule on
+    `pagehide`, and the rule's initiator condition already excludes other
+    sites; the worker's sweep on `tabs.onUpdated` is a further safeguard
+    whose timing against a fast navigation was not measured.
+14. **Edge.** Whether Edge sends `chrome-extension://` as the origin of its
+    extensions was not checked; the server's allowlist matches that scheme
+    only. Edge may also derive a different ID from the same key.

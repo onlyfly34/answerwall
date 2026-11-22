@@ -77,6 +77,7 @@ packages/core     server library: providers, runner, HTTP API, storage, auth, TL
 packages/web      SolidJS + Vite UI, PWA
 apps/server       Node entry point, `answerwall` CLI (serve, pair), Dockerfile
 apps/desktop      Electron shell (phase P2)
+apps/extension    browser extension for web cells (Manifest V3; §5.4, §11)
 tools/mock-clis   fake CLIs replaying recorded fixtures
 e2e               Playwright tests against server + mock CLIs
 docs              user and developer docs
@@ -522,9 +523,24 @@ is spawned or fetched for it.
   through the same path as every answer (Markdown, sanitised in the page,
   §7), and shows in history on every device.
 - A page that cannot show web cells (the server's own page, the desktop
-  app, the PWA) is not offered web providers for its wall; it shows their
-  stored answers. The settings page of the desktop app has no web cells
-  section.
+  app, the PWA) lists web providers but never sends to them: a cell of a
+  preset that names one shows a notice that it lives in the browser
+  extension, the pickers show it as unavailable, and a fresh wall gets no
+  such cell. It shows their stored answers like any answer. The settings
+  and providers pages of the desktop app have no web cells section.
+- On the extension's wall page the two switches decide what Send does with
+  a web cell. `readAnswer` on: the cell is a target of the ask
+  (`runsWebSlots`), the page acts after `start`, and submits the one result;
+  with `fillPrompt` off the user types in the site and the finished answer
+  is read. `readAnswer` off: the cell is not part of the ask at all (the
+  server would refuse it, §6); with `fillPrompt` on the prompt is still
+  typed in, and the cell says that nothing is stored. Both off: the cell is
+  the site's page, used by hand. A rule that does not match ends the slot
+  as `failed` (`bad_output`, or `not_logged_in` for the site's sign-in page,
+  `unsupported` when the frame cannot be reached) and leaves the page alone.
+  A wall page that was reloaded, or a cell that was closed, while its slot
+  was running submits `cancelled` with the reason: the prompt is never typed
+  twice.
 
 ## 6. HTTP API
 
@@ -802,6 +818,12 @@ ends with the process, even on `SIGKILL`, so it never goes stale.
   web cells (§5.4: the three switches, the extension ids, the sites; not in
   the desktop app); in the desktop app also the release check (§10), which a
   server never makes and therefore does not show.
+- Web cells (§5.4) are part of the wall: a cell whose provider is a web
+  provider is a frame of the site with its name, reload, open in a tab, the
+  state of the connection to the page and a mark while its site rule is
+  unverified. The wall gets the frames from a `WebCellHost` that only the
+  extension's page provides (`AppServices.webCells`); without one it shows
+  the notice of §5.4. Strings in both languages, like everything else.
 - The same UI can be mounted by a page on another origin (the extension's
   wall page) through `packages/web/src/embed.tsx`: requests go to one
   configured server origin with the device token as bearer token and
@@ -820,8 +842,9 @@ ends with the process, even on `SIGKILL`, so it never goes stale.
 - CI on every push to `main`, every pull request and on demand (a branch
   is checked through its pull request, so nothing runs twice):
   `ubuntu-latest` and `windows-latest`, lint, typecheck, unit tests,
-  `smoke:mock`, e2e against mock CLIs, the server bundle started with plain
-  Node, the Windows installer installed and its app tested on
+  `smoke:mock`, e2e against mock CLIs (including the browser extension
+  loaded unpacked in Chromium's headless mode), the server bundle started
+  with plain Node, the browser extension packaged, the Windows installer installed and its app tested on
   `windows-latest`, and the container image built and tested for amd64 and
   arm64 (not pushed). Every job is binding, the Windows e2e leg included.
   No real account is ever used in CI.
@@ -844,6 +867,15 @@ ends with the process, even on `SIGKILL`, so it never goes stale.
   published is refused before anything is built or pushed. Only the push of
   a tag publishes: `workflow_dispatch` only builds and tests artifacts and
   pushes nothing, whichever ref it is started on, a tag included.
+- Browser extension: `apps/extension` built with Vite from the web UI's
+  sources (no runtime dependency of its own), released as
+  `answerwall-extension-<version>.zip` and loaded unpacked; no store
+  listing. Its manifest carries a public key so that its ID is the same
+  everywhere; the private half was discarded. Its permissions are
+  `declarativeNetRequestWithHostAccess`, `storage`, host permission for the
+  hosts of `WEB_SITES`, and the server's origin as an optional host
+  permission requested when the user pairs. Packaging refuses any other
+  permission and anything of the test build.
 - Windows: Electron + electron-builder, NSIS x64, unsigned (documented,
   including Smart App Control). Auto-update checks only this repository's
   releases, asks before installing, can be turned off.
@@ -875,12 +907,13 @@ Planned additions, not yet scheduled into a phase's contract:
   cells that show a vendor's own web app next to CLI and API cells, so the
   web apps' own features (memory, projects, search) stay available, with the
   prompt filled in automatically and the answer kept in history.
-  - **State.** Built: the protocol and the server side (§5.4, §6, §6.1, §7),
-    the web UI's ability to run from the extension's origin (§9), and the
-    proof of the mechanism in a real Chromium against a stand-in site
-    (`e2e/web-cells`). Not built yet: `apps/extension` itself, the site
-    rules, and web cells in the wall. `docs/web-cells.md` holds the results
-    of the proof and the contract the extension builds against.
+  - **State.** Built: the protocol and the server side (§5.4, §6, §6.1,
+    §7), the extension (`apps/extension`), web cells in the wall (§9), and
+    the proof of the mechanism in a real Chromium against a stand-in site
+    (`e2e/web-cells`, `e2e/extension`). Not done: no rule has been run
+    against a real site; all five are marked unverified, and
+    `docs/verify-web-cells.md` is the hand check. `docs/web-cells.md` holds
+    the results of the proof, the contract and the limits of the evidence.
   - **Where it runs.** In the user's own Chrome or Edge, through an
     extension in `apps/extension` (Manifest V3). Not in the Electron app and
     not on phones or in the PWA; those show the stored answers only. The
@@ -901,10 +934,14 @@ Planned additions, not yet scheduled into a phase's contract:
     framing (`X-Frame-Options`, `Content-Security-Policy`) only for
     sub-frame requests to the listed vendor hosts **in the tab of its own
     wall page** (a session rule that names the tab). Scoping by who started
-    the request is not enough: a navigation the site itself starts inside
-    the frame (a redirect after sign-in, a form) has the site as initiator
-    and would be refused again; the proof showed both. No other request, tab
-    or site is changed. It never changes the user agent or any other request
+    the request alone is not enough: a navigation the site itself starts
+    inside the frame (a redirect after sign-in, a form) has the site as
+    initiator and would be refused again; the proof showed both. The rule
+    therefore names the tab **and** accepts as initiator the extension and
+    the listed hosts, so that a page of any other site that ends up in that
+    tab gets nothing. The wall page removes its rule when it is left, and
+    the service worker removes the rule of any tab that no longer shows a
+    wall page. No other request, tab or site is changed. It never changes the user agent or any other request
     header.
   - **Send.** A content script, active only in a vendor frame whose parent
     is the extension's wall page, types the prompt into the page and submits
@@ -960,6 +997,20 @@ Planned additions, not yet scheduled into a phase's contract:
   answer, the web UI mounted as an extension page). No real site is ever
   contacted. The main suite covers the settings section and a web slot whose
   result a scripted client submits.
+- e2e, project `extension` (one desktop viewport): the test build of
+  `apps/extension` (the release code plus the stand-in site in place of one
+  real site) loaded unpacked, against the stand-in and the compiled server
+  with the mock CLIs: the first-run page and pairing, a mixed ask (a mock
+  CLI cell and a web cell), filling in a field and a rich editor, the answer
+  in the history, a rule that no longer matches, each combination of the two
+  switches, cancel, signing in inside a cell, and that the header rule
+  reaches no other tab and no web page. The packaging script and a unit test
+  make sure a release build contains nothing of the test build.
+- Unit, `apps/extension`: every rule file against the rule schema and the
+  protocol's site list, the manifest's exact permissions, the rule engine in
+  jsdom (filling, submitting, finished detection, every failure), the
+  Markdown reconstruction, the gate that keeps the content script inert, the
+  page's bookkeeping of frames and ports, pairing, and the header rule.
 - `pnpm smoke:mock`: builds everything and drives the compiled server end to
   end against the mock CLIs and a local OpenAI-compatible stub (pairing, a
   queued 16-slot ask, resume, cancel, history, presets, settings, a web slot
