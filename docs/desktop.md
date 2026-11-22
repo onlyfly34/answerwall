@@ -95,11 +95,12 @@ all come from `packages/core/src/brand.ts`:
 - Artifacts: `answerwall-desktop-<version>-windows-x64-setup.exe`, the same
   name with `.blockmap`, and `latest.yml`.
 - Not code-signed.
-- Fuses: `runAsNode` stays on (the reaper needs it on Linux), and so does
-  `enableNodeCliInspectArguments` (the end-to-end tests drive the packaged
-  app through the inspector). `NODE_OPTIONS` is ignored, the app loads only
-  from `app.asar`, the archive's integrity is validated, cookies are
-  encrypted with the system's key, and `file:` pages get no extra privileges.
+- Fuses: the executable cannot be run as plain Node (`runAsNode` off; it is
+  on only in the Linux build, where the reaper needs it), `NODE_OPTIONS` is
+  ignored, the app loads only from `app.asar`, the archive's integrity is
+  validated, cookies are encrypted with the system's key, and `file:` pages
+  get no extra privileges. `enableNodeCliInspectArguments` stays on: the
+  end-to-end tests drive the packaged app through the inspector.
 
 ## Processes
 
