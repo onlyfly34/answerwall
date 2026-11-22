@@ -1,0 +1,99 @@
+# AnswerWall in Docker. Described in docs/deploy-docker.md.
+#
+#   cp .env.example .env        # then read it; the defaults are safe
+#   docker compose up -d
+#   docker compose logs         # shows the one-time pairing code
+#
+# As it stands this file is the "built-in TLS" setup: the server creates a
+# private certificate authority and listens with HTTPS on the Docker host's
+# loopback address only (https://localhost:7717). The two other setups add one
+# file each (COMPOSE_FILE in .env):
+#
+#   compose.proxy.yaml   behind a reverse proxy that terminates TLS
+#   compose.cert.yaml    your own certificate files
+#
+# The container is the security boundary. It gets two volumes and nothing
+# else from the host: no home directory, no Docker socket, no host network.
+
+name: answerwall
+
+services:
+  answerwall:
+    image: ${ANSWERWALL_IMAGE:-ghcr.io/onlyfly34/answerwall:latest}
+    # `docker compose build` builds the same image from a clone of the
+    # repository; without a clone, delete this block.
+    build:
+      context: ..
+      dockerfile: apps/server/Dockerfile
+    restart: unless-stopped
+
+    # The user and group id of every process in the container. Change it only
+    # together with DATA_VOLUME and CLI_HOME_VOLUME: the named volumes belong
+    # to 10001, host directories belong to whoever you give them to.
+    user: ${CONTAINER_USER:-10001:10001}
+
+    # Inside the container the server listens on every interface, port 7717.
+    # PUBLISH_ADDRESS decides who can reach it from outside the container:
+    #   127.0.0.1  only programs on the Docker host (the default)
+    #   a LAN address of the host, or 0.0.0.0 for all of them: other machines
+    # Open it to other machines only together with TLS (this file or
+    # compose.cert.yaml), never with compose.proxy.yaml.
+    ports:
+      - '${PUBLISH_ADDRESS:-127.0.0.1}:${PUBLISH_PORT:-7717}:7717'
+
+    environment:
+      # off | auto | cert. `auto`: a private CA and a server certificate are
+      # created in the data volume on first start.
+      ANSWERWALL_TLS: ${ANSWERWALL_TLS:-auto}
+      # DNS names and IP addresses for the generated certificate, comma
+      # separated, besides localhost. Needed as soon as another machine
+      # connects, e.g. "wall.home.arpa,192.168.1.20".
+      ANSWERWALL_TLS_HOSTNAMES: ${ANSWERWALL_TLS_HOSTNAMES:-}
+      # The origins browsers use, comma separated, e.g.
+      # "https://wall.home.arpa:7717". Empty: only https://localhost:<port>
+      # on the Docker host is accepted.
+      ANSWERWALL_PUBLIC_ORIGINS: ${ANSWERWALL_PUBLIC_ORIGINS:-}
+      # Set by compose.proxy.yaml and compose.cert.yaml.
+      ANSWERWALL_TRUSTED_PROXIES: ${ANSWERWALL_TRUSTED_PROXIES:-}
+      ANSWERWALL_TLS_CERT: ${ANSWERWALL_TLS_CERT:-}
+      ANSWERWALL_TLS_KEY: ${ANSWERWALL_TLS_KEY:-}
+      # 1 accepts plain HTTP from anyone who can reach the port. Leave it 0.
+      ANSWERWALL_ALLOW_INSECURE: ${ANSWERWALL_ALLOW_INSECURE:-0}
+      # Optional static bearer token for scripts (16 to 512 characters).
+      # Empty: devices sign in by pairing only.
+      ANSWERWALL_TOKEN: ${ANSWERWALL_TOKEN:-}
+      ANSWERWALL_LOG_LEVEL: ${ANSWERWALL_LOG_LEVEL:-info}
+      ANSWERWALL_LOG_FORMAT: ${ANSWERWALL_LOG_FORMAT:-text}
+      # Fixed by the image; do not set them here: ANSWERWALL_HOST (0.0.0.0),
+      # ANSWERWALL_PORT (7717), ANSWERWALL_DATA_DIR (/data).
+
+    volumes:
+      # Database, secrets, generated certificates, work directories.
+      - ${DATA_VOLUME:-data}:/data
+      # The home directory of the container's user: the AI command-line tools
+      # you install, and each tool's own settings and login.
+      - ${CLI_HOME_VOLUME:-cli-home}:/home/answerwall
+
+    # Hardening. The root file system is read-only; the two volumes and /tmp
+    # are the only writable places. /tmp allows execution because some of the
+    # vendors' tools unpack helpers there.
+    read_only: true
+    tmpfs:
+      - /tmp:exec,mode=1777,size=512m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+    # The server ends its child processes within 10 seconds of SIGTERM.
+    stop_grace_period: 20s
+
+    # Lets an OpenAI-compatible endpoint that runs on the Docker host be
+    # reached as http://host.docker.internal:<port> (Linux needs this line;
+    # Docker Desktop provides the name by itself).
+    extra_hosts:
+      - host.docker.internal:host-gateway
+
+volumes:
+  data:
+  cli-home:

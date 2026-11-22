@@ -1,0 +1,33 @@
+# Setup "behind a reverse proxy": the proxy owns the certificate and talks
+# plain HTTP to AnswerWall. Use it together with compose.yaml:
+#
+#   COMPOSE_FILE=compose.yaml:compose.proxy.yaml        (in .env)
+#   ANSWERWALL_PUBLIC_ORIGINS=https://wall.example.com  (in .env)
+#
+# With TLS off the server accepts connections only from loopback and from the
+# addresses in ANSWERWALL_TRUSTED_PROXIES, and it believes X-Forwarded-For and
+# X-Forwarded-Proto only from those addresses.
+#
+# A proxy that runs on the Docker host and connects to the published port
+# (127.0.0.1:7717) reaches the container from the gateway address of this
+# project's network, not from 127.0.0.1. The network therefore gets a fixed
+# subnet here, and its gateway is the trusted proxy. Keep PUBLISH_ADDRESS at
+# 127.0.0.1 in this setup: on some Docker configurations every connection to
+# a published port arrives from the gateway, and a port opened to other
+# machines would then be trusted like the proxy.
+
+services:
+  answerwall:
+    environment:
+      ANSWERWALL_TLS: 'off'
+      ANSWERWALL_PUBLIC_ORIGINS: ${ANSWERWALL_PUBLIC_ORIGINS:?Set ANSWERWALL_PUBLIC_ORIGINS to the address browsers use, e.g. https://wall.example.com}
+      # The gateway of the subnet below. For a proxy in a container attached
+      # to this network, use that container's address or the whole subnet.
+      ANSWERWALL_TRUSTED_PROXIES: ${ANSWERWALL_TRUSTED_PROXIES:-172.30.77.1}
+
+networks:
+  default:
+    ipam:
+      config:
+        # Any private range that is free on the Docker host.
+        - subnet: ${PROXY_SUBNET:-172.30.77.0/24}

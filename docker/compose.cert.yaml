@@ -1,0 +1,23 @@
+# Setup "own certificate": the server uses PEM files you provide. Use it
+# together with compose.yaml:
+#
+#   COMPOSE_FILE=compose.yaml:compose.cert.yaml         (in .env)
+#   TLS_CERT_DIR=/srv/answerwall/certs                  (in .env)
+#   ANSWERWALL_PUBLIC_ORIGINS=https://wall.example.com:7717
+#
+# TLS_CERT_DIR is a directory on the Docker host with the certificate chain
+# and the private key. It is mounted read-only. Mount the directory, not the
+# two files: a renewal replaces the files, and the server, which reloads them
+# when they change, would keep seeing the old ones through a file mount. The
+# files must be readable by the container's user id (10001 unless changed)
+# and must be real files, not links that point outside the directory.
+
+services:
+  answerwall:
+    environment:
+      ANSWERWALL_TLS: cert
+      ANSWERWALL_TLS_CERT: /certs/${TLS_CERT_FILE:-fullchain.pem}
+      ANSWERWALL_TLS_KEY: /certs/${TLS_KEY_FILE:-privkey.pem}
+      ANSWERWALL_PUBLIC_ORIGINS: ${ANSWERWALL_PUBLIC_ORIGINS:?Set ANSWERWALL_PUBLIC_ORIGINS to the address browsers use, e.g. https://wall.example.com:7717}
+    volumes:
+      - ${TLS_CERT_DIR:?Set TLS_CERT_DIR to the host directory that holds the certificate and key}:/certs:ro

@@ -1,0 +1,32 @@
+# The build context of apps/server/Dockerfile is the repository root. Only what
+# the build stage reads is sent: manifests, sources, the packaging script and
+# the files under docker/ that are copied into the image.
+
+.git
+.github/*
+!.github/scripts
+.claude
+**/node_modules
+**/dist
+**/coverage
+**/*.tsbuildinfo
+**/.vite
+
+# Not part of the server: documentation, the browser tests' output, editor and
+# runtime leftovers. The manifests of every workspace package stay, because
+# `pnpm install --frozen-lockfile` checks them against the lockfile.
+docs
+e2e/test-results
+e2e/playwright-report
+**/*.log
+**/.DS_Store
+
+# Never send local configuration, data or secrets to the builder.
+**/.env
+**/.env.*
+!**/.env.example
+**/.answerwall
+**/*.sqlite
+**/*.sqlite-*
+**/*.pem
+**/*.key
