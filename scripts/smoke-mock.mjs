@@ -87,6 +87,24 @@ function rawStatus(port, pathname, headers) {
   });
 }
 
+/** Every process id the mock CLIs recorded: their own and their children's. */
+function mockPids(logFile) {
+  const pids = new Set();
+  let text;
+  try {
+    text = readFileSync(logFile, 'utf8');
+  } catch {
+    return pids;
+  }
+  for (const line of text.split('\n')) {
+    if (line.trim() === '') continue;
+    const entry = JSON.parse(line);
+    if (entry.pid) pids.add(entry.pid);
+    if (entry.grandchildPid) pids.add(entry.grandchildPid);
+  }
+  return pids;
+}
+
 // ---------------------------------------------------- OpenAI-compatible stub
 
 /** Answers `/v1/models` and streamed `/v1/chat/completions`, slowly, behind a bearer key. */
@@ -370,8 +388,29 @@ async function main() {
   let server;
   const cleanup = async () => {
     if (server && server.child.exitCode === null && server.child.signalCode === null) {
-      server.child.kill('SIGKILL');
-      await server.exited;
+      // After a failed check the server may still have children: let it end
+      // them itself, and only then force it.
+      server.stop();
+      const code = await Promise.race([server.exited, sleep(15_000).then(() => 'timeout')]);
+      if (code === 'timeout') {
+        server.child.kill('SIGKILL');
+        await server.exited;
+      }
+    }
+    // Whatever survived anyway (a forced stop leaves children behind) is ended here.
+    for (const pid of mockPids(mockLog)) {
+      if (!isAlive(pid)) continue;
+      log(`ending leftover CLI process ${pid}`);
+      try {
+        if (process.platform === 'win32') spawn('taskkill', ['/T', '/F', '/PID', String(pid)]);
+        else process.kill(-pid, 'SIGKILL');
+      } catch {
+        try {
+          process.kill(pid, 'SIGKILL');
+        } catch {
+          // Gone in the meantime.
+        }
+      }
     }
     await stub.close();
     await rm(temp, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
@@ -954,12 +993,7 @@ async function main() {
       'the server logged that it stopped',
     );
 
-    const pids = new Set();
-    for (const line of readFileSync(mockLog, 'utf8').trim().split('\n')) {
-      const entry = JSON.parse(line);
-      if (entry.pid) pids.add(entry.pid);
-      if (entry.grandchildPid) pids.add(entry.grandchildPid);
-    }
+    const pids = mockPids(mockLog);
     await sleep(300);
     const survivors = [...pids].filter(isAlive);
     check(
