@@ -70,7 +70,8 @@ describe('recordedProcesses', () => {
   });
 });
 
-describe('runningProcesses', () => {
+// The first start of PowerShell on a machine can take several seconds.
+describe('runningProcesses', { timeout: 60_000 }, () => {
   test('reports a recorded process while it runs and no longer once it has been killed', async () => {
     const pid = await idleProcess();
     const record = { pid, at: Date.now() };
