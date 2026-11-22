@@ -549,8 +549,8 @@ ends with the process, even on `SIGKILL`, so it never goes stale.
 - CI on every push to `main`, every pull request and on demand (a branch
   is checked through its pull request, so nothing runs twice):
   `ubuntu-latest` and `windows-latest`, lint, typecheck, unit tests,
-  `smoke:mock`, e2e against mock CLIs. The Windows e2e leg does not fail the
-  workflow until it has proven stable. No real account is ever used in CI.
+  `smoke:mock`, e2e against mock CLIs. Every job is binding, the Windows
+  e2e leg included. No real account is ever used in CI.
 - The server bundle is installed with `npm ci --omit=dev` from a
   `package-lock.json` generated at packaging time and checked against
   `pnpm-lock.yaml` (versions, integrity, registry, no install scripts); see
