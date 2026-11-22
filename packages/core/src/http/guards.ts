@@ -2,6 +2,8 @@ import { getCookie } from 'hono/cookie';
 import { BRAND } from '../brand.ts';
 import { AppError } from '../contracts/index.ts';
 import type { AppConfig, AppMiddleware } from '../contracts/index.ts';
+import { extensionIdOfOrigin } from '../protocol/index.ts';
+import type { WebCellsSettings } from '../protocol/index.ts';
 import { isLoopbackHost, isLoopbackIp, parseIp } from './addresses.ts';
 import type { IpAddress } from './addresses.ts';
 
@@ -103,6 +105,10 @@ function isSameLoopbackOrigin(origin: string, hostHeader: string | undefined, se
 const isJson = (contentType: string | undefined): boolean =>
   contentType?.split(';')[0]?.trim().toLowerCase() === 'application/json';
 
+/** The page of a browser extension, whatever the browser calls the scheme. */
+const isExtensionOrigin = (origin: string): boolean =>
+  /^[a-z][a-z0-9+.-]*-extension:\/\//i.test(origin);
+
 /**
  * Cross-site request forgery defence for every state-changing request.
  *
@@ -113,13 +119,45 @@ const isJson = (contentType: string | undefined): boolean =>
  *   `Authorization` header and no session cookie, so a cookie can never be
  *   used without an origin check.
  * - `Content-Type` must be `application/json`, which no HTML form can send.
+ *
+ * The page of a browser extension is the one cross-origin client there is
+ * (web cells, docs/DECISIONS.md §7). An extension `Origin` is judged on
+ * every method: it passes only while web cells are switched on and its id is
+ * on the allowlist, and never together with the session cookie, so the
+ * cookie stays a same-origin credential. Chromium sends that header on
+ * state-changing requests and leaves it out of a `GET`, so in practice the
+ * allowlist decides who may pair and write; a read without `Origin` is
+ * judged like any other read, by its credential. Nothing is answered with
+ * an `Access-Control-*` header: an extension page with host permission needs
+ * none, and a web page gets none.
  */
-export function createOriginGuard(publicOrigins: readonly string[]): AppMiddleware {
+export function createOriginGuard(
+  publicOrigins: readonly string[],
+  webCells: () => Pick<WebCellsSettings, 'enabled' | 'extensionIds'> = () => ({
+    enabled: false,
+    extensionIds: [],
+  }),
+): AppMiddleware {
   const allowed = new Set(publicOrigins.map((origin) => parseOrigin(origin).origin));
   return (c, next) => {
+    const origin = c.req.header('Origin');
+    if (origin !== undefined && isExtensionOrigin(origin)) {
+      const id = extensionIdOfOrigin(origin);
+      const { enabled, extensionIds } = webCells();
+      if (id === undefined || !enabled || !extensionIds.includes(id)) {
+        throw new AppError('forbidden', 'This browser extension is not allowed');
+      }
+      if (getCookie(c, BRAND.sessionCookie) !== undefined) {
+        throw new AppError('forbidden', 'An extension signs in with its token, not the cookie');
+      }
+      if (!SAFE_METHODS.has(c.req.method) && !isJson(c.req.header('Content-Type'))) {
+        throw new AppError('unsupported_media_type', 'Content-Type must be application/json');
+      }
+      c.set('extensionOrigin', origin);
+      return next();
+    }
     if (SAFE_METHODS.has(c.req.method)) return next();
 
-    const origin = c.req.header('Origin');
     if (origin === undefined) {
       const bearerOnly =
         c.req.header('Authorization') !== undefined &&

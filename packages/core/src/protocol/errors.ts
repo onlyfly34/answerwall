@@ -25,6 +25,7 @@ export const API_ERROR_CODES = [
   'too_many_targets',
   'unknown_provider',
   'provider_disabled',
+  'web_client_required',
   'unauthorized',
   'invalid_code',
   'forbidden',

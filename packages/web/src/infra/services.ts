@@ -9,6 +9,8 @@ import { createAskStream } from './ask-stream.ts';
 import type { AskStreamTuning } from './ask-stream.ts';
 import { createAskStreamStore } from './ask-store.ts';
 import { BUILD_VERSION } from './build-info.ts';
+import { withRemoteSession } from './connection.ts';
+import type { RemoteConnection } from './connection.ts';
 import { createPersistedI18n } from './language.ts';
 import type { LanguageEnvironment } from './language.ts';
 import { createNotifier } from './notifier.ts';
@@ -24,10 +26,20 @@ import type { Visibility } from './visibility.ts';
 export interface ShellServices extends AppServices {
   notify: ToastCenter;
   shell: Shell;
+  /** This page does not come from the server: it is the extension's wall page. */
+  remote: boolean;
 }
 
 export interface ServicesOptions {
-  /** Used for every request, the event stream included. */
+  /**
+   * The server is on another origin: every request, the event stream
+   * included, goes there with the device token instead of the cookie, and
+   * the page keeps itself up to date some other way than from the server.
+   */
+  connection?: RemoteConnection;
+  /** The wall of this page can show web cells, so the providers store lists the web providers. */
+  webProviders?: boolean;
+  /** Used for every request, the event stream included. Ignored with `connection`. */
   fetch?: Fetch;
   /** Replaces the client built on `fetch`; the event stream still uses `fetch`. */
   api?: ApiClient;
@@ -39,25 +51,30 @@ export interface ServicesOptions {
   random?: () => number;
 }
 
+/** Reloading does not change the bundle of a page that is not served by the server. */
+const INERT_UPDATER: Updater = { apply: async () => false, settled: () => undefined };
+
 /**
  * Builds the real services. Nothing is requested until `shell.start()`,
  * which loads the server's identity, then the settings and the providers:
  * the order the pages rely on.
  */
 export function createServices(options: ServicesOptions = {}): ShellServices {
-  const fetch = options.fetch ?? defaultFetch;
+  const { connection } = options;
+  const fetch = connection?.fetch ?? options.fetch ?? defaultFetch;
   const visibility = options.visibility ?? pageVisibility;
   const [meta, setMeta] = createSignal<Meta>();
 
   // The client and the notifier report to the shell, which is built from them.
   const signedOut = (): void => shell.signedOut();
-  const api =
+  const sameOriginApi =
     options.api ??
     createApiClient({
       fetch,
       onUnauthorized: signedOut,
       onInvalidResponse: () => void shell.checkVersion(),
     });
+  const api = connection ? withRemoteSession(sameOriginApi, connection) : sameOriginApi;
 
   const persisted = createPersistedI18n(options.language);
   /** A language the user picked on this page that the server has not been told about yet. */
@@ -71,7 +88,7 @@ export function createServices(options: ServicesOptions = {}): ShellServices {
   };
   const notify = createNotifier({ t: i18n.t, onUnauthorized: signedOut });
 
-  const providers = createProvidersStore(api);
+  const providers = createProvidersStore(api, { webProviders: options.webProviders === true });
   const settings = createSettingsStore({
     api,
     onChange(current, patch) {
@@ -113,10 +130,22 @@ export function createServices(options: ServicesOptions = {}): ShellServices {
     settings,
     providers,
     asks,
-    updater: options.updater ?? createBrowserUpdater(),
+    // A remote page has no service worker and nothing to reload into.
+    updater: options.updater ?? (connection ? INERT_UPDATER : createBrowserUpdater()),
     buildVersion: options.buildVersion ?? BUILD_VERSION,
+    sameBuild: connection === undefined,
     setMeta,
   });
 
-  return { meta, api, asks, settings, providers, i18n, notify, shell };
+  return {
+    meta,
+    api,
+    asks,
+    settings,
+    providers,
+    i18n,
+    notify,
+    shell,
+    remote: connection !== undefined,
+  };
 }

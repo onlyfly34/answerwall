@@ -1,16 +1,26 @@
 import { z } from 'zod';
 import { TimestampSchema } from './common.ts';
+import { webProviderId, WebSiteIdSchema } from './web.ts';
+import type { WebSiteId } from './web.ts';
 
 export const CLI_PROVIDER_KINDS = ['claude', 'codex', 'agy', 'grok', 'opencode'] as const;
 export const CliProviderKindSchema = z.enum(CLI_PROVIDER_KINDS);
 export type CliProviderKind = z.infer<typeof CliProviderKindSchema>;
 
-export const PROVIDER_KINDS = [...CLI_PROVIDER_KINDS, 'openai-compat'] as const;
+/**
+ * `web`: a vendor's web app in a frame of the browser extension. The server
+ * runs nothing for it: the client that created the ask submits the result.
+ */
+export const PROVIDER_KINDS = [...CLI_PROVIDER_KINDS, 'openai-compat', 'web'] as const;
 export const ProviderKindSchema = z.enum(PROVIDER_KINDS);
 export type ProviderKind = z.infer<typeof ProviderKindSchema>;
 
+/** The kinds the server runs itself, each through its adapter. */
+export const EXECUTED_PROVIDER_KINDS = [...CLI_PROVIDER_KINDS, 'openai-compat'] as const;
+export type ExecutedProviderKind = (typeof EXECUTED_PROVIDER_KINDS)[number];
+
 export function isCliKind(kind: ProviderKind): kind is CliProviderKind {
-  return kind !== 'openai-compat';
+  return (CLI_PROVIDER_KINDS as readonly string[]).includes(kind);
 }
 
 /**
@@ -35,8 +45,8 @@ export const KINDS_REQUIRING_ACKNOWLEDGEMENT: readonly ProviderKind[] = ['agy'];
  * Whether a provider's built-in web search can be offered to the model while
  * every other tool stays off. `available`: confirmed with a real run of the
  * CLI, so the instance has an "allow web search" switch. `unconfirmed`: not
- * confirmed for this CLI, so there is no switch. `none`: the provider has no
- * tools at all.
+ * confirmed for this CLI, so there is no switch. `none`: nothing to switch
+ * (an endpoint has no tools at all; a web provider's site decides by itself).
  */
 export const WebSearchSupportSchema = z.enum(['available', 'unconfirmed', 'none']);
 export type WebSearchSupport = z.infer<typeof WebSearchSupportSchema>;
@@ -61,6 +71,9 @@ export function concurrencyBounds(kind: ProviderKind): ConcurrencyBounds {
       return { min: 1, max: 1, default: 1 };
     case 'openai-compat':
       return { min: 1, max: 32, default: 4 };
+    case 'web':
+      // Frames of one site that are answering at the same time.
+      return { min: 1, max: 8, default: 2 };
     default:
       return { min: 1, max: 5, default: 2 };
   }
@@ -130,13 +143,23 @@ const openAiCompatBase = {
   baseUrl: EndpointBaseUrlSchema,
 };
 
+const webInstanceShape = {
+  ...instanceBase,
+  kind: z.literal('web'),
+  /** Which site's rule the extension applies; the id is always `web-<site>`. */
+  site: WebSiteIdSchema,
+};
+
 interface InstanceRuleInput {
   id: string;
   kind: ProviderKind;
   enabled: boolean;
   concurrency: number;
+  models: string[];
+  defaultModel?: string | undefined;
   riskAcknowledged?: boolean;
   webSearch?: boolean;
+  site?: WebSiteId;
 }
 
 function checkInstanceRules(instance: InstanceRuleInput, ctx: z.RefinementCtx): void {
@@ -147,6 +170,23 @@ function checkInstanceRules(instance: InstanceRuleInput, ctx: z.RefinementCtx): 
       path: ['id'],
       message: 'a CLI provider uses its kind as id and no other provider may use that id',
     });
+  }
+  if (instance.kind === 'web' && instance.site !== undefined) {
+    if (instance.id !== webProviderId(instance.site)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['id'],
+        message: `the web provider of ${instance.site} has the id ${webProviderId(instance.site)}`,
+      });
+    }
+    // The model is chosen in the site's own page; nothing here could select it.
+    if (instance.models.length > 0 || instance.defaultModel !== undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['models'],
+        message: 'a web provider has no model list',
+      });
+    }
   }
   const bounds = concurrencyBounds(instance.kind);
   if (instance.concurrency < bounds.min || instance.concurrency > bounds.max) {
@@ -186,9 +226,16 @@ export const OpenAiCompatInstanceSchema = z.object({
 });
 export type OpenAiCompatInstance = z.infer<typeof OpenAiCompatInstanceSchema>;
 
+export const WebProviderInstanceSchema = z.object(webInstanceShape);
+export type WebProviderInstance = z.infer<typeof WebProviderInstanceSchema>;
+
 /** A configured provider as the API returns it. */
 export const ProviderInstanceSchema = z
-  .discriminatedUnion('kind', [CliProviderInstanceSchema, OpenAiCompatInstanceSchema])
+  .discriminatedUnion('kind', [
+    CliProviderInstanceSchema,
+    OpenAiCompatInstanceSchema,
+    WebProviderInstanceSchema,
+  ])
   .superRefine(checkInstanceRules);
 export type ProviderInstance = z.infer<typeof ProviderInstanceSchema>;
 
@@ -201,6 +248,7 @@ export const ProviderInstanceInputSchema = z
       /** Omitted: keep the stored key. `null`: delete it. String: replace it. */
       apiKey: z.string().min(1).max(4096).nullable().optional(),
     }),
+    WebProviderInstanceSchema,
   ])
   .superRefine(checkInstanceRules);
 export type ProviderInstanceInput = z.infer<typeof ProviderInstanceInputSchema>;
@@ -219,7 +267,8 @@ export type StreamingMode = z.infer<typeof StreamingModeSchema>;
  * How far the provider's tools are switched off for question answering.
  * `none`: the provider has no tools. `disabled`: tools exist and are off.
  * `read-only`: tools cannot be disabled, only sandboxed. `unrestricted`: no
- * documented way to restrict them.
+ * documented way to restrict them (and every web provider: the site's own
+ * app does whatever it does).
  */
 export const ToolAccessSchema = z.enum(['none', 'disabled', 'read-only', 'unrestricted']);
 export type ToolAccess = z.infer<typeof ToolAccessSchema>;

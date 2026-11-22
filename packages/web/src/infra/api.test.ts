@@ -85,6 +85,20 @@ describe('requests', () => {
     ]);
   });
 
+  test('the result of a web slot goes to the slot of its ask', async () => {
+    const http = scriptedFetch(() => jsonResponse({ status: 'done', truncated: false }));
+    const api = createApiClient({ fetch: http.fetch });
+
+    expect(await api.submitWebResult('ask 1', 'w/1', { outcome: 'done', text: 'Four.' })).toEqual({
+      status: 'done',
+      truncated: false,
+    });
+
+    expect(http.calls.map((call) => [call.method, call.url, call.body])).toEqual([
+      ['POST', '/api/ask/ask%201/slots/w%2F1/result', { outcome: 'done', text: 'Four.' }],
+    ]);
+  });
+
   test('cancel names the slot only when one is given', async () => {
     const http = scriptedFetch(() => jsonResponse({ cancelled: ['a'] }));
     const api = createApiClient({ fetch: http.fetch });

@@ -6,7 +6,7 @@ import {
   isTerminalSlotStatus,
   isTerminalStreamEvent,
 } from '../protocol/index.ts';
-import type { AskRequest, AskSnapshot, StreamEvent } from '../protocol/index.ts';
+import type { AskRequest, AskSnapshot, StreamEvent, WebResultRequest } from '../protocol/index.ts';
 
 /** A stream event without its `seq`; the fake assigns the next one. */
 export type UnsequencedEvent = StreamEvent extends infer E
@@ -24,6 +24,8 @@ interface FakeAsk {
 export interface FakeAskManager extends AskManager {
   /** Every request passed to `submit`, in order. */
   readonly submitted: AskRequest[];
+  /** Every result passed to `submitWebResult`, in order. */
+  readonly webResults: { askId: string; slotId: string; result: WebResultRequest }[];
   /** Appends an event to an ask's log and delivers it to its subscribers. */
   emit(askId: string, event: UnsequencedEvent): void;
 }
@@ -40,6 +42,7 @@ export function createFakeAskManager(deps: {
 }): FakeAskManager {
   const asks = new Map<string, FakeAsk>();
   const submitted: AskRequest[] = [];
+  const webResults: FakeAskManager['webResults'] = [];
 
   const find = (askId: string): FakeAsk => {
     const ask = asks.get(askId);
@@ -57,6 +60,7 @@ export function createFakeAskManager(deps: {
 
   return {
     submitted,
+    webResults,
     emit,
     async start() {},
     async submit(request) {
@@ -130,6 +134,30 @@ export function createFakeAskManager(deps: {
         });
       }
       return open.map((slot) => slot.slotId);
+    },
+    async submitWebResult(askId, slotId, result) {
+      const { snapshot } = find(askId);
+      const slot = snapshot.slots.find((candidate) => candidate.slotId === slotId);
+      if (!slot) throw new AppError('not_found', 'No such slot');
+      webResults.push({ askId, slotId, result });
+      const base = { slotId, providerId: slot.providerId };
+      if (result.outcome === 'done') {
+        emit(askId, { type: 'delta', ...base, text: result.text });
+        emit(askId, { type: 'done', ...base, elapsedMs: 0 });
+        return { status: 'done', truncated: false };
+      }
+      if (result.outcome === 'failed') {
+        emit(askId, {
+          type: 'error',
+          ...base,
+          code: result.code,
+          message: result.message ?? '',
+          elapsedMs: 0,
+        });
+        return { status: 'error', truncated: false };
+      }
+      emit(askId, { type: 'cancelled', ...base, elapsedMs: 0 });
+      return { status: 'cancelled', truncated: false };
     },
     forget(askId) {
       const ask = asks.get(askId);

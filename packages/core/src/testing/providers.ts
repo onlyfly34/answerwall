@@ -7,12 +7,12 @@ import type {
   RunRequest,
   SettingsService,
 } from '../contracts/index.ts';
-import { PROVIDER_KINDS, webSearchSupport } from '../protocol/index.ts';
+import { EXECUTED_PROVIDER_KINDS, webSearchSupport } from '../protocol/index.ts';
 import type {
+  ExecutedProviderKind,
   ModelInfo,
   ProviderDetection,
   ProviderInstance,
-  ProviderKind,
   ProviderStatus,
   ToolAccess,
 } from '../protocol/index.ts';
@@ -24,7 +24,7 @@ import type {
 export type ScriptStep = { event: ProviderEvent; delayMs?: number } | { hang: true };
 
 export interface FakeAdapterOptions {
-  kind: ProviderKind;
+  kind: ExecutedProviderKind;
   clock: Clock;
   /** The script of every run, or a function choosing one per request. */
   script?: ScriptStep[] | ((request: RunRequest, instance: ProviderInstance) => ScriptStep[]);
@@ -68,7 +68,7 @@ function waitOrAbort(clock: Clock, delayMs: number | undefined, signal: AbortSig
  * as the request is aborted, and records every request it received.
  */
 export class FakeProviderAdapter implements ProviderAdapter {
-  readonly kind: ProviderKind;
+  readonly kind: ExecutedProviderKind;
   readonly toolAccess: ToolAccess;
   readonly runs: { instance: ProviderInstance; request: RunRequest }[] = [];
   detection: ProviderDetection;
@@ -120,20 +120,34 @@ export function createFakeProviderRegistry(deps: {
   clock: Clock;
   adapters?: ProviderAdapter[];
 }): ProviderRegistry {
-  const adapters = new Map<ProviderKind, ProviderAdapter>(
-    PROVIDER_KINDS.map((kind) => [kind, new FakeProviderAdapter({ kind, clock: deps.clock })]),
+  const adapters = new Map<ExecutedProviderKind, ProviderAdapter>(
+    EXECUTED_PROVIDER_KINDS.map((kind) => [
+      kind,
+      new FakeProviderAdapter({ kind, clock: deps.clock }),
+    ]),
   );
   for (const adapter of deps.adapters ?? []) adapters.set(adapter.kind, adapter);
   const detected = new Map<string, Pick<ProviderStatus, 'detection' | 'detectedAt' | 'models'>>();
 
-  const adapterOf = (kind: ProviderKind): ProviderAdapter => {
+  const adapterOf = (kind: ExecutedProviderKind): ProviderAdapter => {
     const adapter = adapters.get(kind);
     if (!adapter) throw new Error(`no adapter for ${kind}`);
     return adapter;
   };
 
   const list = (): ProviderStatus[] =>
-    deps.settings.get().providers.map((instance) => {
+    deps.settings.get().providers.map((instance): ProviderStatus => {
+      if (instance.kind === 'web') {
+        return {
+          instance,
+          detection: null,
+          detectedAt: null,
+          detecting: false,
+          models: [],
+          toolAccess: 'unrestricted',
+          webSearch: webSearchSupport(instance.kind),
+        };
+      }
       const adapter = adapterOf(instance.kind);
       const cached = detected.get(instance.id);
       const listed = cached?.models ?? [];
@@ -165,6 +179,7 @@ export function createFakeProviderRegistry(deps: {
         throw new AppError('unknown_provider', `No provider "${id}"`);
       }
       for (const instance of targets) {
+        if (instance.kind === 'web') continue;
         const adapter = adapterOf(instance.kind);
         detected.set(instance.id, {
           detection: await adapter.detect(instance),

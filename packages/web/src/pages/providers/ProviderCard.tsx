@@ -9,6 +9,7 @@ import type {
   ProviderInstance,
   ProviderInstanceInput,
   ProviderStatus,
+  WebProviderInstance,
 } from '@answerwall/core/protocol';
 import { CopyButton } from '../../app/ui/CopyButton.tsx';
 import { formatDateTime } from '../../app/ui/format.ts';
@@ -49,7 +50,8 @@ function requestToggle(box: HTMLInputElement, saved: boolean, apply: (wanted: bo
 }
 
 export interface ProviderCardProps {
-  instance: ProviderInstance;
+  /** A CLI or an endpoint; web providers are configured in the settings. */
+  instance: Exclude<ProviderInstance, WebProviderInstance>;
   /** Missing until the server has listed this provider. */
   status: ProviderStatus | undefined;
   /** A save or a refresh is running. */

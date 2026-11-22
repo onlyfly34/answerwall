@@ -427,6 +427,103 @@ describe('repairSettings', () => {
     });
   });
 
+  describe('web cells', () => {
+    const ID = 'abcdefghijklmnopabcdefghijklmnop';
+
+    test('a document written before web cells existed has everything off', () => {
+      const { webCells: _absent, ...older } = defaults();
+      expect(repairSettings(older).webCells).toEqual({
+        enabled: false,
+        fillPrompt: false,
+        readAnswer: false,
+        extensionIds: [],
+      });
+    });
+
+    test('stored switches and ids are kept', () => {
+      const webCells = { enabled: true, fillPrompt: false, readAnswer: true, extensionIds: [ID] };
+      expect(repairSettings({ ...defaults(), webCells }).webCells).toEqual(webCells);
+    });
+
+    test('a switch is on only when it is stored as true', () => {
+      const repaired = repairSettings({
+        ...defaults(),
+        webCells: { enabled: 'yes', fillPrompt: 1, readAnswer: null, extensionIds: 'all' },
+      });
+      expect(repaired.webCells).toEqual({
+        enabled: false,
+        fillPrompt: false,
+        readAnswer: false,
+        extensionIds: [],
+      });
+    });
+
+    test('anything that is not an extension id leaves the allowlist; duplicates collapse', () => {
+      const repaired = repairSettings({
+        ...defaults(),
+        webCells: {
+          enabled: true,
+          extensionIds: [ID, '*', `chrome-extension://${ID}`, 7, ID, 'short'],
+        },
+      });
+      expect(repaired.webCells.extensionIds).toEqual([ID]);
+      expectValid(repaired);
+    });
+
+    test('a web provider is kept with the id of its site and without models', () => {
+      const repaired = repairSettings({
+        ...defaults(),
+        providers: [
+          ...defaults().providers,
+          {
+            id: 'whatever',
+            kind: 'web',
+            site: 'chatgpt',
+            label: 'My ChatGPT',
+            enabled: true,
+            concurrency: 99,
+            models: ['gpt'],
+            defaultModel: 'gpt',
+          },
+        ],
+      });
+      expect(repaired.providers.at(-1)).toEqual({
+        id: 'web-chatgpt',
+        kind: 'web',
+        site: 'chatgpt',
+        label: 'My ChatGPT',
+        enabled: true,
+        concurrency: 8,
+        models: [],
+      });
+      expectValid(repaired);
+    });
+
+    test('a web provider of an unknown site is dropped; damaged fields fall back, disabled', () => {
+      const repaired = repairSettings({
+        ...defaults(),
+        providers: [
+          ...defaults().providers,
+          { id: 'web-example', kind: 'web', site: 'example', label: 'x', enabled: true },
+          { kind: 'web', site: 'grok', label: 7, enabled: 'yes' },
+          { kind: 'web', site: 'grok', label: 'second entry for the same site' },
+        ],
+      });
+      expect(repaired.providers.filter((provider) => provider.kind === 'web')).toEqual([
+        {
+          id: 'web-grok',
+          kind: 'web',
+          site: 'grok',
+          label: 'Grok (web)',
+          enabled: false,
+          concurrency: 2,
+          models: [],
+        },
+      ]);
+      expectValid(repaired);
+    });
+  });
+
   test('whatever is stored, the result is a valid settings document', () => {
     const junk: unknown[] = [
       { providers: [{}, { kind: 'claude', models: 'x', label: 5, enabled: 'on' }] },

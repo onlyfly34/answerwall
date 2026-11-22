@@ -1,6 +1,6 @@
 import { createEffect, Match, onCleanup, onMount, Show, Switch } from 'solid-js';
 import type { Component, ParentComponent } from 'solid-js';
-import { Route, Router, useLocation, useNavigate } from '@solidjs/router';
+import { HashRouter, Route, Router, useLocation, useNavigate } from '@solidjs/router';
 import { ROUTES } from '../contracts/routes.ts';
 import { ProvidersPage } from '../pages/providers/ProvidersPage.tsx';
 import { SettingsPage } from '../pages/settings/SettingsPage.tsx';
@@ -74,7 +74,10 @@ const Root: ParentComponent = (props) => {
 };
 
 export const App: Component = () => {
-  const { shell } = useShell();
+  const { shell, remote } = useShell();
+  // The extension's page is one file: its paths live in the fragment, so a
+  // reload never asks for a path that does not exist.
+  const Routes = remote ? HashRouter : Router;
 
   onMount(() => {
     void shell.start();
@@ -98,13 +101,13 @@ export const App: Component = () => {
   });
 
   return (
-    <Router root={Root}>
+    <Routes root={Root}>
       <Route path={ROUTES.signIn} component={SignInRoute} />
       <Route path={ROUTES.wall} component={whenReady(WallPage)} />
       <Route path={ROUTES.history} component={whenReady(HistoryPage)} />
       <Route path={ROUTES.providers} component={whenReady(ProvidersPage)} />
       <Route path={ROUTES.settings} component={whenReady(SettingsRoute)} />
       <Route path="*" component={whenReady(NotFoundPage)} />
-    </Router>
+    </Routes>
   );
 };

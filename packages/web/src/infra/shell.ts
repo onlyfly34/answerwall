@@ -47,6 +47,12 @@ export interface ShellDeps {
   asks: Pick<AskStreamStore, 'clear'>;
   updater: Updater;
   buildVersion: string;
+  /**
+   * `false` for a page that does not come from the server (the extension's
+   * wall page): it cannot be the server's own build, so only the protocol
+   * version must match. By default the build version must match too.
+   */
+  sameBuild?: boolean;
   setMeta(meta: Meta): void;
 }
 
@@ -62,7 +68,8 @@ export function createShell(deps: ShellDeps): Shell {
   let run = 0;
 
   const isStale = (meta: Meta): boolean =>
-    meta.apiVersion !== API_VERSION || meta.version !== deps.buildVersion;
+    meta.apiVersion !== API_VERSION ||
+    (deps.sameBuild !== false && meta.version !== deps.buildVersion);
 
   function fail(error: unknown): void {
     if (error instanceof ApiError && error.code === 'network') {

@@ -17,6 +17,8 @@ export const en = {
   'app.stale.title': 'The server now runs version {version}. Updating this page…',
   'app.stale.hint': 'If the page does not reload by itself, reload it here.',
   'app.stale.reload': 'Reload',
+  'app.stale.remote':
+    'This extension and the server speak different versions of the protocol. Update both to the same release, then try again.',
   'app.crash.title': 'This page stopped working',
   'app.crash.body':
     'Something went wrong while showing this page. Your asks keep running on the server.',
@@ -49,6 +51,8 @@ export const en = {
   'app.error.tooManyTargets': 'Too many cells in one ask: {detail}',
   'app.error.unknownProvider': 'A selected provider no longer exists.',
   'app.error.providerDisabled': 'A selected provider is disabled.',
+  'app.error.webClientRequired':
+    'A web cell can only be asked from the wall of the browser extension.',
   'app.error.unauthorized': 'This device is not signed in.',
   'app.error.invalidCode': 'That pairing code is wrong or has expired.',
   'app.error.forbidden': 'The server refused this request.',
@@ -262,6 +266,31 @@ export const en = {
   'app.settings.devices.codeExpires': 'Valid until {time}.',
   'app.settings.devices.thisDevice': 'This device',
   'app.settings.devices.signOut': 'Sign out',
+  'app.settings.webCells.title': 'Web cells',
+  'app.settings.webCells.intro':
+    "A web cell shows a site's own web app in the wall of the AnswerWall browser extension, in the browser where you are signed in to that site. Everything here is off until you switch it on. Other devices see only the stored answers.",
+  'app.settings.webCells.terms':
+    'The terms of these sites restrict automated access to their web apps, more explicitly than for their command-line tools. Read the terms of each site before you let the extension type or read for you. Nothing here is a statement about what those terms permit.',
+  'app.settings.webCells.enabled': 'Allow web cells',
+  'app.settings.webCells.enabledHelp':
+    'Off: the server accepts no web cell and refuses every browser extension.',
+  'app.settings.webCells.fillPrompt': 'Fill in the prompt',
+  'app.settings.webCells.fillPromptHelp':
+    'The extension types your prompt into the site and submits it. Off: you type it into each site yourself.',
+  'app.settings.webCells.readAnswer': 'Read the answer',
+  'app.settings.webCells.readAnswerHelp':
+    'The extension reads the finished answer from the page and stores it in the history of this server. Off: the sites are shown, and nothing of them is stored.',
+  'app.settings.webCells.extensions.title': 'Extensions that may connect',
+  'app.settings.webCells.extensions.help':
+    'Only an extension whose ID is listed here can connect to this server. The browser shows the ID on its extensions page.',
+  'app.settings.webCells.extensions.none': 'No extension may connect.',
+  'app.settings.webCells.extensions.label': 'Extension ID',
+  'app.settings.webCells.extensions.invalid': 'An extension ID is 32 letters from a to p.',
+  'app.settings.webCells.extensions.full': 'At most {max} extensions can be listed.',
+  'app.settings.webCells.extensions.remove': 'Remove {id}',
+  'app.settings.webCells.sites.title': 'Sites',
+  'app.settings.webCells.sites.help':
+    'The sites offered as web cells. How the extension finds the input and the answer on a site is checked by hand and can stop working when the site changes.',
   'app.settings.tls.title': 'Connection security',
   'app.settings.tls.auto':
     'The server encrypts connections with a certificate from its own private certificate authority. Each device must trust that authority once.',

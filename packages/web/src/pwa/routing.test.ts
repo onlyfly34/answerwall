@@ -29,7 +29,7 @@ const get = (path: string, mode = 'cors'): RoutedRequest => ({
 
 /** Every path of the protocol, with representative arguments. */
 const API_URLS = Object.values(API_PATHS).map((path) =>
-  typeof path === 'function' ? path('some-id', 3) : path,
+  typeof path === 'function' ? (path as (...parts: unknown[]) => string)('some-id', 3) : path,
 );
 
 describe('the API is never served or cached by the worker', () => {

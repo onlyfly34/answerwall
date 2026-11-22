@@ -4,7 +4,7 @@ import { applyStreamEvent, createDefaultSettings } from '../protocol/index.ts';
 import type {
   AskSnapshot,
   AskTarget,
-  ProviderKind,
+  ExecutedProviderKind,
   Settings,
   StreamEvent,
 } from '../protocol/index.ts';
@@ -129,7 +129,7 @@ export function createHarness(options: HarnessOptions = {}): Harness {
   const storage = options.storage ?? createFakeStorage();
   const logger = createMemoryLogger();
   const workDirs = createMemoryWorkDirs();
-  const scripted = (kind: ProviderKind): FakeProviderAdapter =>
+  const scripted = (kind: ExecutedProviderKind): FakeProviderAdapter =>
     new FakeProviderAdapter({
       kind,
       clock,

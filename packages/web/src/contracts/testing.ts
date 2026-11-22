@@ -143,6 +143,7 @@ function applySettingsPatch(current: Settings, patch: SettingsPatch): Settings {
         return { ...instance, hasApiKey: apiKey === undefined ? hadKey : apiKey !== null };
       }) ?? current.providers,
     limits: { ...current.limits, ...patch.limits },
+    webCells: { ...current.webCells, ...patch.webCells },
     layout: { ...current.layout, ...patch.layout },
     updateCheck: patch.updateCheck ?? current.updateCheck,
   });

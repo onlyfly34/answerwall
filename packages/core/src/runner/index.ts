@@ -1,7 +1,9 @@
 import { Buffer } from 'node:buffer';
+import { createHash } from 'node:crypto';
 import { AppError } from '../contracts/index.ts';
 import type {
   AskManager,
+  AuthContext,
   Clock,
   IdGenerator,
   Logger,
@@ -21,8 +23,11 @@ import type {
   ProviderInstance,
   Settings,
   StreamEvent,
+  WebResultRequest,
+  WebResultResponse,
 } from '../protocol/index.ts';
 import type { SlotEventBody } from './events.ts';
+import { utf8Prefix } from './provider-events.ts';
 import { LiveAsk } from './live-ask.ts';
 import { Scheduler } from './scheduler.ts';
 import type { Ticket } from './scheduler.ts';
@@ -82,11 +87,17 @@ interface Slot {
   admittedAt: number | undefined;
   /** Stops the provider and the timeout; set while the slot holds a permit. */
   halt: (() => void) | undefined;
+  /** A web slot: nothing runs here, the ask's owner submits its result. */
+  readonly web: boolean;
+  /** The result a web slot accepted, to recognise the same request sent again. */
+  webResult: { digest: string; response: WebResultResponse } | undefined;
 }
 
 interface Ask {
   readonly live: LiveAsk;
   readonly prompt: string;
+  /** Who created the ask; see {@link ownerKey}. Absent when the caller is unknown. */
+  readonly owner: string | undefined;
   readonly slots: Slot[];
   unfinished: number;
   /** Slots changed since the last save. */
@@ -97,6 +108,15 @@ interface Ask {
 }
 
 const noSuchAsk = (): AppError => new AppError('not_found', 'No such ask');
+
+/** One device, or the holder of the static token. */
+const ownerKey = (caller: AuthContext): string =>
+  caller.kind === 'device' ? `device:${caller.deviceId}` : 'static-token';
+
+/** Longest reason of a failed or cancelled web slot passed on, in characters. */
+const MAX_WEB_MESSAGE_CHARS = 500;
+
+const WEB_FAILURE_FALLBACK = 'The web cell reported a failure.';
 
 /**
  * A stored ask that claims to be unfinished although no run of this process
@@ -238,6 +258,26 @@ export function createAskManager(deps: AskManagerDeps): AskManager {
       return;
     }
     const { slotTimeoutMs, maxOutputBytesPerSlot } = settings().limits;
+    if (slot.web) {
+      // Nothing to run: the slot is running from now until its owner submits
+      // the result, someone cancels it, or the timeout ends it. It keeps its
+      // permit for that time, so the instance's concurrency bounds the frames
+      // of one site that are answering at once.
+      await new Promise<void>((resolve) => {
+        const startedAt = clock.now();
+        slot.admittedAt = startedAt;
+        const cancelTimeout = clock.schedule(slotTimeoutMs, () =>
+          finish(ask, slot, { type: 'timeout' }),
+        );
+        slot.halt = () => {
+          cancelTimeout();
+          resolve();
+        };
+        emit(ask, slot, { type: 'start', at: startedAt, streaming: 'block' });
+      });
+      return;
+    }
+    if (instance.kind === 'web') throw new Error('a web provider behind a slot that is not one');
     const abort = new AbortController();
     slot.admittedAt = clock.now();
     const cancelTimeout = clock.schedule(slotTimeoutMs, () =>
@@ -293,9 +333,12 @@ export function createAskManager(deps: AskManagerDeps): AskManager {
 
   // ---- submission ----
 
-  const accept = async (request: AskRequest): Promise<AskResponse> => {
+  const accept = async (
+    request: AskRequest,
+    owner: AuthContext | undefined,
+  ): Promise<AskResponse> => {
     if (stopped) throw new AppError('conflict', 'The server is shutting down');
-    const { limits } = settings();
+    const { limits, webCells } = settings();
     if (request.targets.length > limits.maxTargetsPerAsk) {
       throw new AppError(
         'too_many_targets',
@@ -316,6 +359,25 @@ export function createAskManager(deps: AskManagerDeps): AskManager {
       if (!instance) throw new AppError('unknown_provider', `No provider "${target.providerId}"`);
       if (!instance.enabled) {
         throw new AppError('provider_disabled', `Provider "${target.providerId}" is disabled`);
+      }
+      if (instance.kind === 'web') {
+        if (!webCells.enabled) {
+          throw new AppError('provider_disabled', 'Web cells are switched off');
+        }
+        if (!webCells.readAnswer) {
+          throw new AppError(
+            'provider_disabled',
+            'Reading answers from web cells is switched off, so there would be nothing to store',
+          );
+        }
+        if (request.runsWebSlots !== true || owner === undefined) {
+          throw new AppError(
+            'web_client_required',
+            `"${target.providerId}" is a web cell: only a client that shows it can ask it`,
+          );
+        }
+        // A site's own page picks its model; nothing a target says could change it.
+        return { slotId: target.slotId, providerId: target.providerId, kind: instance.kind };
       }
       const model = target.model ?? instance.defaultModel;
       return {
@@ -373,16 +435,19 @@ export function createAskManager(deps: AskManagerDeps): AskManager {
         maxChars: tuning.logMaxChars,
       }),
       prompt: request.prompt,
+      owner: owner && ownerKey(owner),
       slots: targets.map((target, index) => ({
         slotId: target.slotId,
         providerId: target.providerId,
         index,
-        model: target.model,
-        effort: target.effort,
+        model: 'model' in target ? target.model : undefined,
+        effort: 'effort' in target ? target.effort : undefined,
         ticket: undefined,
         finished: false,
         admittedAt: undefined,
         halt: undefined,
+        web: target.kind === 'web',
+        webResult: undefined,
       })),
       unfinished: targets.length,
       dirty: new Set(),
@@ -397,6 +462,82 @@ export function createAskManager(deps: AskManagerDeps): AskManager {
     for (const slot of ask.slots) if (slot.ticket?.waiting) emit(ask, slot, { type: 'queued' });
     logger.info('ask accepted', { askId: snapshot.askId, slots: ask.slots.length });
     return { askId: snapshot.askId };
+  };
+
+  // ---- web slots ----
+
+  const acceptWebResult = (ask: Ask, slot: Slot, result: WebResultRequest): WebResultResponse => {
+    if (result.outcome === 'failed') {
+      finish(ask, slot, {
+        type: 'error',
+        code: result.code,
+        message: (result.message || WEB_FAILURE_FALLBACK).slice(0, MAX_WEB_MESSAGE_CHARS),
+      });
+      return { status: 'error', truncated: false };
+    }
+    if (result.outcome === 'cancelled') {
+      if (result.reason) {
+        emit(ask, slot, {
+          type: 'notice',
+          code: 'provider',
+          message: result.reason.slice(0, MAX_WEB_MESSAGE_CHARS),
+        });
+      }
+      finish(ask, slot, { type: 'cancelled' });
+      return { status: 'cancelled', truncated: false };
+    }
+    const { maxOutputBytesPerSlot } = settings().limits;
+    const text = utf8Prefix(result.text, maxOutputBytesPerSlot);
+    const truncated = text.length < result.text.length;
+    if (text !== '') emit(ask, slot, { type: 'delta', text });
+    if (truncated) {
+      emit(ask, slot, {
+        type: 'notice',
+        code: 'output_truncated',
+        message: `The output exceeded ${maxOutputBytesPerSlot} bytes and was truncated.`,
+      });
+    }
+    finish(ask, slot, { type: 'done' });
+    return { status: 'done', truncated };
+  };
+
+  const submitWebResult = async (
+    askId: string,
+    slotId: string,
+    result: WebResultRequest,
+    caller: AuthContext,
+  ): Promise<WebResultResponse> => {
+    const ask = asks.get(askId);
+    if (!ask) {
+      // Known but no longer in memory: it finished long ago.
+      await stored(askId);
+      throw new AppError('conflict', 'This ask has finished');
+    }
+    const slot = ask.slots.find((candidate) => candidate.slotId === slotId);
+    if (!slot) throw new AppError('not_found', 'No such slot');
+    if (!slot.web) throw new AppError('bad_request', 'This slot is not a web cell');
+    if (ask.owner !== ownerKey(caller)) {
+      throw new AppError(
+        'forbidden',
+        'Only the client that created the ask can submit its results',
+      );
+    }
+    const digest = createHash('sha256').update(JSON.stringify(result)).digest('hex');
+    if (slot.webResult) {
+      if (slot.webResult.digest === digest) return slot.webResult.response;
+      throw new AppError('conflict', 'This slot already has another result');
+    }
+    if (slot.finished) throw new AppError('conflict', 'This slot has already ended');
+    if (slot.admittedAt === undefined) throw new AppError('conflict', 'This slot has not started');
+    if (result.outcome === 'done') {
+      const { webCells } = settings();
+      if (!webCells.enabled || !webCells.readAnswer) {
+        throw new AppError('forbidden', 'Reading answers from web cells is switched off');
+      }
+    }
+    const response = acceptWebResult(ask, slot, result);
+    slot.webResult = { digest, response };
+    return response;
   };
 
   const stored = async (askId: string): Promise<AskSnapshot> => {
@@ -434,11 +575,11 @@ export function createAskManager(deps: AskManagerDeps): AskManager {
       }
     },
 
-    submit(request) {
+    submit(request, owner) {
       // One at a time, so the limits are checked against what is really admitted.
       const result = submissions.then(
-        () => accept(request),
-        () => accept(request),
+        () => accept(request, owner),
+        () => accept(request, owner),
       );
       submissions = result;
       return result;
@@ -469,6 +610,8 @@ export function createAskManager(deps: AskManagerDeps): AskManager {
       for (const slot of open) finish(ask, slot, { type: 'cancelled' });
       return open.map((slot) => slot.slotId);
     },
+
+    submitWebResult,
 
     forget(askId) {
       const ask = asks.get(askId);

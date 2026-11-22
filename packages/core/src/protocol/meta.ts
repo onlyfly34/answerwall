@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 /** Bumped on any incompatible change to this protocol. */
-export const API_VERSION = 1;
+export const API_VERSION = 2;
 
 export const DeploymentModeSchema = z.enum(['server', 'desktop']);
 export type DeploymentMode = z.infer<typeof DeploymentModeSchema>;

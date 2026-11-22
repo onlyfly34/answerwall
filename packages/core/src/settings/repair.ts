@@ -6,14 +6,20 @@ import {
   createDefaultSettings,
   DEFAULT_LAYOUT,
   DEFAULT_LIMITS,
+  DEFAULT_WEB_CELLS,
+  ExtensionIdSchema,
   HttpUrlSchema,
   KINDS_REQUIRING_ACKNOWLEDGEMENT,
   LanguageSchema,
   LayoutSettingsSchema,
   LIMIT_SPECS,
+  MAX_EXTENSION_IDS,
   MAX_PROVIDER_INSTANCES,
   ModelIdSchema,
   OpenAiCompatInstanceSchema,
+  WEB_SITES,
+  webProviderId,
+  WebProviderInstanceSchema,
   webSearchSupport,
 } from '../protocol/index.ts';
 import type {
@@ -25,11 +31,14 @@ import type {
   OpenAiCompatInstance,
   ProviderKind,
   Settings,
+  WebCellsSettings,
+  WebProviderInstance,
 } from '../protocol/index.ts';
 import { withoutCredentials } from './base-url.ts';
 
 /** A provider as persisted: `hasApiKey` is derived from the secret store, never stored. */
-export type StoredProvider = CliProviderInstance | Omit<OpenAiCompatInstance, 'hasApiKey'>;
+export type StoredProvider =
+  CliProviderInstance | Omit<OpenAiCompatInstance, 'hasApiKey'> | WebProviderInstance;
 
 /** The settings document as persisted. */
 export type StoredSettings = Omit<Settings, 'providers'> & { providers: StoredProvider[] };
@@ -150,6 +159,43 @@ function repairEndpoint(fields: Fields): StoredProvider | null {
   };
 }
 
+/** A web provider is its site: without a known one it is dropped, and its id follows from it. */
+function repairWebProvider(fields: Fields): WebProviderInstance | null {
+  const shape = WebProviderInstanceSchema.shape;
+  const site = shape.site.safeParse(fields.site);
+  if (!site.success) return null;
+  const known = WEB_SITES.find((candidate) => candidate.id === site.data);
+  return {
+    id: webProviderId(site.data),
+    kind: 'web',
+    label: valid(shape.label, fields.label, known?.label ?? site.data),
+    enabled: valid(shape.enabled, fields.enabled, false),
+    concurrency: repairConcurrency('web', fields.concurrency),
+    models: [],
+    site: site.data,
+  };
+}
+
+/** Every switch that is not a stored `true` is off; ids that are not extension ids are dropped. */
+function repairWebCells(stored: unknown): WebCellsSettings {
+  const fields = isFields(stored) ? stored : {};
+  const ids = Array.isArray(fields.extensionIds) ? fields.extensionIds : [];
+  const extensionIds = [
+    ...new Set(
+      ids.flatMap((id) => {
+        const result = ExtensionIdSchema.safeParse(id);
+        return result.success ? [result.data] : [];
+      }),
+    ),
+  ].slice(0, MAX_EXTENSION_IDS);
+  return {
+    enabled: fields.enabled === true,
+    fillPrompt: fields.fillPrompt === true,
+    readAnswer: fields.readAnswer === true,
+    extensionIds: extensionIds.length > 0 ? extensionIds : [...DEFAULT_WEB_CELLS.extensionIds],
+  };
+}
+
 const cliKindOf = (value: unknown): CliProviderKind | undefined =>
   CLI_PROVIDER_KINDS.find((kind) => kind === value);
 
@@ -163,7 +209,9 @@ function repairProviders(stored: unknown): StoredProvider[] {
       ? repairCliProvider(cliKind, entry)
       : entry.kind === 'openai-compat'
         ? repairEndpoint(entry)
-        : null;
+        : entry.kind === 'web'
+          ? repairWebProvider(entry)
+          : null;
     if (provider && !providers.has(provider.id)) providers.set(provider.id, provider);
   }
   // Every CLI provider always exists; one that is missing comes back with its defaults.
@@ -175,7 +223,7 @@ function repairProviders(stored: unknown): StoredProvider[] {
   if (surplus <= 0) return all;
   const dropped = new Set(
     all
-      .filter((provider) => provider.kind === 'openai-compat')
+      .filter((provider) => provider.kind === 'openai-compat' || provider.kind === 'web')
       .slice(-surplus)
       .map((provider) => provider.id),
   );
@@ -199,5 +247,6 @@ export function repairSettings(document: unknown): StoredSettings {
     layout: repairLayout(fields.layout),
     updateCheck:
       typeof fields.updateCheck === 'boolean' ? fields.updateCheck : defaults.updateCheck,
+    webCells: repairWebCells(fields.webCells),
   };
 }

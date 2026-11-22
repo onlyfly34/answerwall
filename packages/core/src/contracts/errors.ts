@@ -5,6 +5,7 @@ export const HTTP_STATUS: Record<ApiErrorCode, number> = {
   too_many_targets: 400,
   unknown_provider: 400,
   provider_disabled: 400,
+  web_client_required: 400,
   unauthorized: 401,
   invalid_code: 401,
   forbidden: 403,

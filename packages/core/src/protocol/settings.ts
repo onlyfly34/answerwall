@@ -9,6 +9,7 @@ import {
   ProviderInstanceSchema,
 } from './providers.ts';
 import type { CliProviderInstance, CliProviderKind } from './providers.ts';
+import { DEFAULT_WEB_CELLS, WebCellsPatchSchema, WebCellsSettingsSchema } from './web.ts';
 
 export const LANGUAGES = ['en', 'zh-TW'] as const;
 export const LanguageSchema = z.enum(LANGUAGES);
@@ -35,6 +36,8 @@ export const SettingsSchema = z.object({
   layout: LayoutSettingsSchema,
   /** The optional check for a newer release; the only third-party request the app can make. */
   updateCheck: z.boolean(),
+  /** Web cells through the browser extension; everything off by default. */
+  webCells: WebCellsSettingsSchema,
 });
 export type Settings = z.infer<typeof SettingsSchema>;
 
@@ -42,7 +45,7 @@ export type Settings = z.infer<typeof SettingsSchema>;
  * Body of `PUT /api/settings`. Omitted fields are unchanged. `providers`
  * replaces the whole list: it must still contain every CLI provider, and an
  * OpenAI-compatible endpoint missing from it is removed together with its
- * stored key. `limits` and `layout` are merged field by field.
+ * stored key. `limits`, `layout` and `webCells` are merged field by field.
  */
 export const SettingsPatchSchema = z.object({
   language: LanguageSchema.optional(),
@@ -55,6 +58,7 @@ export const SettingsPatchSchema = z.object({
   limits: LimitsPatchSchema.optional(),
   layout: LayoutPatchSchema.optional(),
   updateCheck: z.boolean().optional(),
+  webCells: WebCellsPatchSchema.optional(),
 });
 export type SettingsPatch = z.infer<typeof SettingsPatchSchema>;
 
@@ -107,5 +111,6 @@ export function createDefaultSettings(): Settings {
     limits: { ...DEFAULT_LIMITS },
     layout: { ...DEFAULT_LAYOUT },
     updateCheck: true,
+    webCells: { ...DEFAULT_WEB_CELLS, extensionIds: [] },
   };
 }

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { LANGUAGES, PROVIDER_KINDS } from '@answerwall/core/protocol';
+import { LANGUAGES, EXECUTED_PROVIDER_KINDS } from '@answerwall/core/protocol';
 import { createI18n } from '../../contracts/i18n.ts';
 import { MESSAGES } from '../../contracts/messages.ts';
 import { LANGUAGE_NAMES } from '../../pages/language-names.ts';
@@ -65,7 +65,10 @@ describe('the app dictionary', () => {
 
   test('the keys built at run time exist for every value', () => {
     const keys = Object.keys(en);
-    for (const kind of PROVIDER_KINDS) expect(keys).toContain(`app.providers.kind.${kind}`);
+    // A web provider has no card on the providers page; it is part of the web cells settings.
+    for (const kind of EXECUTED_PROVIDER_KINDS) {
+      expect(keys).toContain(`app.providers.kind.${kind}`);
+    }
     for (const { name, unit } of LIMIT_FIELDS) {
       expect(keys).toContain(`app.settings.limits.${name}`);
       expect(keys).toContain(`app.settings.unit.${unit}`);

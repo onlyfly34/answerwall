@@ -175,7 +175,7 @@ export function createSettingsService(deps: SettingsServiceDeps): SettingsServic
   const apply = async (patch: SettingsPatch): Promise<Settings> => {
     const request = SettingsPatchSchema.safeParse(patch);
     if (!request.success) throw new AppError('bad_request', describeIssue(request.error));
-    const { language, providers, limits, layout, updateCheck } = request.data;
+    const { language, providers, limits, layout, updateCheck, webCells } = request.data;
     const refused = providers && addressIssue(providers);
     if (refused) throw new AppError('bad_request', refused);
 
@@ -186,6 +186,7 @@ export function createSettingsService(deps: SettingsServiceDeps): SettingsServic
         limits: { ...stored.limits, ...defined(limits) },
         layout: { ...stored.layout, ...defined(layout) },
         updateCheck: updateCheck ?? stored.updateCheck,
+        webCells: { ...stored.webCells, ...defined(webCells) },
       }),
     );
     if (!merged.success) throw new AppError('bad_request', describeIssue(merged.error));

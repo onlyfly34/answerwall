@@ -30,7 +30,11 @@ export const ProvidersPage: Component = () => {
   const [removing, setRemoving] = createSignal<ProviderInstance>();
 
   const instances = (): ProviderInstance[] => settings.settings()?.providers ?? [];
-  const find = (id: string) => instances().find((instance) => instance.id === id);
+  const find = (id: string) => {
+    const instance = instances().find((candidate) => candidate.id === id);
+    // Web providers have no card here: they are part of the web cells settings.
+    return instance?.kind === 'web' ? undefined : instance;
+  };
   // Cards are keyed by id, so saving one does not rebuild (and unfocus) the others.
   const cliIds = createMemo(() =>
     instances()
@@ -39,7 +43,7 @@ export const ProvidersPage: Component = () => {
   );
   const endpointIds = createMemo(() =>
     instances()
-      .filter((instance) => !isCliKind(instance.kind))
+      .filter((instance) => instance.kind === 'openai-compat')
       .map((instance) => instance.id),
   );
   const statusOf = (id: string) =>

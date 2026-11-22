@@ -7,8 +7,15 @@ import {
   SSE_PING_INTERVAL_MS,
   SSE_RESUME_HEADER,
   StreamQuerySchema,
+  WebResultRequestSchema,
 } from '../protocol/index.ts';
-import type { AskResponse, AskSnapshot, CancelResponse, StreamEvent } from '../protocol/index.ts';
+import type {
+  AskResponse,
+  AskSnapshot,
+  CancelResponse,
+  StreamEvent,
+  WebResultResponse,
+} from '../protocol/index.ts';
 import { parse, readJson } from './shared.ts';
 
 export function formatSseEvent(event: StreamEvent): string {
@@ -33,7 +40,7 @@ export function askRoutes({
 
   routes.post('/', async (c) => {
     const request = await readJson(c, AskRequestSchema);
-    return c.json((await asks.submit(request)) satisfies AskResponse);
+    return c.json((await asks.submit(request, c.var.auth)) satisfies AskResponse);
   });
 
   routes.get('/:askId', async (c) =>
@@ -93,6 +100,18 @@ export function askRoutes({
     const { slotId } = await readJson(c, CancelRequestSchema);
     const cancelled = await asks.cancel(c.req.param('askId'), slotId);
     return c.json({ cancelled } satisfies CancelResponse);
+  });
+
+  // The one result of a web slot, from the client that created the ask.
+  routes.post('/:askId/slots/:slotId/result', async (c) => {
+    const result = await readJson(c, WebResultRequestSchema);
+    const response = await asks.submitWebResult(
+      c.req.param('askId'),
+      c.req.param('slotId'),
+      result,
+      c.var.auth,
+    );
+    return c.json(response satisfies WebResultResponse);
   });
 
   return routes;

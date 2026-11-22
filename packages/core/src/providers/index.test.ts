@@ -3,7 +3,7 @@ import {
   CLI_PROVIDER_KINDS,
   createDefaultSettings,
   LOGIN_COMMANDS,
-  PROVIDER_KINDS,
+  EXECUTED_PROVIDER_KINDS,
 } from '../protocol/index.ts';
 import { systemClock } from '../system.ts';
 import { createFakeSecretStore, createFakeSettingsService } from '../testing/index.ts';
@@ -28,7 +28,9 @@ describe('createProviderRegistry', () => {
     harness = await createMockCliHarness();
     const registry = build();
 
-    expect(PROVIDER_KINDS.map((kind) => registry.adapter(kind).kind)).toEqual([...PROVIDER_KINDS]);
+    expect(EXECUTED_PROVIDER_KINDS.map((kind) => registry.adapter(kind).kind)).toEqual([
+      ...EXECUTED_PROVIDER_KINDS,
+    ]);
     await registry.shutdown();
   });
 

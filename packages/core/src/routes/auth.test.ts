@@ -156,6 +156,73 @@ describe('POST /api/auth/pair', () => {
   });
 });
 
+describe('an allowed browser extension', () => {
+  /** What the origin guard sets for the page of an extension on the allowlist. */
+  function extensionApp(): TestApp {
+    const open = createOpenHttpLayer(createMemoryLogger());
+    const originGuard: AppMiddleware = (c, next) => {
+      c.set('extensionOrigin', 'chrome-extension://abcdefghijklmnopabcdefghijklmnop');
+      return next();
+    };
+    return createTestApp({ http: { ...open, originGuard } });
+  }
+  const send = (t: TestApp, method: string, path: string, body: unknown, token?: string) =>
+    t.app.request(path, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token === undefined ? {} : { Authorization: `Bearer ${token}` }),
+      },
+      body: JSON.stringify(body),
+    });
+
+  test('pairing answers with the token and sets no cookie', async () => {
+    const t = extensionApp();
+    const response = await send(t, 'POST', API_PATHS.authPair, {
+      code: TEST_PAIRING_CODE,
+      deviceName: 'Browser extension',
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Set-Cookie')).toBeNull();
+    // The fake service's tokens are shorter than real ones, so the body is read as it is.
+    const body = (await response.json()) as { device: { id: string }; token: string };
+    expect(body.device).toMatchObject({ name: 'Browser extension', current: true });
+    expect(await t.deps.auth.authenticate(body.token)).toEqual({
+      kind: 'device',
+      deviceId: body.device.id,
+    });
+  });
+
+  test('the token then works as a bearer token, and signing out revokes it', async () => {
+    const t = extensionApp();
+    const paired = await send(t, 'POST', API_PATHS.authPair, {
+      code: TEST_PAIRING_CODE,
+      deviceName: 'Browser extension',
+    });
+    const { token } = (await paired.json()) as { token: string };
+
+    const devices = await t.app.request(API_PATHS.authDevices, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(devices.status).toBe(200);
+
+    const out = await send(t, 'POST', API_PATHS.authLogout, {}, token);
+    expect(out.status).toBe(200);
+    expect(out.headers.get('Set-Cookie')).toBeNull();
+    expect(await t.deps.auth.authenticate(token)).toBeNull();
+  });
+
+  test('checking a token it already holds sets no cookie and does not echo the token', async () => {
+    const t = extensionApp();
+    const response = await send(t, 'POST', API_PATHS.authSession, { token: TEST_TOKEN });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Set-Cookie')).toBeNull();
+    expect(await response.json()).toEqual({ device: null });
+  });
+});
+
 describe('POST /api/auth/session', () => {
   test('trades a valid token for the session cookie', async () => {
     const response = await post(API_PATHS.authSession, { token: TEST_TOKEN });

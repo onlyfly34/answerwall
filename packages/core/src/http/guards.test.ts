@@ -308,6 +308,155 @@ describe('originGuard', () => {
     expect(devices.status).toBe(200);
   });
 
+  describe('the page of a browser extension', () => {
+    const ID = 'abcdefghijklmnopabcdefghijklmnop';
+    const OTHER_ID = 'ponmlkjihgfedcbaponmlkjihgfedcba';
+    const origin = (id: string) => ({ Origin: `chrome-extension://${id}` });
+
+    async function harnessWith(webCells: { enabled: boolean; extensionIds: string[] }) {
+      const harness = createLayerHarness();
+      await harness.settings.update({ webCells });
+      return harness;
+    }
+    const allowed = () => harnessWith({ enabled: true, extensionIds: [ID] });
+    const pairFrom = (
+      harness: Awaited<ReturnType<typeof allowed>>,
+      headers: Record<string, string>,
+    ) =>
+      harness.send(API_PATHS.authPair, {
+        method: 'POST',
+        body: pairBody,
+        headers: { ...json, ...headers },
+      });
+
+    test('is refused by default, on writes and on reads', async () => {
+      const harness = createLayerHarness();
+      expect((await pairFrom(harness, origin(ID))).status).toBe(403);
+      const read = await harness.send(API_PATHS.meta, { headers: origin(ID) });
+      expect(read.status).toBe(403);
+      expect((await errorOf(read)).code).toBe('forbidden');
+    });
+
+    test('passes when web cells are on and its id is on the allowlist', async () => {
+      const harness = await allowed();
+      const paired = await pairFrom(harness, origin(ID));
+      expect(paired.status).toBe(200);
+      expect((await harness.send(API_PATHS.meta, { headers: origin(ID) })).status).toBe(200);
+      const authed = await harness.send(API_PATHS.settings, {
+        headers: { ...origin(ID), Authorization: `Bearer ${TEST_TOKEN}` },
+      });
+      expect(authed.status).toBe(200);
+    });
+
+    test('is not answered with any CORS header, allowed or not', async () => {
+      const harness = await allowed();
+      for (const id of [ID, OTHER_ID]) {
+        const responses = [
+          await pairFrom(harness, origin(id)),
+          await harness.send(API_PATHS.meta, { headers: origin(id) }),
+          await harness.send(API_PATHS.authPair, {
+            method: 'OPTIONS',
+            headers: {
+              ...origin(id),
+              'Access-Control-Request-Method': 'POST',
+              'Access-Control-Request-Headers': 'authorization,content-type',
+            },
+          }),
+        ];
+        for (const response of responses) {
+          const names = [...response.headers.keys()].filter((name) =>
+            name.toLowerCase().startsWith('access-control-'),
+          );
+          expect(names).toEqual([]);
+        }
+      }
+    });
+
+    test('another extension is refused while one is allowed', async () => {
+      const harness = await allowed();
+      expect((await pairFrom(harness, origin(OTHER_ID))).status).toBe(403);
+      expect((await harness.send(API_PATHS.meta, { headers: origin(OTHER_ID) })).status).toBe(403);
+    });
+
+    test('the allowlist means nothing while web cells are off', async () => {
+      const harness = await harnessWith({ enabled: false, extensionIds: [ID] });
+      expect((await pairFrom(harness, origin(ID))).status).toBe(403);
+    });
+
+    test('a change of the settings takes effect on the next request', async () => {
+      const harness = await allowed();
+      expect((await pairFrom(harness, origin(ID))).status).toBe(200);
+      await harness.settings.update({ webCells: { extensionIds: [] } });
+      expect((await pairFrom(harness, origin(ID))).status).toBe(403);
+    });
+
+    test.each([
+      ['an id with a path', `chrome-extension://${ID}/`],
+      ['an id as a subdomain of something else', `chrome-extension://${ID}.evil.example`],
+      ['the id under a web scheme', `https://${ID}`],
+      ['an extension of another browser family', `moz-extension://${ID}`],
+      ['an upper-case id', `chrome-extension://${ID.toUpperCase()}`],
+    ])('%s does not match the allowlist', async (_label, value) => {
+      const harness = await allowed();
+      expect((await pairFrom(harness, { Origin: value })).status).toBe(403);
+    });
+
+    test('never together with the session cookie, not even when allowed', async () => {
+      const harness = await allowed();
+      const browser = await harness.send(API_PATHS.authPair, {
+        method: 'POST',
+        headers: { ...json, Origin: 'http://localhost' },
+        body: pairBody,
+      });
+      const cookie = (browser.headers.get('Set-Cookie') ?? '').split(';')[0] ?? '';
+      expect(cookie).toContain(BRAND.sessionCookie);
+
+      const read = await harness.send(API_PATHS.authDevices, {
+        headers: { ...origin(ID), Cookie: cookie },
+      });
+      expect(read.status).toBe(403);
+      const write = await harness.send(API_PATHS.authLogout, {
+        method: 'POST',
+        headers: { ...json, ...origin(ID), Cookie: cookie },
+        body: '{}',
+      });
+      expect(write.status).toBe(403);
+      // The cookie's session is untouched.
+      const own = await harness.send(API_PATHS.authDevices, { headers: { Cookie: cookie } });
+      expect(own.status).toBe(200);
+    });
+
+    test('still needs a JSON body on writes and a credential on protected routes', async () => {
+      const harness = await allowed();
+      const form = await harness.send(API_PATHS.authPair, {
+        method: 'POST',
+        headers: { ...origin(ID), 'Content-Type': 'text/plain' },
+        body: pairBody,
+      });
+      expect(form.status).toBe(415);
+      const anonymous = await harness.send(API_PATHS.settings, { headers: origin(ID) });
+      expect(anonymous.status).toBe(401);
+    });
+
+    test('the same-origin browser path is unchanged by an allowlist', async () => {
+      const harness = await allowed();
+      const sameOrigin = await harness.send(API_PATHS.authPair, {
+        method: 'POST',
+        headers: { ...json, Host: 'localhost:7717', Origin: 'http://localhost:7717' },
+        body: pairBody,
+      });
+      expect(sameOrigin.status).toBe(200);
+      expect(sameOrigin.headers.get('Set-Cookie')).toContain(BRAND.sessionCookie);
+      expect(await sameOrigin.json()).not.toHaveProperty('token');
+      const crossSite = await harness.send(API_PATHS.authPair, {
+        method: 'POST',
+        headers: { ...json, Host: 'localhost:7717', Origin: 'https://evil.example' },
+        body: pairBody,
+      });
+      expect(crossSite.status).toBe(403);
+    });
+  });
+
   describe('without an Origin header', () => {
     const bearer = { Authorization: `Bearer ${TEST_TOKEN}` };
     const cookie = { Cookie: `${BRAND.sessionCookie}=${TEST_TOKEN}` };

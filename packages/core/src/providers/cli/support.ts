@@ -17,7 +17,7 @@ export function cliSwitches(instance: ProviderInstance): {
   riskAcknowledged: boolean;
   webSearch: boolean;
 } {
-  return instance.kind === 'openai-compat'
+  return instance.kind === 'openai-compat' || instance.kind === 'web'
     ? { useEnvApiKey: false, riskAcknowledged: false, webSearch: false }
     : {
         useEnvApiKey: instance.useEnvApiKey,

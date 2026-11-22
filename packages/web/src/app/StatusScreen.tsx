@@ -6,7 +6,7 @@ import { useShell } from './shell-context.ts';
 
 /** The whole page while there is nothing to mount: starting, unreachable, being updated, or failed. */
 export const StatusScreen: Component = () => {
-  const { shell, meta, i18n } = useShell();
+  const { shell, meta, i18n, remote } = useShell();
   const t = i18n.t;
 
   return (
@@ -21,6 +21,12 @@ export const StatusScreen: Component = () => {
           <p class="app-muted">
             {navigator.onLine ? t('app.unreachableHint') : t('app.notice.offline')}
           </p>
+          <button type="button" class="app-button is-primary" onClick={() => void shell.start()}>
+            {t('app.retry')}
+          </button>
+        </Match>
+        <Match when={shell.phase() === 'stale' && remote}>
+          <p role="alert">{t('app.stale.remote')}</p>
           <button type="button" class="app-button is-primary" onClick={() => void shell.start()}>
             {t('app.retry')}
           </button>

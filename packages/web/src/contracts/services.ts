@@ -27,6 +27,8 @@ import type {
   Settings,
   SettingsPatch,
   SettingsResponse,
+  WebResultRequest,
+  WebResultResponse,
 } from '@answerwall/core/protocol';
 import type { MessageKey } from './messages.ts';
 
@@ -61,6 +63,17 @@ export interface ApiClient {
   ask(request: AskRequest): Promise<AskResponse>;
   getAsk(askId: string): Promise<AskSnapshot>;
   cancelAsk(askId: string, slotId?: string): Promise<CancelResponse>;
+  /**
+   * The one result of a web slot of an ask this client created with
+   * `runsWebSlots`. The same result may be sent again after a lost answer;
+   * `conflict` means the slot ended some other way (cancelled elsewhere,
+   * timed out) or already has another result.
+   */
+  submitWebResult(
+    askId: string,
+    slotId: string,
+    result: WebResultRequest,
+  ): Promise<WebResultResponse>;
   listPresets(): Promise<Preset[]>;
   savePreset(presetId: string, input: PresetInput): Promise<Preset>;
   deletePreset(presetId: string): Promise<void>;

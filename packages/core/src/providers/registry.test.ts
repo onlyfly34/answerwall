@@ -3,14 +3,14 @@ import { AppError } from '../contracts/index.ts';
 import type { ProviderAdapter } from '../contracts/index.ts';
 import {
   createDefaultSettings,
-  PROVIDER_KINDS,
+  EXECUTED_PROVIDER_KINDS,
   ProvidersResponseSchema,
 } from '../protocol/index.ts';
 import type {
   ModelInfo,
   ProviderDetection,
   ProviderInstance,
-  ProviderKind,
+  ExecutedProviderKind,
   Settings,
 } from '../protocol/index.ts';
 import {
@@ -41,9 +41,11 @@ function settingsWith(change: (settings: Settings) => void = () => undefined): S
   return settings;
 }
 
-const cli = (settings: Settings, kind: ProviderKind) => {
+const cli = (settings: Settings, kind: ExecutedProviderKind) => {
   const instance = settings.providers.find((candidate) => candidate.kind === kind);
-  if (instance === undefined || instance.kind === 'openai-compat') throw new Error('no such CLI');
+  if (instance === undefined || instance.kind === 'openai-compat' || instance.kind === 'web') {
+    throw new Error('no such CLI');
+  }
   return instance;
 };
 
@@ -52,7 +54,7 @@ function setup(initial = settingsWith(), adapterOverrides: ProviderAdapter[] = [
   const logger = createMemoryLogger();
   const settings = createFakeSettingsService(initial);
   const fakes = new Map(
-    PROVIDER_KINDS.map((kind) => [
+    EXECUTED_PROVIDER_KINDS.map((kind) => [
       kind,
       new FakeProviderAdapter({
         kind,
@@ -62,12 +64,12 @@ function setup(initial = settingsWith(), adapterOverrides: ProviderAdapter[] = [
       }),
     ]),
   );
-  const adapters: ProviderAdapter[] = PROVIDER_KINDS.map(
+  const adapters: ProviderAdapter[] = EXECUTED_PROVIDER_KINDS.map(
     (kind) => adapterOverrides.find((adapter) => adapter.kind === kind) ?? fake(kind),
   );
   const shutdown = new AbortController();
   const registry = createRegistry({ settings, clock, logger, adapters, shutdown });
-  function fake(kind: ProviderKind): FakeProviderAdapter {
+  function fake(kind: ExecutedProviderKind): FakeProviderAdapter {
     const adapter = fakes.get(kind);
     if (!adapter) throw new Error('no fake');
     return adapter;
@@ -77,12 +79,12 @@ function setup(initial = settingsWith(), adapterOverrides: ProviderAdapter[] = [
     if (!found) throw new Error(`no status for ${id}`);
     return found;
   };
-  const detectCalls = () => PROVIDER_KINDS.map((kind) => fake(kind).detectCalls);
+  const detectCalls = () => EXECUTED_PROVIDER_KINDS.map((kind) => fake(kind).detectCalls);
   return { clock, logger, settings, registry, shutdown, fake, status, detectCalls };
 }
 
 /** An adapter whose detection and model listing the test resolves by hand. */
-function manualAdapter(kind: ProviderKind) {
+function manualAdapter(kind: ExecutedProviderKind) {
   const detections: ((detection: ProviderDetection) => void)[] = [];
   const adapter: ProviderAdapter = {
     kind,
@@ -412,10 +414,45 @@ describe('provider registry', () => {
     expect(t.status('local').detection).toBeNull();
   });
 
+  test('a web provider is listed without detection and is never refreshed', async () => {
+    const t = setup(
+      settingsWith((settings) => {
+        settings.providers.push({
+          id: 'web-claude',
+          kind: 'web',
+          site: 'claude',
+          label: 'Claude (web)',
+          enabled: true,
+          concurrency: 2,
+          models: [],
+        });
+      }),
+    );
+    const before = t.detectCalls();
+
+    await t.registry.refresh('web-claude');
+    const all = await t.registry.refresh();
+
+    expect(ProvidersResponseSchema.safeParse({ providers: all }).success).toBe(true);
+    expect(t.status('web-claude')).toEqual({
+      instance: expect.objectContaining({ id: 'web-claude', kind: 'web' }) as unknown,
+      detection: null,
+      detectedAt: null,
+      detecting: false,
+      models: [],
+      toolAccess: 'unrestricted',
+      webSearch: 'none',
+    });
+    // Only the enabled providers the server runs itself were detected by the second refresh.
+    expect(t.detectCalls().some((calls, index) => calls > (before[index] ?? 0))).toBe(true);
+  });
+
   test('adapter returns the adapter of a kind', () => {
     const t = setup();
 
-    for (const kind of PROVIDER_KINDS) expect(t.registry.adapter(kind)).toBe(t.fake(kind));
+    for (const kind of EXECUTED_PROVIDER_KINDS) {
+      expect(t.registry.adapter(kind)).toBe(t.fake(kind));
+    }
   });
 
   test('shutdown aborts the shared signal, waits for running detections and discards their results', async () => {

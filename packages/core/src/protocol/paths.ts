@@ -18,6 +18,8 @@ export const API_PATHS = {
   askStream: (askId: string, after?: number) =>
     `/api/ask/${id(askId)}/stream${after === undefined ? '' : `?${SSE_RESUME_QUERY}=${after}`}`,
   askCancel: (askId: string) => `/api/ask/${id(askId)}/cancel`,
+  askSlotResult: (askId: string, slotId: string) =>
+    `/api/ask/${id(askId)}/slots/${id(slotId)}/result`,
   presets: '/api/presets',
   preset: (presetId: string) => `/api/presets/${id(presetId)}`,
   history: '/api/history',

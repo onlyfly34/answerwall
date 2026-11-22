@@ -47,6 +47,7 @@ export function createFakeSettingsService(
         limits: { ...current.limits, ...patch.limits },
         layout: { ...current.layout, ...patch.layout },
         updateCheck: patch.updateCheck ?? current.updateCheck,
+        webCells: { ...current.webCells, ...patch.webCells },
       });
       if (!merged.success) {
         throw new AppError('bad_request', merged.error.issues[0]?.message ?? 'Invalid settings');

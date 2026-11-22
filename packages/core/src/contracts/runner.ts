@@ -1,4 +1,12 @@
-import type { AskRequest, AskResponse, AskSnapshot, StreamEvent } from '../protocol/index.ts';
+import type {
+  AskRequest,
+  AskResponse,
+  AskSnapshot,
+  StreamEvent,
+  WebResultRequest,
+  WebResultResponse,
+} from '../protocol/index.ts';
+import type { AuthContext } from './auth.ts';
 
 export interface SubscribeOptions {
   /** Replay events with `seq` greater than this. Omitted: from the beginning. */
@@ -15,12 +23,39 @@ export interface AskManager {
   /**
    * Validates against the configured limits, persists the ask, queues every
    * slot and returns immediately.
+   *
+   * `owner` is who created the ask. Only the owner may submit the results of
+   * its web slots, so an ask with a web target needs one, needs
+   * `request.runsWebSlots`, and needs web cells and the reading of answers
+   * switched on.
    * @throws AppError `too_many_targets` | `prompt_too_long` | `too_many_asks` |
-   *   `queue_full` | `unknown_provider` | `provider_disabled` | `not_found`
-   *   (unknown conversationId) | `conflict` (the server is shutting down) |
-   *   `bad_request` (duplicate `slotId`, for callers that skip the schema)
+   *   `queue_full` | `unknown_provider` | `provider_disabled` (also: web
+   *   cells or the reading of answers are switched off) | `web_client_required` |
+   *   `not_found` (unknown conversationId) | `conflict` (the server is
+   *   shutting down) | `bad_request` (duplicate `slotId`, for callers that
+   *   skip the schema)
    */
-  submit(request: AskRequest): Promise<AskResponse>;
+  submit(request: AskRequest, owner?: AuthContext): Promise<AskResponse>;
+
+  /**
+   * The one result of a running web slot, from the owner of its ask. The
+   * slot gets its text (cut at the per-slot output limit, and flagged) and
+   * its terminal event like any other slot.
+   *
+   * Sending the same result again answers the same way, so a client may
+   * retry a request whose answer it lost. Anything else about a slot that is
+   * no longer running is a `conflict`.
+   * @throws AppError `not_found` (ask or slot) | `bad_request` (not a web
+   *   slot) | `forbidden` (not the owner; or an answer while reading answers
+   *   is switched off) | `conflict` (queued, already terminal, or a different
+   *   result than the one accepted)
+   */
+  submitWebResult(
+    askId: string,
+    slotId: string,
+    result: WebResultRequest,
+    caller: AuthContext,
+  ): Promise<WebResultResponse>;
 
   /**
    * Current status and accumulated text per slot; falls back to storage for

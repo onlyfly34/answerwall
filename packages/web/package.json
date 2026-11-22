@@ -5,6 +5,9 @@
   "license": "MIT",
   "type": "module",
   "exports": {
+    "./embed": {
+      "answerwall-source": "./src/embed.tsx"
+    },
     "./package.json": "./package.json"
   },
   "files": [

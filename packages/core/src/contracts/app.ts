@@ -37,6 +37,13 @@ export interface AppEnv {
      * credential never sets it. `HttpLayer.authRateLimit` counts it.
      */
     authFailure?: boolean;
+    /**
+     * Set by `HttpLayer.originGuard` when the request's `Origin` is a browser
+     * extension on the allowlist (`chrome-extension://<id>`). Such a client
+     * never gets or uses the session cookie: the auth routes hand it its
+     * token in the response body instead.
+     */
+    extensionOrigin?: string;
   };
 }
 
@@ -71,6 +78,12 @@ export interface HttpLayer {
    *
    * So browsers, and anything calling the public auth routes without a
    * bearer token, must send `Origin`.
+   *
+   * A request of any method whose `Origin` is a browser extension passes
+   * only when web cells are switched on, the extension's id is on the
+   * allowlist in the settings, and it carries no session cookie; the guard
+   * then sets `extensionOrigin`. (Chromium sends that header on writes and
+   * not on a `GET`.)
    */
   originGuard: AppMiddleware;
   /**

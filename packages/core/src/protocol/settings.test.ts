@@ -136,6 +136,7 @@ describe('provider instances', () => {
       'unconfirmed',
       'unconfirmed',
       'none',
+      'none',
     ]);
   });
 

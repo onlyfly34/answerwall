@@ -13,11 +13,12 @@ import {
   webSearchSupport,
 } from '../protocol/index.ts';
 import type {
+  ExecutedProviderKind,
   ModelInfo,
   ProviderDetection,
   ProviderInstance,
-  ProviderKind,
   ProviderStatus,
+  WebProviderInstance,
 } from '../protocol/index.ts';
 
 export interface RegistryParts {
@@ -45,8 +46,26 @@ const DETECTION_FAILED: ProviderDetection = {
   hint: 'Detection failed unexpectedly.',
 };
 
+type ExecutedInstance = Exclude<ProviderInstance, WebProviderInstance>;
+
+/** Nothing on this machine belongs to a web provider: there is nothing to detect or to list. */
+function webStatus(instance: WebProviderInstance): ProviderStatus {
+  return {
+    instance,
+    detection: null,
+    detectedAt: null,
+    detecting: false,
+    models: [],
+    toolAccess: 'unrestricted',
+    webSearch: webSearchSupport(instance.kind),
+  };
+}
+
+const isExecuted = (instance: ProviderInstance): instance is ExecutedInstance =>
+  instance.kind !== 'web';
+
 /** The settings that change what detection would find. */
-function fingerprintOf(instance: ProviderInstance): string {
+function fingerprintOf(instance: ExecutedInstance): string {
   return JSON.stringify(
     instance.kind === 'openai-compat'
       ? [instance.kind, instance.baseUrl, instance.hasApiKey]
@@ -55,7 +74,7 @@ function fingerprintOf(instance: ProviderInstance): string {
 }
 
 /** A provider behind a vendor notice is never started, not even for detection, before the user accepted it. */
-function awaitsAcknowledgement(instance: ProviderInstance): boolean {
+function awaitsAcknowledgement(instance: ExecutedInstance): boolean {
   return (
     KINDS_REQUIRING_ACKNOWLEDGEMENT.includes(instance.kind) &&
     !(instance.kind !== 'openai-compat' && instance.riskAcknowledged)
@@ -76,13 +95,13 @@ function mergeModels(instance: ProviderInstance, listed: ModelInfo[]): ModelInfo
  */
 export function createRegistry(parts: RegistryParts): ProviderRegistry {
   const { settings, clock, logger } = parts;
-  const adapters = new Map<ProviderKind, ProviderAdapter>(
+  const adapters = new Map<ExecutedProviderKind, ProviderAdapter>(
     parts.adapters.map((adapter) => [adapter.kind, adapter]),
   );
   const cache = new Map<string, CacheEntry>();
   const inFlight = new Map<string, Promise<void>>();
 
-  const adapterOf = (kind: ProviderKind): ProviderAdapter => {
+  const adapterOf = (kind: ExecutedProviderKind): ProviderAdapter => {
     const adapter = adapters.get(kind);
     if (!adapter) throw new Error(`no adapter for ${kind}`);
     return adapter;
@@ -94,6 +113,7 @@ export function createRegistry(parts: RegistryParts): ProviderRegistry {
       if (!instances.some((instance) => instance.id === id)) cache.delete(id);
     }
     return instances.map((instance) => {
+      if (!isExecuted(instance)) return webStatus(instance);
       const adapter = adapterOf(instance.kind);
       const cached = cache.get(instance.id);
       const current = cached?.fingerprint === fingerprintOf(instance) ? cached : undefined;
@@ -110,7 +130,7 @@ export function createRegistry(parts: RegistryParts): ProviderRegistry {
     });
   };
 
-  const detect = async (instance: ProviderInstance): Promise<void> => {
+  const detect = async (instance: ExecutedInstance): Promise<void> => {
     const adapter = adapterOf(instance.kind);
     let detection = DETECTION_FAILED;
     try {
@@ -151,7 +171,7 @@ export function createRegistry(parts: RegistryParts): ProviderRegistry {
   };
 
   /** Concurrent refreshes of one instance share a single detection. */
-  const detectOnce = (instance: ProviderInstance): Promise<void> => {
+  const detectOnce = (instance: ExecutedInstance): Promise<void> => {
     const running = inFlight.get(instance.id);
     if (running) return running;
     const started = detect(instance).finally(() => inFlight.delete(instance.id));
@@ -173,7 +193,10 @@ export function createRegistry(parts: RegistryParts): ProviderRegistry {
       }
       if (!parts.shutdown.signal.aborted) {
         await Promise.all(
-          targets.filter((instance) => !awaitsAcknowledgement(instance)).map(detectOnce),
+          targets
+            .filter(isExecuted)
+            .filter((instance) => !awaitsAcknowledgement(instance))
+            .map(detectOnce),
         );
       }
       return list();

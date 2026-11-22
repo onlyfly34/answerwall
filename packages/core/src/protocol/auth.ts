@@ -36,9 +36,15 @@ export const DeviceSchema = z.object({
 });
 export type Device = z.infer<typeof DeviceSchema>;
 
-/** Response of pair and session. `device` is `null` for the static automation token. */
+/**
+ * Response of pair and session. `device` is `null` for the static automation
+ * token. `token` is present only in the answer to a pair request from an
+ * allowed browser extension, which keeps it and sends it as
+ * `Authorization: Bearer`; such a request sets no cookie.
+ */
 export const SessionResponseSchema = z.object({
   device: DeviceSchema.nullable(),
+  token: z.string().min(16).max(512).optional(),
 });
 export type SessionResponse = z.infer<typeof SessionResponseSchema>;
 

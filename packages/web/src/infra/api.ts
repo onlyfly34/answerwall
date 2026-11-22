@@ -15,6 +15,7 @@ import {
   ProvidersResponseSchema,
   SessionResponseSchema,
   SettingsResponseSchema,
+  WebResultResponseSchema,
 } from '@answerwall/core/protocol';
 import { ApiError } from '../contracts/services.ts';
 import type { ApiClient } from '../contracts/services.ts';
@@ -44,7 +45,11 @@ export async function readApiError(response: Response): Promise<ApiError> {
     : new ApiError('invalid_response', response.status, `HTTP ${response.status}`);
 }
 
-/** The API is same-origin; the session cookie travels on its own. */
+/**
+ * By default the API is same-origin and the session cookie travels on its
+ * own. A page on another origin passes the `fetch` of its `RemoteConnection`
+ * (`connection.ts`), which sends the device token instead.
+ */
 export function createApiClient(options: ApiClientOptions = {}): ApiClient {
   const fetch = options.fetch ?? defaultFetch;
 
@@ -108,6 +113,8 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     getAsk: (askId) => call(AskSnapshotSchema, 'GET', API_PATHS.askSnapshot(askId)),
     cancelAsk: (askId, slotId) =>
       call(CancelResponseSchema, 'POST', API_PATHS.askCancel(askId), { slotId }),
+    submitWebResult: (askId, slotId, result) =>
+      call(WebResultResponseSchema, 'POST', API_PATHS.askSlotResult(askId, slotId), result),
     listPresets: async () => (await call(PresetsResponseSchema, 'GET', API_PATHS.presets)).presets,
     savePreset: (presetId, input) => call(PresetSchema, 'PUT', API_PATHS.preset(presetId), input),
     deletePreset: (presetId) => ok('DELETE', API_PATHS.preset(presetId)),

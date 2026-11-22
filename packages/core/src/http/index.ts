@@ -38,7 +38,7 @@ export function createHttpLayer({ config, settings, clock, logger }: HttpLayerDe
     clientInfo: createClientInfo(isTrustedProxy),
     peerGuard: createPeerGuard(config, isTrustedProxy),
     hostGuard: createHostGuard(config.publicOrigins),
-    originGuard: createOriginGuard(config.publicOrigins),
+    originGuard: createOriginGuard(config.publicOrigins, () => settings.get().webCells),
     authRateLimit: createAuthRateLimit({
       limit: () => settings.get().limits.authFailuresPerMinute,
       limiter,

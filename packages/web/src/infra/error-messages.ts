@@ -9,6 +9,7 @@ const ERROR_KEYS: Record<ApiError['code'], MessageKey> = {
   too_many_targets: 'app.error.tooManyTargets',
   unknown_provider: 'app.error.unknownProvider',
   provider_disabled: 'app.error.providerDisabled',
+  web_client_required: 'app.error.webClientRequired',
   unauthorized: 'app.error.unauthorized',
   invalid_code: 'app.error.invalidCode',
   forbidden: 'app.error.forbidden',

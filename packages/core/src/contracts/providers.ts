@@ -1,9 +1,9 @@
 import type {
+  ExecutedProviderKind,
   ModelInfo,
   ProviderDetection,
   ProviderErrorCode,
   ProviderInstance,
-  ProviderKind,
   ProviderStatus,
   StreamingMode,
   ToolAccess,
@@ -56,7 +56,7 @@ export interface RunRequest {
  * `instance` argument. Implemented once per file under `providers/`.
  */
 export interface ProviderAdapter {
-  readonly kind: ProviderKind;
+  readonly kind: ExecutedProviderKind;
   readonly toolAccess: ToolAccess;
   /** The exact official login command shown to the user; absent for HTTP providers. */
   readonly loginCommand?: string;
@@ -80,16 +80,20 @@ export interface ProviderAdapter {
 }
 
 export interface ProviderRegistry {
-  /** The adapter of a kind; every `ProviderKind` has one. */
-  adapter(kind: ProviderKind): ProviderAdapter;
+  /**
+   * The adapter of a kind the server runs itself. `web` has none: its slots
+   * are run by the client that created the ask.
+   */
+  adapter(kind: ExecutedProviderKind): ProviderAdapter;
   /**
    * Status of every configured instance from the current settings and the
-   * detection cache. Never spawns anything.
+   * detection cache. Never spawns anything. A web instance is never
+   * detected: its `detection` stays `null`.
    */
   list(): ProviderStatus[];
   /**
    * Re-runs detect() and listModels() for one instance, or for every enabled
-   * instance, and returns the updated list.
+   * instance, and returns the updated list. Web instances are skipped.
    * @throws AppError `unknown_provider`
    */
   refresh(id?: string): Promise<ProviderStatus[]>;

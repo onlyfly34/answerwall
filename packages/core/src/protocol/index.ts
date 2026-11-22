@@ -7,6 +7,7 @@ export { BRAND } from '../brand.ts';
 export * from './common.ts';
 export * from './errors.ts';
 export * from './limits.ts';
+export * from './web.ts';
 export * from './providers.ts';
 export * from './ask.ts';
 export * from './stream.ts';

@@ -122,6 +122,13 @@ export default tseslint.config(
     languageOptions: { globals: globals.browser },
   },
   {
+    // The test extension of the web-cell tests: pages, a content script and a worker of a browser extension.
+    files: ['e2e/web-cells/extension/**', 'e2e/web-cells/embedded/**'],
+    languageOptions: {
+      globals: { ...globals.browser, ...globals.serviceworker, chrome: 'readonly' },
+    },
+  },
+  {
     // The desktop shell uses core as a package too.
     files: ['apps/desktop/src/**'],
     rules: restrictImports(coreSources),

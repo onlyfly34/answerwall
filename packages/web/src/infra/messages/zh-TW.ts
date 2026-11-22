@@ -17,6 +17,8 @@ export const zhTW: Record<keyof typeof en, string> = {
   'app.stale.title': '伺服器已更新為 {version} 版，正在更新此頁面…',
   'app.stale.hint': '如果頁面沒有自動重新載入，請按這裡重新載入。',
   'app.stale.reload': '重新載入',
+  'app.stale.remote':
+    '這個擴充功能與伺服器使用的通訊協定版本不同。請把兩者更新到同一個發行版本，然後再試一次。',
   'app.crash.title': '此頁面發生錯誤',
   'app.crash.body': '顯示此頁面時發生問題。你送出的提問仍在伺服器上繼續執行。',
   'app.notFound.title': '找不到頁面',
@@ -47,6 +49,7 @@ export const zhTW: Record<keyof typeof en, string> = {
   'app.error.tooManyTargets': '單次提問的格子太多：{detail}',
   'app.error.unknownProvider': '所選的供應商已不存在。',
   'app.error.providerDisabled': '所選的供應商已停用。',
+  'app.error.webClientRequired': '網頁儲存格只能從瀏覽器擴充功能的牆面提問。',
   'app.error.unauthorized': '這台裝置尚未登入。',
   'app.error.invalidCode': '配對碼錯誤或已過期。',
   'app.error.forbidden': '伺服器拒絕了這個請求。',
@@ -251,6 +254,31 @@ export const zhTW: Record<keyof typeof en, string> = {
   'app.settings.devices.codeExpires': '有效至 {time}。',
   'app.settings.devices.thisDevice': '這台裝置',
   'app.settings.devices.signOut': '登出',
+  'app.settings.webCells.title': '網頁儲存格',
+  'app.settings.webCells.intro':
+    '網頁儲存格會在 AnswerWall 瀏覽器擴充功能的牆面中，顯示該網站自己的網頁應用程式，使用的是你已登入該網站的瀏覽器。這裡的每一項在你開啟之前都是關閉的。其他裝置只會看到已儲存的回答。',
+  'app.settings.webCells.terms':
+    '這些網站的條款對自動化存取其網頁應用程式的限制，比對命令列工具的限制寫得更明確。在讓擴充功能替你輸入或讀取之前，請先閱讀各網站的條款。這裡的任何內容都不是對這些條款准許什麼的說明。',
+  'app.settings.webCells.enabled': '允許網頁儲存格',
+  'app.settings.webCells.enabledHelp':
+    '關閉時，伺服器不接受任何網頁儲存格，並拒絕所有瀏覽器擴充功能。',
+  'app.settings.webCells.fillPrompt': '填入提示',
+  'app.settings.webCells.fillPromptHelp':
+    '擴充功能會把你的提示輸入網站並送出。關閉時，你要自己在每個網站輸入。',
+  'app.settings.webCells.readAnswer': '讀取回答',
+  'app.settings.webCells.readAnswerHelp':
+    '擴充功能會從頁面讀取完成的回答，並存入這台伺服器的歷史紀錄。關閉時，網站仍會顯示，但不會儲存其中任何內容。',
+  'app.settings.webCells.extensions.title': '可以連線的擴充功能',
+  'app.settings.webCells.extensions.help':
+    '只有 ID 列在這裡的擴充功能才能連線到這台伺服器。瀏覽器會在擴充功能頁面顯示這個 ID。',
+  'app.settings.webCells.extensions.none': '沒有擴充功能可以連線。',
+  'app.settings.webCells.extensions.label': '擴充功能 ID',
+  'app.settings.webCells.extensions.invalid': '擴充功能 ID 是 32 個 a 到 p 的字母。',
+  'app.settings.webCells.extensions.full': '最多只能列出 {max} 個擴充功能。',
+  'app.settings.webCells.extensions.remove': '移除 {id}',
+  'app.settings.webCells.sites.title': '網站',
+  'app.settings.webCells.sites.help':
+    '可作為網頁儲存格的網站。擴充功能在網站上尋找輸入框與回答的方式是人工確認的，網站改版後可能失效。',
   'app.settings.tls.title': '連線安全',
   'app.settings.tls.auto':
     '伺服器使用自己的私有憑證授權單位簽發的憑證加密連線。每台裝置都需要信任該授權單位一次。',

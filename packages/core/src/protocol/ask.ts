@@ -42,6 +42,12 @@ export const AskRequestSchema = z.object({
     }),
   /** Reserved for multi-turn conversations; when omitted a new conversation is created. */
   conversationId: EntityIdSchema.optional(),
+  /**
+   * This client shows the web cells of this ask itself and will submit each
+   * one's result (`POST /api/ask/:askId/slots/:slotId/result`). An ask with a
+   * target of kind `web` is refused without it.
+   */
+  runsWebSlots: z.boolean().optional(),
 });
 export type AskRequest = z.infer<typeof AskRequestSchema>;
 

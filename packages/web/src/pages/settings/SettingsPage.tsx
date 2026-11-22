@@ -10,6 +10,7 @@ import type { DevicesSectionProps } from './DevicesSection.tsx';
 import { GeneralSection } from './GeneralSection.tsx';
 import { LimitsSection } from './LimitsSection.tsx';
 import { TlsSection } from './TlsSection.tsx';
+import { WebCellsSection } from './WebCellsSection.tsx';
 
 /** Everything configurable that is not a provider, plus the devices and the connection's security. */
 export const SettingsPage: Component<DevicesSectionProps> = (props) => {
@@ -43,6 +44,12 @@ export const SettingsPage: Component<DevicesSectionProps> = (props) => {
       {/* The desktop app signs in with a token per launch; it has no paired devices. */}
       <Show when={meta()?.mode !== 'desktop'}>
         <DevicesSection onLogout={() => props.onLogout()} onSignedOut={() => props.onSignedOut()} />
+      </Show>
+      {/* Web cells need a browser extension paired as a device, which the desktop app does not have. */}
+      <Show when={meta()?.mode !== 'desktop'}>
+        <Show when={generation()} keyed>
+          {(_generation) => <WebCellsSection save={save} />}
+        </Show>
       </Show>
       <TlsSection />
       <section class="app-card" aria-labelledby={aboutId}>

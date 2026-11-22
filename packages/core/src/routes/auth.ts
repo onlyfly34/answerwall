@@ -26,7 +26,14 @@ import type { AppContext } from './shared.ts';
  */
 const SESSION_MAX_AGE_SECONDS = 400 * 24 * 60 * 60;
 
+/**
+ * The page of an allowed browser extension is on another origin and signs in
+ * with `Authorization: Bearer`: it is never given the cookie, and has none to clear.
+ */
+const isExtension = (c: AppContext): boolean => c.var.extensionOrigin !== undefined;
+
 function setSessionCookie(c: AppContext, token: string): void {
+  if (isExtension(c)) return;
   setCookie(c, BRAND.sessionCookie, token, {
     httpOnly: true,
     sameSite: 'Strict',
@@ -37,6 +44,7 @@ function setSessionCookie(c: AppContext, token: string): void {
 }
 
 function clearSessionCookie(c: AppContext): void {
+  if (isExtension(c)) return;
   deleteCookie(c, BRAND.sessionCookie, { path: '/', secure: c.var.client.secure });
 }
 
@@ -61,7 +69,9 @@ export function authRoutes({ auth }: Pick<AppDeps, 'auth'>): Hono<AppEnv> {
       throw error;
     });
     setSessionCookie(c, token);
-    return c.json({ device } satisfies SessionResponse);
+    // The one case in which a token is shown to its client: the extension
+    // keeps it in its own storage, where no web page can read it.
+    return c.json({ device, ...(isExtension(c) ? { token } : {}) } satisfies SessionResponse);
   });
 
   routes.post('/session', async (c) => {

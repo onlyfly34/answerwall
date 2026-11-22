@@ -4,7 +4,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, test, vi } from 'vitest';
 import type { ProviderAdapter, ProviderEvent, RunRequest } from '../contracts/index.ts';
-import type { ProviderInstance, ProviderKind, Settings, StreamEvent } from '../protocol/index.ts';
+import type {
+  ProviderInstance,
+  ExecutedProviderKind,
+  Settings,
+  StreamEvent,
+} from '../protocol/index.ts';
 import { answerScript, READY_DETECTION } from '../testing/index.ts';
 import type { ScriptStep } from '../testing/index.ts';
 import { createHarness, targets } from './test-harness.ts';
@@ -17,7 +22,7 @@ const slot = { slotId: 'c1', providerId: 'claude' };
 /** An adapter whose `run` is the given function; what it returns need not honour the contract. */
 function adapter(
   run: (instance: ProviderInstance, request: RunRequest) => unknown,
-  kind: ProviderKind = 'claude',
+  kind: ExecutedProviderKind = 'claude',
 ): ProviderAdapter {
   return {
     kind,
