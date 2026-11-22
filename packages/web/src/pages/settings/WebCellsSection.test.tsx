@@ -19,7 +19,12 @@ const ID = 'abcdefghijklmnopabcdefghijklmnop';
 
 function setup(
   change: (settings: Settings) => void = () => undefined,
-  options: { desktop?: boolean; update?: FakeServices['settings']['update'] } = {},
+  options: {
+    desktop?: boolean;
+    update?: FakeServices['settings']['update'];
+    /** A slow server: every save waits here until the test calls the function pushed for it. */
+    held?: (() => void)[];
+  } = {},
 ) {
   const settings = createDefaultSettings();
   change(settings);
@@ -39,9 +44,15 @@ function setup(
         }
       : {}),
   });
-  const services = options.update
-    ? { ...fake, settings: { ...fake.settings, update: options.update } }
-    : fake;
+  const { held } = options;
+  const update =
+    options.update ??
+    (held &&
+      (async (patch) => {
+        await new Promise<void>((release) => held.push(release));
+        await fake.settings.update(patch);
+      }));
+  const services = update ? { ...fake, settings: { ...fake.settings, update } } : fake;
   renderPage(
     () => <SettingsPage onLogout={() => Promise.resolve()} onSignedOut={() => undefined} />,
     services,
@@ -94,7 +105,9 @@ describe('the web cells settings', () => {
 
     await waitFor(() => expect(lastPatch(services)).toEqual({ webCells: { extensionIds: [ID] } }));
     expect(await section().findByText(ID)).toBeDefined();
-    expect(section().getByLabelText<HTMLInputElement>('Extension ID').value).toBe('');
+    await waitFor(() =>
+      expect(section().getByLabelText<HTMLInputElement>('Extension ID').value).toBe(''),
+    );
 
     fireEvent.click(section().getByRole('button', { name: `Remove ${ID}` }));
     await waitFor(() => expect(lastPatch(services)).toEqual({ webCells: { extensionIds: [] } }));
@@ -152,6 +165,78 @@ describe('the web cells settings', () => {
       }),
     );
     expect(lastPatch(services)?.providers).toHaveLength(before + 1);
+  });
+
+  describe('two changes in quick succession, over a slow connection', () => {
+    const release = async (held: (() => void)[], count: number): Promise<void> => {
+      await waitFor(() => expect(held).toHaveLength(count));
+      held[count - 1]?.();
+    };
+    const webProviders = (services: FakeServices) =>
+      services.settings
+        .settings()
+        ?.providers.filter((provider) => provider.kind === 'web')
+        .map((provider) => [provider.id, provider.enabled]);
+
+    test('two sites ticked one after the other are both stored', async () => {
+      const held: (() => void)[] = [];
+      const services = setup(() => undefined, { held });
+
+      fireEvent.click(box(/claude\.ai/));
+      fireEvent.click(box(/chatgpt\.com/));
+      // One save at a time: the second waits for the answer to the first.
+      await release(held, 1);
+      await release(held, 2);
+
+      await waitFor(() =>
+        expect(webProviders(services)).toEqual([
+          ['web-claude', true],
+          ['web-chatgpt', true],
+        ]),
+      );
+      expect(services.settingsUpdates).toHaveLength(2);
+      expect(box(/claude\.ai/).checked).toBe(true);
+      expect(box(/chatgpt\.com/).checked).toBe(true);
+    });
+
+    test('removing one extension id and adding another keeps neither change from the other', async () => {
+      const OTHER = 'ponmlkjihgfedcbaponmlkjihgfedcba';
+      const NEW = 'aaaaaaaaaaaaaaaabbbbbbbbbbbbbbbb';
+      const held: (() => void)[] = [];
+      const services = setup((settings) => void (settings.webCells.extensionIds = [ID, OTHER]), {
+        held,
+      });
+
+      fireEvent.click(section().getByRole('button', { name: `Remove ${ID}` }));
+      setValue(section().getByLabelText('Extension ID'), NEW);
+      fireEvent.click(section().getByRole('button', { name: 'Add' }));
+      await release(held, 1);
+      await release(held, 2);
+
+      // The removed id is not allowed again by the save that came after it.
+      await waitFor(() =>
+        expect(services.settings.settings()?.webCells.extensionIds).toEqual([OTHER, NEW]),
+      );
+    });
+
+    test('a refused save does not stop the ones after it', async () => {
+      const refused = new ApiError('bad_request', 400, 'providers: nope');
+      let calls = 0;
+      const fake: { services?: FakeServices } = {};
+      fake.services = setup(() => undefined, {
+        update: async (patch) => {
+          calls += 1;
+          if (calls === 1) throw refused;
+          await fake.services?.settings.update(patch);
+        },
+      });
+
+      fireEvent.click(box(/claude\.ai/));
+      fireEvent.click(box(/chatgpt\.com/));
+
+      await waitFor(() => expect(webProviders(fake.services!)).toEqual([['web-chatgpt', true]]));
+      expect(fake.services.errors).toEqual([refused]);
+    });
   });
 
   test('a refused save puts the stored values back and reports the error', async () => {

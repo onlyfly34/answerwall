@@ -43,10 +43,15 @@ const SWITCHES: readonly { name: Switch; label: MessageKey; help: MessageKey }[]
  * Web cells: the master switch, the two things the extension may do on a
  * site, the extensions that may connect, and the sites offered. Everything is
  * off in a fresh installation, and each change is saved at once.
+ *
+ * `save` runs one save after the other and calls `build` when its turn has
+ * come: a patch that carries a whole list (the providers, the extension
+ * IDs) must be made from the list as the save before it left it. `build`
+ * returns nothing when there is nothing left to change.
  */
-export const WebCellsSection: Component<{ save(patch: SettingsPatch): Promise<boolean> }> = (
-  props,
-) => {
+export const WebCellsSection: Component<{
+  save(build: () => SettingsPatch | undefined): Promise<boolean>;
+}> = (props) => {
   const { settings, i18n } = useServices();
   const t = i18n.t;
   const titleId = createUniqueId();
@@ -64,34 +69,41 @@ export const WebCellsSection: Component<{ save(patch: SettingsPatch): Promise<bo
     const id = ExtensionIdSchema.safeParse(newId().trim());
     setInvalid(!id.success);
     if (!id.success) return;
-    const current = webCells().extensionIds;
-    if (!current.includes(id.data)) {
-      if (!(await props.save({ webCells: { extensionIds: [...current, id.data] } }))) return;
-    }
-    setNewId('');
+    const saved = await props.save(() => {
+      const current = webCells().extensionIds;
+      return current.includes(id.data)
+        ? undefined
+        : { webCells: { extensionIds: [...current, id.data] } };
+    });
+    if (saved) setNewId('');
   }
 
   function removeExtension(id: string): void {
-    void props.save({
-      webCells: { extensionIds: webCells().extensionIds.filter((other) => other !== id) },
+    void props.save(() => {
+      const current = webCells().extensionIds;
+      return current.includes(id)
+        ? { webCells: { extensionIds: current.filter((other) => other !== id) } }
+        : undefined;
     });
   }
 
   function toggleSite(site: (typeof WEB_SITES)[number], enabled: boolean): void {
-    const existing = instanceOf(site.id);
-    const next: ProviderInstanceInput =
-      existing?.kind === 'web'
-        ? { ...existing, enabled }
-        : {
-            id: webProviderId(site.id),
-            kind: 'web',
-            site: site.id,
-            label: site.label,
-            enabled,
-            concurrency: concurrencyBounds('web').default,
-            models: [],
-          };
-    void props.save({ providers: withProvider(instances(), next) });
+    void props.save(() => {
+      const existing = instanceOf(site.id);
+      const next: ProviderInstanceInput =
+        existing?.kind === 'web'
+          ? { ...existing, enabled }
+          : {
+              id: webProviderId(site.id),
+              kind: 'web',
+              site: site.id,
+              label: site.label,
+              enabled,
+              concurrency: concurrencyBounds('web').default,
+              models: [],
+            };
+      return { providers: withProvider(instances(), next) };
+    });
   }
 
   return (
@@ -111,9 +123,10 @@ export const WebCellsSection: Component<{ save(patch: SettingsPatch): Promise<bo
                   type="checkbox"
                   checked={webCells()[item.name]}
                   aria-describedby={`${id}-help`}
-                  onChange={(event) =>
-                    void props.save({ webCells: { [item.name]: event.currentTarget.checked } })
-                  }
+                  onChange={(event) => {
+                    const checked = event.currentTarget.checked;
+                    void props.save(() => ({ webCells: { [item.name]: checked } }));
+                  }}
                 />
                 <label for={id}>{t(item.label)}</label>
               </div>

@@ -31,6 +31,23 @@ export const SettingsPage: Component<DevicesSectionProps> = (props) => {
     }
   }
 
+  /**
+   * For a section whose every control saves at once and whose patches carry
+   * a whole list (the providers, the extension IDs): one save at a time, and
+   * each patch is built only when its turn has come, from the settings as
+   * the save before it left them. Two quick changes would otherwise both be
+   * built from the same list, and the second would undo the first.
+   */
+  let turn: Promise<unknown> = Promise.resolve();
+  function saveInTurn(build: () => SettingsPatch | undefined): Promise<boolean> {
+    const next = turn.then(() => {
+      const patch = build();
+      return patch === undefined ? true : save(patch);
+    });
+    turn = next.catch(() => undefined);
+    return next;
+  }
+
   return (
     <div class="app-page">
       <h1>{t('app.settings.title')}</h1>
@@ -48,7 +65,7 @@ export const SettingsPage: Component<DevicesSectionProps> = (props) => {
       {/* Web cells need a browser extension paired as a device, which the desktop app does not have. */}
       <Show when={meta()?.mode !== 'desktop'}>
         <Show when={generation()} keyed>
-          {(_generation) => <WebCellsSection save={save} />}
+          {(_generation) => <WebCellsSection save={saveInTurn} />}
         </Show>
       </Show>
       <TlsSection />
