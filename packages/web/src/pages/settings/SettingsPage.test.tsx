@@ -70,6 +70,14 @@ function setup(options: SetupOptions = {}) {
 }
 
 const section = (name: string) => within(screen.getByRole('region', { name }));
+const desktopMeta = {
+  name: 'AnswerWall',
+  version: '0.0.0-test',
+  apiVersion: API_VERSION,
+  mode: 'desktop',
+  tls: 'off',
+  authRequired: true,
+} as const;
 const lastPatch = (services: FakeServices) => {
   const patch = services.settingsUpdates.at(-1);
   expect(SettingsPatchSchema.safeParse(patch).success).toBe(true);
@@ -154,8 +162,15 @@ describe('language, layout and updates', () => {
     expect(services.settingsUpdates).toEqual([]);
   });
 
-  test('the release check can be switched off', async () => {
-    const { services } = setup();
+  test('a server shows no release check: only the desktop app checks', () => {
+    setup();
+
+    expect(screen.queryByRole('region', { name: 'Updates' })).toBeNull();
+    expect(screen.queryByRole('checkbox', { name: 'Check for new releases' })).toBeNull();
+  });
+
+  test('the release check of the desktop app can be switched off', async () => {
+    const { services } = setup({ meta: desktopMeta });
     const box = section('Updates').getByRole<HTMLInputElement>('checkbox', {
       name: 'Check for new releases',
     });
@@ -173,7 +188,7 @@ describe('language, layout and updates', () => {
 
   test('a refused change is reported and the control shows the stored value again', async () => {
     const refusal = new ApiError('bad_request', 400, 'updateCheck: refused');
-    const { services } = setup({ update: () => Promise.reject(refusal) });
+    const { services } = setup({ meta: desktopMeta, update: () => Promise.reject(refusal) });
 
     fireEvent.click(section('Updates').getByRole('checkbox', { name: 'Check for new releases' }));
 
@@ -272,7 +287,7 @@ describe('limits', () => {
 
   test('a save the server refuses is reported and what was typed stays', async () => {
     const refusal = new ApiError('bad_request', 400, 'limits: refused');
-    const { services } = setup({ update: () => Promise.reject(refusal) });
+    const { services } = setup({ meta: desktopMeta, update: () => Promise.reject(refusal) });
     const targets = limits().getByLabelText<HTMLInputElement>('Cells per ask (count)');
     setValue(targets, '12');
 

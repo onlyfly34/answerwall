@@ -1,4 +1,4 @@
-import { createMemo, createSignal, createUniqueId, For } from 'solid-js';
+import { createMemo, createSignal, createUniqueId, For, Show } from 'solid-js';
 import type { Component } from 'solid-js';
 import { LANGUAGES, LayoutSettingsSchema } from '@answerwall/core/protocol';
 import type { Language, LayoutSettings, SettingsPatch } from '@answerwall/core/protocol';
@@ -8,11 +8,14 @@ import { LANGUAGE_NAMES } from '../language-names.ts';
 const WIDTH = LayoutSettingsSchema.shape.minCellWidth;
 const COLUMNS = LayoutSettingsSchema.shape.columns;
 
-/** Language, the wall's default layout, and the release check. */
+/**
+ * Language, the wall's default layout, and the release check. Only the desktop
+ * app checks for releases, so a server shows no switch for it.
+ */
 export const GeneralSection: Component<{ save(patch: SettingsPatch): Promise<boolean> }> = (
   props,
 ) => {
-  const { settings, i18n } = useServices();
+  const { settings, meta, i18n } = useServices();
   const t = i18n.t;
   const ids = {
     language: createUniqueId(),
@@ -144,22 +147,24 @@ export const GeneralSection: Component<{ save(patch: SettingsPatch): Promise<boo
         </div>
       </section>
 
-      <section class="app-card" aria-labelledby={`${ids.update}-title`}>
-        <h2 id={`${ids.update}-title`}>{t('app.settings.update.title')}</h2>
-        <div class="app-check">
-          <input
-            id={ids.update}
-            type="checkbox"
-            checked={settings.settings()?.updateCheck}
-            aria-describedby={`${ids.update}-help`}
-            onChange={(event) => void props.save({ updateCheck: event.currentTarget.checked })}
-          />
-          <label for={ids.update}>{t('app.settings.update.label')}</label>
-        </div>
-        <p id={`${ids.update}-help`} class="app-muted">
-          {t('app.settings.update.help')}
-        </p>
-      </section>
+      <Show when={meta()?.mode === 'desktop'}>
+        <section class="app-card" aria-labelledby={`${ids.update}-title`}>
+          <h2 id={`${ids.update}-title`}>{t('app.settings.update.title')}</h2>
+          <div class="app-check">
+            <input
+              id={ids.update}
+              type="checkbox"
+              checked={settings.settings()?.updateCheck}
+              aria-describedby={`${ids.update}-help`}
+              onChange={(event) => void props.save({ updateCheck: event.currentTarget.checked })}
+            />
+            <label for={ids.update}>{t('app.settings.update.label')}</label>
+          </div>
+          <p id={`${ids.update}-help`} class="app-muted">
+            {t('app.settings.update.help')}
+          </p>
+        </section>
+      </Show>
     </>
   );
 };
