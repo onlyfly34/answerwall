@@ -2,7 +2,7 @@
 
 [English](providers.md)
 
-「供應商」是指能回答提問的對象：四個廠商命令列工具（CLI）之一，由你自己安裝、自己登入；或是你自行設定的 OpenAI 相容 HTTP 端點。本頁逐一說明：如何準備、AnswerWall 怎麼執行它、哪些東西不管你願不願意都關不掉，以及費用算在誰頭上。
+「供應商」是指能回答提問的對象：五個命令列工具（CLI）之一，由你自己安裝、自己登入；或是你自行設定的 OpenAI 相容 HTTP 端點。本頁逐一說明：如何準備、AnswerWall 怎麼執行它、哪些東西不管你願不願意都關不掉，以及費用算在誰頭上。
 
 在這裡使用訂閱登入之前，請先讀 README 的[使用你的訂閱](../README.zh-TW.md#使用你的訂閱請先讀這一段)。
 
@@ -32,12 +32,13 @@
 
 所有工具都關閉時，模型無法查任何資料。對於經過真實執行、確認「內建網路搜尋可以在其他工具全部關閉的情況下單獨運作」的 CLI，供應商頁面提供**允許網路搜尋**開關，預設關閉：
 
-| CLI      | 開關 | 開啟之後                                                 |
-| -------- | ---- | -------------------------------------------------------- |
-| `claude` | 有   | 只提供模型 `WebSearch` 這一個工具。絕不提供 `WebFetch`。 |
-| `codex`  | 有   | CLI 的代管網路搜尋設為 `live`。其他限制全部維持。        |
-| `agy`    | 無   | 頁面顯示「網路搜尋：無法使用」：尚未確認它能單獨運作。   |
-| `grok`   | 無   | 同上。                                                   |
+| CLI        | 開關 | 開啟之後                                                 |
+| ---------- | ---- | -------------------------------------------------------- |
+| `claude`   | 有   | 只提供模型 `WebSearch` 這一個工具。絕不提供 `WebFetch`。 |
+| `codex`    | 有   | CLI 的代管網路搜尋設為 `live`。其他限制全部維持。        |
+| `agy`      | 無   | 頁面顯示「網路搜尋：無法使用」：尚未確認它能單獨運作。   |
+| `grok`     | 無   | 同上。                                                   |
+| `opencode` | 無   | 同上。它的網路搜尋會連同其他工具一起關閉。               |
 
 兩者的搜尋看起來都是在廠商的伺服器上執行，而不是在你的機器上。發生搜尋時，格子會顯示一則說明：`claude` 會附上查詢字串（"Searching the web: …"），`codex` 不會（"The model searched the web."）。這時你的提問，以及模型自己決定要搜尋的內容，也會送到廠商的搜尋服務。
 
@@ -169,6 +170,83 @@
 **計費。** 開關關閉時，`XAI_API_KEY` 會被移除。開啟時會保留，但 CLI 只有在沒有登入工作階段時才會使用金鑰，所以頁面顯示**未知**並加以說明。
 
 **已知限制。** 全部都是：這個介接程式還沒有碰過真實的 CLI。預期會發現差異，發現時請回報。
+
+## OpenCode（`opencode`）
+
+|              |                                                                                                                            |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------- |
+| 安裝         | <https://opencode.ai/docs/>（第 2 版；npm 套件 `@opencode/cli`）                                                           |
+| 登入         | `opencode auth login`，或在 opencode 自己的設定裡設定供應商                                                                |
+| 登入檢查     | `opencode auth list --format json`（只讀取「是否有任何供應商已連線」）                                                     |
+| 輸出方式     | 整段輸出：回答完成後一次出現                                                                                               |
+| 工具權限     | 已關閉，透過 AnswerWall 為每個提問定義的代理                                                                               |
+| 網路搜尋開關 | 無                                                                                                                         |
+| 驗證情況     | Linux 上的 opencode 2.3.2，對象是本機的 OpenAI 相容測試端點。沒有代管供應商、沒有登入，Windows 與 macOS 上完全沒有驗證過。 |
+
+opencode 是連接許多模型供應商的用戶端，本身不是模型。由哪個模型回答、你的提問送到哪裡、費用算在誰頭上，都取決於**你**在 opencode 裡的設定。AnswerWall 絕不寫入 opencode 的設定、資料庫或任何憑證。
+
+它在**新安裝時是停用的**。在 opencode 沒有任何設定的機器上，`opencode models` 只會列出名為 `opencode/…` 的模型，這些模型由它的廠商代管；這時送出的提問會送到那個服務（這一點沒有實際試過）。請先設定好你要的模型，再勾選**啟用**。
+
+opencode 也可以登入其他廠商的訂閱方案。某個廠商是否允許透過 opencode，再加上透過 AnswerWall 使用它的方案，請你自己閱讀該廠商的條款。本文件沒有任何一處表示這是允許的。
+
+### 自行在 opencode 裡設定模型
+
+這是 opencode 自己的設定，說明在 <https://opencode.ai/docs/providers/>。以下是一個中性的範例，對象是使用 OpenAI chat completions API 的閘道，寫在執行 AnswerWall 的那個使用者的 `~/.config/opencode/opencode.jsonc`：
+
+```jsonc
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "gateway/example-model",
+  "providers": {
+    "gateway": {
+      "name": "My gateway",
+      "env": ["GATEWAY_API_KEY"],
+      "package": "@opencode/ai/providers/openai-compatible",
+      "settings": { "baseURL": "https://llm.example.com/v1" },
+      "models": {
+        "example-model": { "name": "Example model" },
+      },
+    },
+  },
+}
+```
+
+- `gateway` 是你自己取的名稱；模型在 opencode 與 AnswerWall 裡就叫做 `gateway/example-model`。
+- 金鑰：把 `GATEWAY_API_KEY` 放進 AnswerWall 程序的環境（實際試過的是這種方式），或改用 opencode 文件記載的其他方式：用 `opencode auth login` 儲存的帳號，或在設定裡使用 `{file:…}` 參照。用 `opencode service set env` 儲存的變數**不會**被看到：AnswerWall 以私有伺服器啟動 opencode，而 opencode 的文件說明那些設定只會傳給它共用的背景服務。
+- 先在 AnswerWall 之外確認：`opencode models` 必須列出 `gateway/example-model`。然後在 OpenCode 卡片上按**重新檢查**；同一份清單會出現在它的模型底下。
+
+**AnswerWall 怎麼執行它。** `opencode run --standalone --format json`，提問從標準輸入送入。`--standalone` 讓每個提問使用一個私有的 opencode 伺服器，提問結束時它也跟著結束，而不是使用 opencode 共用的背景服務。啟動 opencode 之前，AnswerWall 會在每格專用的空目錄裡寫入一個檔案 `opencode.json`。opencode 會把它當成專案設定讀取。它定義一個名為 `answerwall` 的代理，完全不涉及供應商、模型或金鑰：
+
+- 這個代理唯一的權限規則是全部拒絕，它的系統提示會取代 opencode 的程式代理提示，換成一段要求直接回答的簡短提示；
+- 政策（policies）拒絕所有工具、MCP 伺服器、skill 與網路搜尋供應商。
+
+提問會以 `--agent answerwall` 送出。如果 opencode 沒有讀到這個檔案，這個代理就不存在，執行會以「Agent not found」失敗，而不是改用 opencode 的預設代理回答（在 `run` 模式下，預設代理的 shell 與檔案工具不需要核准）。另外會傳入 `--title`，這樣 opencode 就不會為了工作階段標題再問模型一次。
+
+**關閉了什麼。** 在使用這個檔案的真實執行中，提供給模型的工具從十三個變成一個；測試端點要求執行的 shell 指令沒有被執行（沒有這個檔案時它被執行了，並寫出一個檔案）；使用者設定裡的 MCP 伺服器沒有被啟動；沒有列出任何 skill。使用者設定裡「全部允許」的全域規則也沒有讓工具重新開啟：代理自己的規則最後才套用。`OPENCODE_DISABLE_CLAUDE_CODE=1` 會把 `CLAUDE.md` 檔案（包括你家目錄裡的那一份）與 `.claude` skills 排除在外。
+
+**關不掉的東西。**
+
+- `skill` 工具仍會列給模型。所有 skill 都被拒絕時，它什麼也載入不了；呼叫會以錯誤結束，格子會顯示一則說明。
+- opencode 會把**工作目錄路徑、日期與平台**附加到系統提示，還有它找到的每一份 **`AGENTS.md`**：它設定目錄裡的全域檔案，以及每格專用目錄到你家目錄之間任何目錄裡的檔案。AnswerWall 的系統提示會要求模型不要複述它們。
+- **opencode 會把每個提問與回答當成一個工作階段，存進它自己的資料庫**（`opencode debug paths db` 會印出位置）。沒有「不儲存」的執行選項。AnswerWall 會傳入 `--archived`（opencode 的說明是讓腳本執行不出現在工作階段清單裡），而且不會從那個資料庫刪除任何東西。搬移資料庫會連 opencode 儲存的登入一起搬走，所以 AnswerWall 不這麼做。
+- 你自己的 opencode 設定仍然有效：全域檔案、系統檔案，以及 AnswerWall 資料目錄上層目錄裡的 `opencode.json` 或 `.opencode` 目錄。那裡的政策優先於每個提問的檔案。
+- **opencode 自己的流量。** 每次啟動時，它都會向 `models.opencode.ai` 要求模型目錄，並嘗試連線到 `127.0.0.1` 的 11434、1234 與 8000 連接埠上的本機模型伺服器。兩者都沒有找到文件記載的開關，AnswerWall 也沒有設定任何開關。更新檢查依照 opencode 自己全域設定裡的 `update`；執行期間沒有觀察到。
+- **opencode 會自行重試。** 遇到連線錯誤、5xx 回應或限流回應時，它在大約 85 秒內重試了十次才放棄。第一次重試時格子會顯示一則說明。AnswerWall 自己絕不重試。
+- 提問執行期間，私有伺服器會在 `127.0.0.1` 的隨機連接埠上監聽。沒有憑證時，它的 API 回應 401。
+- opencode 會在系統暫存目錄裡建立一個名為 `opencode` 的目錄。
+
+**檢查。** `opencode --version`、`opencode auth list` 與 `opencode models` 會在系統暫存目錄裡執行，別人留在那裡的檔案原本可能被當成專案設定讀取。所以這些指令會帶著 `OPENCODE_DISABLE_PROJECT_CONFIG=1` 啟動。提問則不會：它需要自己的檔案。如果 AnswerWall 程序的環境裡設定了這個變數，提問會失敗，訊息會說明原因。版本指令之後的那兩個指令會載入你的 opencode 全域設定，而 opencode 會在指令執行期間啟動那裡設定的 MCP 伺服器（以一個測試伺服器觀察到；檢查所花的時間就是那個伺服器啟動所需的時間）。提問不會啟動它們。
+
+**計費。** **計費來源**一律顯示**未知**：它取決於你所選模型背後的供應商，而 opencode 不會回報。開關關閉時，[計費](#計費訂閱登入或-api-金鑰)一節列出的 API 金鑰變數會被移除，其中包括 opencode 原本會讀取的 `OPENAI_API_KEY` 與 `ANTHROPIC_API_KEY`；用你自己取的名稱的金鑰（例如上面的 `GATEWAY_API_KEY`）則會傳入。opencode 的文件說明，已儲存的帳號優先於環境裡的金鑰。
+
+**模型與推理強度。** 清單來自 `opencode models`，格式是 `provider/model`。沒有指定模型的格子會使用 opencode 設定裡的 `model`，沒有設定時則由 opencode 自己選擇。opencode 把推理強度稱為 _variant_，以 `provider/model#variant` 選擇；要使用的話，請在**你的模型**底下手動新增這樣的名稱。回答牆不會為 opencode 顯示推理強度選單。
+
+**已知限制。**
+
+- 不會逐字輸出。供應商有送出推理文字時會顯示。
+- 不支援 opencode 1.x：它的 `run` 參數不同，權限格式也不同。卡片與格子都會說明。
+- 尚未確認：任何代管供應商或方案登入；`opencode auth list` 對已儲存帳號的輸出（只看過來自環境的金鑰）；Windows 與 macOS，包括那裡的程序樹如何結束；`--archived` 的效果；同一台機器上 opencode 共用背景服務正在執行時的行為。
+- 取消時，AnswerWall 會結束 `opencode run` 的程序群組。私有伺服器在它自己的程序群組裡；在這裡所做的每一次執行中，它都在一秒內自行結束（強制終止之後也是），送往模型的請求也隨之關閉。
 
 ## OpenAI 相容端點
 

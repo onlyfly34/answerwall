@@ -218,6 +218,7 @@ docker compose exec answerwall answerwall-install-cli claude
 docker compose exec answerwall answerwall-install-cli codex
 docker compose exec answerwall answerwall-install-cli grok
 docker compose exec answerwall answerwall-install-cli agy
+docker compose exec answerwall answerwall-install-cli opencode
 ```
 
 `answerwall-install-cli --list` prints the same information without
@@ -244,21 +245,24 @@ You can just as well run a vendor's command yourself in
 `docker compose exec answerwall bash`; it then gets the whole environment of
 the container.
 
-| Tool     | Command the helper runs                                        | Copied from                                       | Installs into                                  |
-| -------- | -------------------------------------------------------------- | ------------------------------------------------- | ---------------------------------------------- |
-| `claude` | `curl -fsSL https://claude.ai/install.sh \| bash`              | <https://code.claude.com/docs/en/setup>           | `~/.local/bin/claude`, `~/.local/share/claude` |
-| `codex`  | `curl -fsSL https://chatgpt.com/codex/install.sh \| sh`        | <https://developers.openai.com/codex/cli>         | `~/.local/bin/codex`, `~/.codex/packages`      |
-| `grok`   | `curl -fsSL https://x.ai/cli/install.sh \| bash`               | <https://docs.x.ai/build/overview>                | `~/.grok/bin/grok`                             |
-| `agy`    | `curl -fsSL https://antigravity.google/cli/install.sh \| bash` | <https://antigravity.google/docs/getting-started> | `~/.local/bin/agy`                             |
+| Tool       | Command the helper runs                                        | Copied from                                       | Installs into                                  |
+| ---------- | -------------------------------------------------------------- | ------------------------------------------------- | ---------------------------------------------- |
+| `claude`   | `curl -fsSL https://claude.ai/install.sh \| bash`              | <https://code.claude.com/docs/en/setup>           | `~/.local/bin/claude`, `~/.local/share/claude` |
+| `codex`    | `curl -fsSL https://chatgpt.com/codex/install.sh \| sh`        | <https://developers.openai.com/codex/cli>         | `~/.local/bin/codex`, `~/.codex/packages`      |
+| `grok`     | `curl -fsSL https://x.ai/cli/install.sh \| bash`               | <https://docs.x.ai/build/overview>                | `~/.grok/bin/grok`                             |
+| `agy`      | `curl -fsSL https://antigravity.google/cli/install.sh \| bash` | <https://antigravity.google/docs/getting-started> | `~/.local/bin/agy`                             |
+| `opencode` | `curl -fsSL https://opencode.ai/v2/install \| bash`            | <https://opencode.ai/docs/>                       | `~/.opencode/bin/opencode`                     |
 
-`~` is `/home/answerwall`, the second volume. Both directories are on the
-`PATH` of the container, after the system directories.
+`~` is `/home/answerwall`, the second volume. `~/.local/bin`, `~/.grok/bin`
+and `~/.opencode/bin` are on the `PATH` of the container, after the system
+directories.
 
 Architectures: every vendor publishes Linux builds for x86-64 and for 64-bit
 ARM and for nothing else, and the helper refuses any other machine. Anthropic
 states "x64 or ARM64 processor", OpenAI ships `x86_64` and `aarch64` release
 archives, xAI states "Linux (x86_64 or arm64)". Google's documentation does
 not list architectures for the CLI; its installer accepts `amd64` and `arm64`.
+opencode's installer fetches an x64 or arm64 build, for glibc or musl.
 
 The vendors' terms, which the helper prints before it installs:
 
@@ -271,6 +275,11 @@ The vendors' terms, which the helper prints before it installs:
   <https://github.com/xai-org/grok-build/blob/main/LICENSE>
 - Google: <https://antigravity.google/terms>,
   <https://antigravity.google/docs/faq>
+- OpenCode: <https://opencode.ai/legal/terms-of-service>,
+  <https://opencode.ai/legal/privacy-policy>; the CLI's licence is
+  <https://github.com/anomalyco/opencode/blob/dev/LICENSE>. opencode is a
+  client for many providers: the terms of the provider you configure in
+  it apply as well.
 
 The project's [README](../README.md) quotes what these say about using a
 subscription through another program. Read it before you sign in.
@@ -288,6 +297,13 @@ version to the container's user (claude 2.1.330, codex-cli 0.171.0, grok
 unknown login state (neither has a command that reports it). `claude` and
 `codex` were also installed and run under a user id without a name (see
 [User and group id](#user-and-group-id)).
+
+On the same day and host the `opencode` command was run through the helper
+the same way (read-only root file system, no capabilities, the home volume
+mounted): it installed opencode 2.3.2 into `~/.opencode/bin`, about 240 MB,
+and a second container without any network found it on `PATH` and got its
+version. Its detection by a running AnswerWall inside the container, and a
+question through it there, were not tried.
 
 Not checked, because it needs an account: signing in inside the container,
 and answering a question through a real tool inside the container. The
@@ -322,6 +338,11 @@ docker compose exec answerwall grok login --device-auth
   cannot complete here. Source: <https://developers.openai.com/codex/auth>.
 - **grok** — `grok login --device-auth` prints an address and a short code.
   Source: <https://docs.x.ai/build/overview>.
+- **opencode** — `opencode auth login` asks which provider to connect, in
+  the terminal. It is only needed for a provider that signs in; a gateway
+  with a key is set up in `~/.config/opencode` inside the home volume, see
+  [providers.md](providers.md#opencode-opencode). Not tried in the
+  container.
 - **agy** — see below.
 
 Then press **Refresh** on the providers page. To sign out, use the tool's own
@@ -360,10 +381,10 @@ third-party tools on the providers page.
 
 Two volumes, and nothing else, survive the container:
 
-| Volume     | Mounted at         | Content                                                                                                                                                                                             |
-| ---------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `data`     | `/data`            | `answerwall.sqlite` (history, presets, settings, paired devices), `secrets.json` (API keys of endpoints, TLS private keys), `tls/` (certificates in setup B), `work/` (empty between asks).         |
-| `cli-home` | `/home/answerwall` | The installed tools and everything they keep: `~/.local`, `~/.claude` and `~/.claude.json`, `~/.codex`, `~/.grok`, `~/.gemini`, `~/.cache`, `~/.config`. Each tool's login is in its own directory. |
+| Volume     | Mounted at         | Content                                                                                                                                                                                                            |
+| ---------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `data`     | `/data`            | `answerwall.sqlite` (history, presets, settings, paired devices), `secrets.json` (API keys of endpoints, TLS private keys), `tls/` (certificates in setup B), `work/` (empty between asks).                        |
+| `cli-home` | `/home/answerwall` | The installed tools and everything they keep: `~/.local`, `~/.claude` and `~/.claude.json`, `~/.codex`, `~/.grok`, `~/.gemini`, `~/.opencode`, `~/.cache`, `~/.config`. Each tool's login is in its own directory. |
 
 Compose prefixes the names with the project: `answerwall_data` and
 `answerwall_cli-home`. With `claude` and `codex` installed the home volume
@@ -589,7 +610,7 @@ The test runs on Linux only and needs Docker with the compose plugin
 (`--all` also needs `openssl` and pulls an nginx image). It starts
 `compose.yaml` as shipped with the mock CLIs of `tools/mock-clis` mounted
 in, pairs a device from the log and one with `answerwall pair`, sends an ask
-across the four mocks, cancels and stops while mocks are running (some
+across the five mocks, cancels and stops while mocks are running (some
 ignore `SIGTERM`), checks that no process, work directory, container or
 volume is left, that state survives a re-create, that the image contains no
 AI command-line tool and no vendor SDK, and that nothing runs as root. It
@@ -597,16 +618,16 @@ never starts a real tool.
 
 What the image contains, and why:
 
-| Part                      | Reason                                                                                                  |
-| ------------------------- | ------------------------------------------------------------------------------------------------------- |
-| Debian 13 "slim" (glibc)  | The vendors build their tools for glibc Linux. It already has `bash`, `tar`, `gzip` and checksum tools. |
-| The Node binary           | Runs the server. No npm, no corepack, no yarn.                                                          |
-| `/opt/answerwall`         | The same file tree as the released server bundle, with its production dependencies.                     |
-| `ca-certificates`         | TLS to the vendors and to OpenAI-compatible endpoints.                                                  |
-| `curl`                    | The vendors' installers are fetched with it and use it; the health check uses it.                       |
-| `tini`                    | Process 1: forwards signals to the server and reaps processes a tool leaves behind.                     |
-| `bash` (part of the base) | The installers of `claude`, `grok` and `agy` are bash scripts, and `claude` needs bash or zsh.          |
-| No `git`                  | No tool needed it to install, to report its version or to report its login state.                       |
+| Part                      | Reason                                                                                                     |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Debian 13 "slim" (glibc)  | The vendors build their tools for glibc Linux. It already has `bash`, `tar`, `gzip` and checksum tools.    |
+| The Node binary           | Runs the server. No npm, no corepack, no yarn.                                                             |
+| `/opt/answerwall`         | The same file tree as the released server bundle, with its production dependencies.                        |
+| `ca-certificates`         | TLS to the vendors and to OpenAI-compatible endpoints.                                                     |
+| `curl`                    | The vendors' installers are fetched with it and use it; the health check uses it.                          |
+| `tini`                    | Process 1: forwards signals to the server and reaps processes a tool leaves behind.                        |
+| `bash` (part of the base) | The installers of `claude`, `grok`, `agy` and `opencode` are bash scripts, and `claude` needs bash or zsh. |
+| No `git`                  | No tool needed it to install, to report its version or to report its login state.                          |
 
 The build stage compiles the workspace with pnpm and then runs the release's
 packaging script, so the image and the server bundle of a release hold the

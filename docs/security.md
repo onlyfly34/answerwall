@@ -91,12 +91,13 @@ restricted way that CLI offers, in an empty directory, and removes its own
 variables and, by default, API-key variables from the CLI's environment.
 What remains differs per CLI:
 
-| CLI      | The model's tools when AnswerWall runs it                                               |
-| -------- | --------------------------------------------------------------------------------------- |
-| `claude` | Off. Confirmed with the real CLI.                                                       |
-| `codex`  | Almost all off; what remains runs in a read-only sandbox. Confirmed with the real CLI.  |
-| `agy`    | Unrestricted. The model can act with the rights of the user the server runs as.         |
-| `grok`   | Read-only sandbox on Linux and macOS, if the CLI can apply it. Unrestricted on Windows. |
+| CLI        | The model's tools when AnswerWall runs it                                                                                |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `claude`   | Off. Confirmed with the real CLI.                                                                                        |
+| `codex`    | Almost all off; what remains runs in a read-only sandbox. Confirmed with the real CLI.                                   |
+| `agy`      | Unrestricted. The model can act with the rights of the user the server runs as.                                          |
+| `grok`     | Read-only sandbox on Linux and macOS, if the CLI can apply it. Unrestricted on Windows.                                  |
+| `opencode` | Off, through an agent that denies every permission. Confirmed with the real CLI against a local test endpoint, on Linux. |
 
 A model with tools can be talked into using them by the text it reads,
 including text you paste into a prompt. For `agy`, and for `grok` on

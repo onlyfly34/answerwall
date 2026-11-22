@@ -29,7 +29,7 @@ Everything is in the **data directory** of the machine that runs the server:
 | `answerwall.sqlite` | Every prompt and every answer (with reasoning text, token usage, model, timing), presets, settings, and for each paired device its name, the SHA-256 of its token and when it was last used. Not encrypted. |
 | `secrets.json`      | API keys you entered for OpenAI-compatible endpoints, and the private keys of the generated certificates in TLS `auto` mode. Readable only by the account that runs the server.                             |
 | `tls/`              | The generated certificates (TLS `auto` mode only).                                                                                                                                                          |
-| `work/`             | One empty directory per running cell, deleted when the cell finishes. For `grok` it briefly holds the prompt in a file.                                                                                     |
+| `work/`             | One empty directory per running cell, deleted when the cell finishes. For `grok` it briefly holds the prompt in a file; for `opencode` a small configuration file that switches its tools off.              |
 | `work.lock`         | An empty lock file.                                                                                                                                                                                         |
 
 The Windows app keeps its folder `%APPDATA%\AnswerWall`: the data directory
@@ -71,24 +71,28 @@ AnswerWall does not see or alter that traffic.
 
 A CLI sends more than your prompt. What is known:
 
-| CLI      | Sent in addition to your prompt                                                                                                                                                                                                                                                                                      |
-| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `claude` | **The e-mail address of the signed-in account and the path of the working directory**, attached by the CLI to every question. Confirmed in real runs; no option removes it. The path is `<data directory>/work/<id>`, so it usually contains your operating-system user name. Also AnswerWall's short system prompt. |
-| `codex`  | The CLI's own instructions and **your global `AGENTS.md`**, if you have one. Confirmed. The working directory, shell, date and time zone are not sent (that block is switched off).                                                                                                                                  |
-| `agy`    | Not examined. Its tools are unrestricted, so the model can read files your user can read and may send their content to the vendor.                                                                                                                                                                                   |
-| `grok`   | Not examined. Treat it like `agy`, on Windows in particular.                                                                                                                                                                                                                                                         |
+| CLI        | Sent in addition to your prompt                                                                                                                                                                                                                                                                                                                                                                                               |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `claude`   | **The e-mail address of the signed-in account and the path of the working directory**, attached by the CLI to every question. Confirmed in real runs; no option removes it. The path is `<data directory>/work/<id>`, so it usually contains your operating-system user name. Also AnswerWall's short system prompt.                                                                                                          |
+| `codex`    | The CLI's own instructions and **your global `AGENTS.md`**, if you have one. Confirmed. The working directory, shell, date and time zone are not sent (that block is switched off).                                                                                                                                                                                                                                           |
+| `agy`      | Not examined. Its tools are unrestricted, so the model can read files your user can read and may send their content to the vendor.                                                                                                                                                                                                                                                                                            |
+| `opencode` | **The path of the working directory, the date, the platform and every `AGENTS.md` it finds** (the global one, and any between the working directory and your home directory), to the provider you configured in opencode. Confirmed against a local test endpoint. `CLAUDE.md` files are kept out. Also AnswerWall's short system prompt. opencode itself keeps the question and the answer as a session in its own database. |
+| `grok`     | Not examined. Treat it like `agy`, on Windows in particular.                                                                                                                                                                                                                                                                                                                                                                  |
 
 On top of that, each CLI may contact its vendor for its own purposes
 (sign-in, updates, diagnostics). AnswerWall switches off the self-update of
 `agy` and `grok` for the runs it starts and changes nothing else about that
-traffic. Look at each vendor's documentation for its own switches.
+traffic. `opencode` requested its model catalogue from `models.opencode.ai`
+at every start in the runs made here; no documented switch for that was
+found. Look at each vendor's documentation for its own switches.
 
 With **Allow web search** on (`claude`, `codex`), the model may send search
 queries, which it words itself from your prompt, to the vendor's search.
 
 A check on the Providers page (at server start, and when you press
-**Refresh**) runs each enabled CLI's version command and, for `claude` and
-`codex`, its login status command. No prompt is sent. Whether those commands
+**Refresh**) runs each enabled CLI's version command and, for `claude`,
+`codex` and `opencode`, its login status command (`opencode` also lists its
+models). No prompt is sent. Whether those commands
 contact the vendor is up to the CLI.
 
 ### To an OpenAI-compatible endpoint

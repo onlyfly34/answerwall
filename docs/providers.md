@@ -2,7 +2,7 @@
 
 [繁體中文](providers.zh-TW.md)
 
-A provider is something that answers a prompt: one of four vendor
+A provider is something that answers a prompt: one of five
 command-line tools (CLIs) that you install and sign in to yourself, or an
 OpenAI-compatible HTTP endpoint that you configure. This page says, for each
 one, how to get it ready, how AnswerWall runs it, what stays switched on
@@ -85,12 +85,13 @@ With every tool off, a model cannot look anything up. Where a real run
 confirmed that a CLI's built-in web search works while every other tool
 stays off, the CLI has a switch **Allow web search**, off by default:
 
-| CLI      | Switch | With the switch on                                                                             |
-| -------- | ------ | ---------------------------------------------------------------------------------------------- |
-| `claude` | Yes    | The model is offered the `WebSearch` tool and nothing else. Never `WebFetch`.                  |
-| `codex`  | Yes    | The CLI's hosted web search is set to `live`. Every other restriction stays.                   |
-| `agy`    | No     | The page says "Web search: not available": it has not been confirmed that it works on its own. |
-| `grok`   | No     | The same.                                                                                      |
+| CLI        | Switch | With the switch on                                                                             |
+| ---------- | ------ | ---------------------------------------------------------------------------------------------- |
+| `claude`   | Yes    | The model is offered the `WebSearch` tool and nothing else. Never `WebFetch`.                  |
+| `codex`    | Yes    | The CLI's hosted web search is set to `live`. Every other restriction stays.                   |
+| `agy`      | No     | The page says "Web search: not available": it has not been confirmed that it works on its own. |
+| `grok`     | No     | The same.                                                                                      |
+| `opencode` | No     | The same. Its web search is switched off with its other tools.                                 |
 
 Both searches appear to run on the vendor's servers, not on your machine.
 When a search happens, the cell shows a note: for `claude` with the query
@@ -329,6 +330,174 @@ page shows **Unknown** and says so.
 
 **Known limits.** Everything: this adapter has not met the real CLI. Expect
 to find differences, and please report them.
+
+## OpenCode (`opencode`)
+
+|                   |                                                                                                                                        |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Install           | <https://opencode.ai/docs/> (version 2; npm package `@opencode/cli`)                                                                   |
+| Log in            | `opencode auth login`, or a provider set up in opencode's own configuration                                                            |
+| Login check       | `opencode auth list --format json` (only whether any provider is connected is read)                                                    |
+| Output            | Whole messages: the answer appears at once when it is finished                                                                         |
+| Tool access       | Switched off, by an agent AnswerWall defines for each question                                                                         |
+| Web search switch | No                                                                                                                                     |
+| Checked against   | opencode 2.3.2 on Linux, against a local OpenAI-compatible test endpoint. No hosted provider, no sign-in, nothing on Windows or macOS. |
+
+opencode is a client for many model providers, not a model. Which model
+answers, where your question goes and who is billed depend on what **you**
+configure in opencode. AnswerWall never writes opencode's configuration, its
+database or a credential.
+
+It is **disabled on a new installation**. On a machine where opencode has no
+configuration, `opencode models` lists only models named `opencode/…`, which
+its vendor hosts; a question asked then would go to that service (this was
+not tried). Configure the model you want first, then tick **Enabled**.
+
+opencode can also sign in to plans of other vendors. Whether a vendor permits
+its plan to be used through opencode, and through AnswerWall on top of it,
+is for you to read in that vendor's terms. Nothing here says that it is.
+
+### Configure a model in opencode yourself
+
+This is opencode's own configuration, documented at
+<https://opencode.ai/docs/providers/>. A neutral example for a gateway that
+speaks the OpenAI chat completions API, in
+`~/.config/opencode/opencode.jsonc` of the user AnswerWall runs as:
+
+```jsonc
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "gateway/example-model",
+  "providers": {
+    "gateway": {
+      "name": "My gateway",
+      "env": ["GATEWAY_API_KEY"],
+      "package": "@opencode/ai/providers/openai-compatible",
+      "settings": { "baseURL": "https://llm.example.com/v1" },
+      "models": {
+        "example-model": { "name": "Example model" },
+      },
+    },
+  },
+}
+```
+
+- `gateway` is a name you choose; the model is then called
+  `gateway/example-model`, in opencode and in AnswerWall.
+- The key: put `GATEWAY_API_KEY` into the environment of the AnswerWall
+  process (this is the form that was tried), or use what opencode documents
+  instead: a saved account from `opencode auth login`, or a `{file:…}`
+  reference in the configuration. A variable stored with
+  `opencode service set env` is **not** seen: AnswerWall starts opencode
+  with a private server, and opencode documents that those settings only
+  reach its shared background service.
+- Check it outside AnswerWall: `opencode models` must list
+  `gateway/example-model`. Then press **Refresh** on the OpenCode card; the
+  same list appears under its models.
+
+**How AnswerWall runs it.** `opencode run --standalone --format json`, with
+the prompt on standard input. `--standalone` gives each question a private
+opencode server that ends with it, instead of opencode's shared background
+service. Before it starts opencode, AnswerWall writes one file,
+`opencode.json`, into the empty per-cell directory. opencode reads it as a
+project configuration. It defines an agent named `answerwall` and says
+nothing about providers, models or keys:
+
+- the agent's only permission rule denies everything, and its system prompt
+  replaces opencode's coding-agent prompt with a short one that asks for a
+  direct answer;
+- policies deny every tool, MCP server, skill and web search provider.
+
+The question is asked with `--agent answerwall`. If opencode did not read
+the file, that agent does not exist and the run fails with "Agent not
+found" instead of answering with opencode's default agent, whose shell and
+file tools need no approval in `run`. `--title` is passed so that opencode
+does not ask the model a second time for a session title.
+
+**What is disabled.** In real runs with this file the model was offered one
+tool instead of thirteen; a shell command the test endpoint asked for was
+not run (without the file it was, and wrote a file); an MCP server from the
+user's configuration was not started; no skill was listed. A global rule in
+the user's configuration that allows everything did not reopen a tool: the
+agent's own rule is applied last. `OPENCODE_DISABLE_CLAUDE_CODE=1` keeps
+`CLAUDE.md` files, including the one in your home directory, and `.claude`
+skills out.
+
+**What cannot be disabled.**
+
+- The `skill` tool stays listed for the model. With every skill denied it
+  cannot load anything; a call ends in an error, and the cell shows a note.
+- opencode appends **the working directory path, the date and the platform**
+  to the system prompt, and every **`AGENTS.md`** it finds: the global one in
+  its configuration directory, and any in a directory between the per-cell
+  directory and your home directory. AnswerWall's system prompt tells the
+  model not to repeat them.
+- **opencode keeps every question and answer as a session in its own
+  database** (`opencode debug paths db` prints where). There is no option
+  for a run that is not stored. AnswerWall passes `--archived`, which
+  opencode documents as keeping scripted runs out of session lists, and does
+  not delete anything from that database. Moving the database would also
+  move opencode's saved logins, so AnswerWall does not.
+- Your own opencode configuration still applies: the global file, a system
+  file, and an `opencode.json` or `.opencode` directory in a directory above
+  AnswerWall's data directory. A policy there outranks the per-question
+  file.
+- **opencode's own traffic.** At every start it requested its model
+  catalogue from `models.opencode.ai` and tried to reach local model servers
+  on `127.0.0.1` ports 11434, 1234 and 8000. No documented switch for either
+  was found, and AnswerWall sets none. Update checks follow `update` in
+  opencode's own global configuration; none was seen during a run.
+- **opencode retries on its own.** After a connection error, a 5xx answer or
+  a rate-limit answer it tried again ten times over about 85 seconds before
+  it gave up. The cell shows a note at the first retry. AnswerWall itself
+  never retries.
+- While a question runs, the private server listens on a random port on
+  `127.0.0.1`. Its API answered 401 without credentials.
+- opencode creates a directory named `opencode` in the system's temporary
+  directory.
+
+**Checks.** `opencode --version`, `opencode auth list` and `opencode models`
+run in the system's temporary directory, where a file left by someone else
+could otherwise be read as project configuration. They are started with
+`OPENCODE_DISABLE_PROJECT_CONFIG=1`. A question is not: it needs its file.
+If that variable is set in the environment of the AnswerWall process,
+questions fail with a message that says so. The two commands after the
+version load your global opencode configuration, and opencode starts the
+MCP servers configured there for as long as the command runs (seen with a
+test server; the check then took as long as that server did to start). A
+question does not start them.
+
+**Billing.** **Billing source** always shows **Unknown**: it depends on the
+provider behind the model you picked, and opencode does not report it. With
+the switch off, the API-key variables listed under
+[Billing](#billing-subscription-login-or-api-key) are removed, among them
+`OPENAI_API_KEY` and `ANTHROPIC_API_KEY`, which opencode would otherwise
+read; a key under a name of your own, such as `GATEWAY_API_KEY` above, is
+passed on. opencode documents that a saved account wins over a key from the
+environment.
+
+**Models and effort.** The list comes from `opencode models`, as
+`provider/model`. A cell without a model uses the `model` of opencode's
+configuration, or whatever opencode chooses without one. opencode calls an
+effort level a _variant_ and selects it as `provider/model#variant`; add
+such a name by hand under **Your models** to use one. The wall shows no
+effort picker for opencode.
+
+**Known limits.**
+
+- No token-by-token output. Reasoning text is shown when the provider sends
+  it.
+- opencode 1.x is not supported: its `run` has other arguments and another
+  permission format. The card and the cell say so.
+- Not confirmed: any hosted provider or plan sign-in; what
+  `opencode auth list` prints for a saved account (a key from the
+  environment was seen); Windows and macOS, including how the process tree
+  ends there; the effect of `--archived`; behaviour while opencode's shared
+  background service is running on the same machine.
+- On cancel AnswerWall ends the process group of `opencode run`. The private
+  server is in a process group of its own; in every run made here it ended
+  by itself within a second, also after a hard kill, and the request to the
+  model was closed.
 
 ## OpenAI-compatible endpoints
 

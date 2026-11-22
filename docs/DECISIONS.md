@@ -44,7 +44,7 @@ contradicts it.
    is "compliant" or "allowed". It quotes the vendors' own wording, links the
    source, and states the residual risk. Product name, icon and UI never use a
    vendor's name or logo as branding; plain-text provider labels are fine
-   ("Claude", "Codex", "Gemini (agy)", "Grok").
+   ("Claude", "Codex", "Gemini (agy)", "Grok", "OpenCode").
 8. Commits: authored by and `Signed-off-by` the repository owner
    (`git commit -s`). No AI attribution lines of any kind in commits, PR
    bodies, code comments or docs.
@@ -93,7 +93,7 @@ docs              user and developer docs
 Provider **instances** are configured in settings:
 
 ```ts
-type ProviderKind = 'claude' | 'codex' | 'agy' | 'grok' | 'openai-compat';
+type ProviderKind = 'claude' | 'codex' | 'agy' | 'grok' | 'opencode' | 'openai-compat';
 interface ProviderInstance {
   id: string;            // stable; CLI kinds use the kind as id, openai-compat uses a slug
   kind: ProviderKind;
@@ -108,7 +108,9 @@ interface ProviderInstance {
 ```
 
 Each CLI kind has exactly one instance, which can be disabled but not removed;
-only openai-compat instances are added and removed.
+only openai-compat instances are added and removed. agy (vendor notice) and
+opencode (without a configuration of its own it answers with a hosted model
+the user never chose) are disabled on a new installation.
 
 Adapter contract:
 
@@ -213,6 +215,10 @@ claude and codex are confirmed: each was run against the real CLI with tiny
 prompts (claude 2.1.330 and codex-cli 0.167.0, both on Linux with a
 subscription login), fixtures were recorded from those runs, and each
 paragraph ends with what is still unconfirmed. Nothing was run on Windows.
+opencode is confirmed too, in another way: the real CLI (2.3.2, Linux) was
+run against the local OpenAI-compatible stub endpoint with a throwaway home
+directory, so every behaviour of the CLI itself is observed and nothing
+about a hosted provider or a sign-in is.
 agy and grok are starting points from `--help` output and official docs and
 have **not** been confirmed with real prompts. `tools/mock-clis/README.md`
 lists the evidence item by item.
@@ -306,6 +312,105 @@ lists the evidence item by item.
   passed. Note the
   format name is `streaming-json`. It does not read stdin. Login:
   `grok login --device-auth`. Models: `grok models`.
+- **opencode** (confirmed on 2.3.2, the npm package `@opencode/cli`, one of
+  the documented ways to install it, put into a scratch prefix; against the
+  local stub only; version 1.x is not supported) — `opencode run
+  --standalone --format json --thinking --archived --title AnswerWall --agent
+  answerwall --model <provider/model[#variant]>`, prompt on stdin, env
+  `OPENCODE_DISABLE_CLAUDE_CODE=1`, and one file written into the work dir
+  before the start: `opencode.json`, a project configuration that defines the
+  agent `answerwall` (`mode: primary`, a short Q&A `system` prompt, the single
+  permission rule `*`/`*`/`deny`), the policies `tool.use`, `mcp.use`,
+  `skill.use` and `websearch.use` with `*`/`deny`, and `snapshots: false`.
+  **This file is the only thing AnswerWall writes for opencode.** It never
+  writes the global configuration, the database or a credential, and the file
+  names no provider, model or key: the model is whatever the user configured
+  in opencode. A variable whose name suggests inline configuration exists in
+  the binary but is not documented; it was not tried and is not used
+  (rule 2.1).
+  - `--standalone`: a private server (`opencode serve --stdio`, a child of
+    the run) instead of the shared background service that the CLI, by its
+    documentation, otherwise discovers or starts for the user account (in
+    the one run made without the flag no service stayed behind). Variables
+    stored with `opencode service set env` therefore do not apply.
+  - Why an agent and not only rules: with no file, `run` executed a shell
+    command the stub asked for, without any prompt, and thirteen tools were
+    offered. The CLI appends agent rules after the user's global rules, so a
+    global `allow` did not reopen anything; and a run that did not read the
+    file fails with `Agent not found` (also when the user's environment has
+    `OPENCODE_DISABLE_PROJECT_CONFIG=1`) instead of answering with the
+    default agent. With the file one tool stays listed, `skill`, which
+    cannot load a skill (`Unable to load skill`); an MCP server of the user's
+    configuration was not started; no skill was listed. Policies only
+    tighten and a broader configuration of the user outranks them, which is
+    why the agent rule carries the weight.
+  - `--title` stops a second model request per question (the CLI otherwise
+    asks the model for a session title). `--thinking` prints reasoning
+    parts. `--archived` is documented to keep scripted runs out of session
+    lists; `opencode session list` still showed the session.
+  - Prompt on stdin: `run --help` calls the message optional and the docs
+    only show it as an argument; that stdin is read was confirmed (252 kB of
+    multi-byte and shell-special text arrived byte for byte). User input never
+    appears in argv, so no Windows quoting is involved.
+  - Output: JSON lines `step_start`, `text`, `reasoning`, `tool_use`,
+    `step_finish`, `retry`, `error`. A text part is printed once, when it is
+    complete (`streaming: 'block'`; nothing was printed while the stub held a
+    half-sent answer). Usage is `step_finish.part.tokens` (`input`, `output`,
+    `reasoning`, `cache.read`, `cache.write`), added up over the steps;
+    `output` excludes reasoning. There is no final event: the answer ends
+    with a `step_finish` whose reason is not `tool-calls` and exit code 0.
+  - Failure: one `error` line on stdout and exit code 1, nothing on stderr.
+    Seen types: `provider.auth` (401), `provider.quota` (429 with
+    `insufficient_quota`), `provider.rate-limit` (429), `provider.transport`
+    (connection refused), `provider.internal` (500), `provider.invalid-request`
+    (400, and 404 for a model the endpoint does not have), `provider.no-route`
+    (a model or variant the configuration does not list), `unknown` (`Invalid
+    model reference`, `Agent not found`, `You must provide a message`). For
+    transport, 5xx and rate-limit failures **the CLI retries by itself**, ten
+    times over 83 to 89 seconds, printing a `retry` line each time; no
+    documented switch turns that off. The adapter shows one notice and adds no
+    retry of its own (rule 2.4).
+  - Effort: the CLI's name for it is a variant, selected as
+    `provider/model#variant`; an effort without a model is refused.
+  - Cancel: SIGTERM, and SIGKILL, to the process group of the run ended it
+    within 0.2 s. The private server is in a session and group of its own,
+    so the group kill does not reach it; it ended by itself within a second
+    both times and the request to the stub was closed. Nothing was left.
+  - Status: `opencode --version` (`opencode v2.3.2`); `opencode auth list
+    --standalone --format json` (an array of integrations with their
+    `connections`; only whether one exists is read, and none means
+    `unknown`, never `no`, because a provider without a key still answered);
+    `opencode models --standalone` (one `provider/model` per line, about
+    0.6 s, works with the network refused). These run in the system's
+    temporary directory with `OPENCODE_DISABLE_PROJECT_CONFIG=1`, because the
+    CLI reads project configuration from its working directory upwards and a
+    file planted there could name commands to start. Both commands load
+    the user's global configuration and start the MCP servers named in it
+    for their duration (3.6 s instead of 0.6 s with a test server that
+    takes 3 s); nothing documented prevents that outside a project file.
+    Billing is reported as unknown.
+  - What cannot be removed: the working directory, the date and the platform
+    in the system prompt; the global `AGENTS.md` and any between the work dir
+    and the home directory (`CLAUDE.md` is removed by the variable above);
+    the session the CLI stores in its own database for every question (there
+    is no ephemeral mode, and `OPENCODE_DB` is never moved: the saved logins
+    are in that database); the user's own configuration above the data
+    directory.
+  - Network of the CLI itself, seen with `strace` and a refusing proxy: its
+    private server on a random loopback port (the API answered 401 without
+    credentials), `models.opencode.ai:443` at every start, and probes of
+    `127.0.0.1` ports 11434, 1234 and 8000. No telemetry or update host was
+    contacted during a run. No documented switch for the catalogue fetch was
+    found (`update` in the global configuration governs update checks); an
+    undocumented variable stopped it and is not set. The CLI also creates
+    `opencode` in the system's temporary directory, and sends trace and
+    session headers to the model endpoint.
+  - Unconfirmed: any hosted provider or plan sign-in, and what `auth list`
+    prints for a saved account; a run without any configuration (the listing
+    then shows only the vendor's own hosted models); the shared background
+    service running beside a `--standalone` run; the update check; macOS; and
+    everything on Windows, where `taskkill /T` is expected to reach the
+    private server because it is a child of the run.
 - **openai-compat** — `POST {baseUrl}/v1/chat/completions` with
   `stream: true` (SSE), `GET {baseUrl}/v1/models`; supports
   `reasoning_content`; normalise base URLs with or without `/v1`; tolerate
@@ -331,6 +436,7 @@ without it reads as off).
 | codex | yes | `-c web_search="live"` in place of `-c web_search="disabled"` | A real run each way: `"live"` printed a `web_search` item and an answer; with `"disabled"` the model said it had no web access. |
 | agy | no | — | Not confirmed. |
 | grok | no | — | Not confirmed. |
+| opencode | no | — | Not examined. Its web search is denied by policy with the other tools. |
 
 - Never claude's `WebFetch`: it is treated as able to reach private
   addresses from this machine, and it was never enabled. Both searches appear
@@ -667,15 +773,11 @@ Planned additions, not yet scheduled into a phase's contract:
   - **Distribution.** A zip in the GitHub Release, loaded unpacked. No
     store listing for now.
 
-- **opencode provider.** A fifth CLI kind, `opencode`, run headless through
-  the official `opencode` CLI under the common rules of §5.1. The model is
-  whatever the user configured in opencode itself (for the owner: a model
-  behind their own OpenAI-compatible gateway); AnswerWall does not write
-  opencode's configuration or credentials. The invocation, the stream
-  format and how far tools can be switched off are taken from the CLI's own
-  help and documentation and confirmed by running the real CLI against the
-  local OpenAI-compatible stub, which costs nothing. Until a behaviour is
-  confirmed the provider card says so, as for grok and agy.
+- **opencode provider.** Built; its contract is in §5 and §5.2. The plan
+  said that AnswerWall does not write opencode's configuration or
+  credentials. That holds for everything opencode owns. The one file the
+  adapter writes is a project configuration in its own per-request work dir,
+  which only defines the tool-less agent (§5.2).
 
 ## 12. Testing
 
@@ -693,7 +795,7 @@ Planned additions, not yet scheduled into a phase's contract:
   causes no outbound request.
 - `pnpm smoke:mock`: builds everything and drives the compiled server end to
   end against the mock CLIs and a local OpenAI-compatible stub (pairing, a
-  queued 14-slot ask, resume, cancel, history, presets, settings, static UI
+  queued 16-slot ask, resume, cancel, history, presets, settings, static UI
   headers, shutdown with no process left behind, restart). No real CLI and
   no network beyond loopback; safe for CI. Interrupted (SIGINT, SIGTERM,
   SIGHUP), it stops the server and every mock CLI and removes its temporary

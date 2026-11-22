@@ -121,13 +121,14 @@ Options are listed in [apps/server/README.md](apps/server/README.md).
 AnswerWall runs every CLI in its most restricted question-answering setup.
 Not every CLI can switch its tools off, so read the third column.
 
-| Provider                    | Output                         | What the model can still do when AnswerWall runs it                                                                                                                                                                                                                          | Web search switch   | Checked against the real CLI           |
-| --------------------------- | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------- | -------------------------------------- |
-| Claude (`claude`)           | Streams token by token         | Nothing but answer: tools, MCP servers, skills and slash commands are switched off. Not removable: the CLI attaches your account's e-mail address and the working directory to every question.                                                                               | Yes, off by default | Yes: claude 2.1.330 on Linux           |
-| Codex (`codex`)             | Whole messages (no streaming)  | No shell, no file reading, no skills, no sub-agents; read-only sandbox in an empty directory. Not removable: the CLI's own instructions, your global `AGENTS.md`, and a script tool that can read the clock and attempt a file edit, which the sandbox refuses.              | Yes, off by default | Yes: codex-cli 0.167.0 on Linux        |
-| Gemini (`agy`)              | Streams token by token         | Everything the CLI lets it do. No documented way to switch off or restrict its tools; it only gets an empty working directory. Off until you accept a notice.                                                                                                                | No                  | No: written from the documentation     |
-| Grok (`grok`)               | Streams token by token         | Asked for an empty tool list, one turn, no planning and no sub-agents, but none of that has been checked, so treat its tools as available. Linux and macOS add a read-only sandbox, which the CLI skips if it cannot apply it. On Windows there is no sandbox: unrestricted. | No                  | No: written from the documentation     |
-| OpenAI-compatible endpoints | Streams when the endpoint does | Nothing: AnswerWall sends one chat request with your prompt and nothing else.                                                                                                                                                                                                | None (no tools)     | Not a CLI; tested against a local stub |
+| Provider                    | Output                         | What the model can still do when AnswerWall runs it                                                                                                                                                                                                                                                                                                                     | Web search switch   | Checked against the real CLI                                     |
+| --------------------------- | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------- | ---------------------------------------------------------------- |
+| Claude (`claude`)           | Streams token by token         | Nothing but answer: tools, MCP servers, skills and slash commands are switched off. Not removable: the CLI attaches your account's e-mail address and the working directory to every question.                                                                                                                                                                          | Yes, off by default | Yes: claude 2.1.330 on Linux                                     |
+| Codex (`codex`)             | Whole messages (no streaming)  | No shell, no file reading, no skills, no sub-agents; read-only sandbox in an empty directory. Not removable: the CLI's own instructions, your global `AGENTS.md`, and a script tool that can read the clock and attempt a file edit, which the sandbox refuses.                                                                                                         | Yes, off by default | Yes: codex-cli 0.167.0 on Linux                                  |
+| Gemini (`agy`)              | Streams token by token         | Everything the CLI lets it do. No documented way to switch off or restrict its tools; it only gets an empty working directory. Off until you accept a notice.                                                                                                                                                                                                           | No                  | No: written from the documentation                               |
+| Grok (`grok`)               | Streams token by token         | Asked for an empty tool list, one turn, no planning and no sub-agents, but none of that has been checked, so treat its tools as available. Linux and macOS add a read-only sandbox, which the CLI skips if it cannot apply it. On Windows there is no sandbox: unrestricted.                                                                                            | No                  | No: written from the documentation                               |
+| OpenCode (`opencode`)       | Whole messages (no streaming)  | Nothing but answer: an agent AnswerWall defines for each question denies every tool, MCP server, skill and web search. Not removable: opencode attaches the working directory, the date and any `AGENTS.md` it finds, and keeps every question and answer in its own session database. Which model answers is what you configured in opencode. Off until you enable it. | No                  | Yes: opencode 2.3.2 on Linux, against a local test endpoint only |
+| OpenAI-compatible endpoints | Streams when the endpoint does | Nothing: AnswerWall sends one chat request with your prompt and nothing else.                                                                                                                                                                                                                                                                                           | None (no tools)     | Not a CLI; tested against a local stub                           |
 
 Nothing has been run on Windows with a real CLI yet;
 [docs/verify-on-windows.md](docs/verify-on-windows.md) is the checklist for
@@ -176,6 +177,12 @@ way.** What the vendors say, in their own words:
 - **xAI (Grok)**: we found no statement from xAI about third-party
   applications driving the `grok` CLI; see its
   [documentation](https://docs.x.ai/build/overview) and xAI's terms.
+- **OpenCode**: `opencode` is a client for many model providers, and it
+  can sign in to plans of the vendors above. AnswerWall does not configure
+  it. The terms that count are those of the provider you set up in
+  opencode, including what they say about third-party clients, next to
+  opencode's own [terms](https://opencode.ai/legal/terms-of-service). We
+  quote none of them here, because which ones apply is your choice.
 
 These pages were read in November 2026. Read them again yourself: they
 change.
@@ -214,7 +221,10 @@ can tell you otherwise.
   CLI attaches the signed-in account's e-mail address and the working
   directory path to every question it sends to Anthropic, and no option
   removes that. Confirmed for `codex`: it sends its own instructions and your
-  global `AGENTS.md`, if you have one.
+  global `AGENTS.md`, if you have one. Confirmed for `opencode`: it sends the
+  working directory path, the date and any `AGENTS.md` it finds, to whichever
+  provider you configured in it, and keeps the question and the answer in
+  its own database.
 - **Third parties.** The only request AnswerWall itself can make to anyone
   else is the Windows app's check for a new release on GitHub, which you can
   switch off in Settings. The server makes no such request.
