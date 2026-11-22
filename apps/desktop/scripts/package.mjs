@@ -50,9 +50,10 @@ const config = {
   files: ['dist/**/*', 'package.json'],
   asar: true,
   // Read by other processes or programs, which need real files: the web UI
-  // (served by the core host), the reaper (started with plain Node semantics)
-  // and the licences (opened in the system's text viewer).
-  asarUnpack: ['dist/web/**', 'dist/reaper.cjs', 'dist/licenses/**'],
+  // (served by the core host), the connection page (loaded as a `file:` URL,
+  // which cannot look into the archive), the reaper (started with plain Node
+  // semantics) and the licences (opened in the system's text viewer).
+  asarUnpack: ['dist/web/**', 'dist/connection/**', 'dist/reaper.cjs', 'dist/licenses/**'],
   npmRebuild: false,
   nodeGypRebuild: false,
   buildDependenciesFromSource: false,

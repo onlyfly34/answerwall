@@ -80,9 +80,10 @@ nothing to rebuild. Every dependency of the app is a `devDependency`.
 (`*.node`), a source file or a source map is found in the package.
 
 electron-builder puts `dist/` into `app.asar`, except what another process
-or program opens as a file: `web/` (read by the core host), `reaper.cjs`
-(started with `ELECTRON_RUN_AS_NODE`) and `licenses/`. These live in
-`app.asar.unpacked`.
+or program opens as a file: `web/` (read by the core host), `connection/`
+(loaded as a `file:` URL, which cannot look into the archive while the fuse
+`grantFileProtocolExtraPrivileges` is off), `reaper.cjs` (started with
+`ELECTRON_RUN_AS_NODE`) and `licenses/`. These live in `app.asar.unpacked`.
 
 The configuration is in `scripts/package.mjs`, not in `package.json`, so
 that `productName`, `appId`, the artifact names and the update repository

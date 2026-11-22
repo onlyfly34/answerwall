@@ -86,9 +86,6 @@ if (problems.length === 0) {
     'dist/core-host.cjs',
     'dist/preload-local.cjs',
     'dist/preload-connection.cjs',
-    'dist/connection/index.html',
-    'dist/connection/connection.js',
-    'dist/connection/connection.css',
     'dist/icon.png',
   ]) {
     check(
@@ -98,6 +95,9 @@ if (problems.length === 0) {
   }
   for (const needed of [
     'dist/reaper.cjs',
+    'dist/connection/index.html',
+    'dist/connection/connection.js',
+    'dist/connection/connection.css',
     'dist/web/index.html',
     'dist/web/sw.js',
     'dist/licenses/THIRD-PARTY-LICENSES.txt',

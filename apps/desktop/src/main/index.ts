@@ -75,7 +75,8 @@ const PATHS = {
   licences: unpacked(path.join(DIST, 'licenses', 'THIRD-PARTY-LICENSES.txt')),
   localPreload: path.join(DIST, 'preload-local.cjs'),
   connectionPreload: path.join(DIST, 'preload-connection.cjs'),
-  connectionPage: path.join(DIST, 'connection', 'index.html'),
+  // A `file:` page has no access to the archive (the fuse that would grant it is off).
+  connectionPage: unpacked(path.join(DIST, 'connection', 'index.html')),
   icon: path.join(DIST, 'icon.png'),
 };
 
