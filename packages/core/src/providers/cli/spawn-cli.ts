@@ -144,6 +144,7 @@ export async function* spawnCli(options: SpawnCliOptions): AsyncGenerator<CliOut
     stderr = (stderr + chunk.toString('utf8')).slice(-maxStderr);
   });
   child.on('exit', () => {
+    killer?.rootExited();
     // A descendant holding the pipes would keep `close` from ever arriving.
     cancelDrain = clock.schedule(options.exitDrainMs ?? EXIT_DRAIN_MS, () => {
       killer?.sweep();

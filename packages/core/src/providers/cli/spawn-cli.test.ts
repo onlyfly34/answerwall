@@ -274,6 +274,40 @@ describe('spawnCli', () => {
     },
   );
 
+  test('on Windows a stop that comes after the CLI has exited kills nothing by its pid', async () => {
+    const clock = new FakeClock();
+    const stop = new AbortController();
+    const helpers: string[][] = [];
+    const output = spawnCli(
+      options(`${TREE} process.exit(0);`, {
+        signal: stop.signal,
+        clock,
+        platform: 'win32',
+        killer: { run: (_file, args) => helpers.push(args) },
+      }),
+    );
+    let grandchild: number | undefined;
+
+    try {
+      const first = await output.next();
+      if (first.done || first.value.type !== 'line') throw new Error('no pids were reported');
+      grandchild = (JSON.parse(first.value.text) as { grandchild: number }).grandchild;
+      // The drain timer is set when the exit of the CLI has been seen.
+      await until(() => clock.pendingTimers === 1);
+
+      // Stdout is still held open by the grandchild; the pid of the CLI is free for reuse.
+      stop.abort();
+      const next = output.next();
+      await clock.advance(50);
+
+      expect(await next).toMatchObject({ value: { type: 'exit', exit: { code: 0 } } });
+      expect(helpers).toEqual([]);
+      expect((await output.next()).done).toBe(true);
+    } finally {
+      if (grandchild !== undefined) process.kill(grandchild, 'SIGKILL');
+    }
+  });
+
   posixOnly('gives up on a process that cannot be killed instead of waiting forever', async () => {
     const clock = new FakeClock();
     const stop = new AbortController();
