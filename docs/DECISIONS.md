@@ -503,13 +503,25 @@ Planned additions, not yet scheduled into a phase's contract:
   whether its built-in web search can be enabled alone while every other tool
   stays off. Where that is confirmed, each CLI provider instance gets an
   "allow web search" switch; where it is not, the provider page says so.
-- **Web cells (not planned for v1).** Embedding the vendors' web apps next to
-  CLI cells is only possible in the desktop app, breaks whenever a site
-  changes, and Google refuses sign-in inside embedded browsers. Browser
-  extensions that run inside the user's real browser already do this well.
-  If it is ever built: desktop only, the app types the prompt into the page
-  and never reads the answer back, and it never disguises its browser
-  identity.
+- **Web cells (P2, desktop app only, off by default).** The owner asked for
+  cells that show a vendor's own web app next to CLI and API cells, so the
+  web apps' own features (memory, projects, search) stay available.
+  - A web cell embeds the unmodified site in the Electron app; the user signs
+    in there themselves. The app never reads or exports that session's cookies.
+  - On Send the app types the prompt into the page and submits it. When the
+    answer has finished, the app reads the text of the last answer from the
+    page and stores it in history next to the other cells' answers. History
+    therefore needs slot runs the server did not execute: the desktop client
+    submits the captured text, and the protocol gains a `web` provider kind.
+  - Per-site rules (input, submit, answer, "finished" detection) are data
+    files, one per site, so a site change is a rule update. When a rule
+    fails the cell stays usable by hand and that answer is simply not stored.
+  - The app never disguises its browser identity. Sites that refuse sign-in
+    inside an embedded browser (Google does) stay unsupported.
+  - Reading answers out of a page programmatically is restricted by vendor
+    terms more explicitly than CLI use is. The feature is opt-in, and the
+    README says so plainly.
+  - Phones and the PWA cannot show web cells; they show the stored answers.
 
 ## 12. Testing
 
