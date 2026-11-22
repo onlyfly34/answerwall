@@ -1,15 +1,7 @@
-import { bodyLimit } from 'hono/body-limit';
-import { AppError } from '../contracts/index.ts';
-import type {
-  AppConfig,
-  AppMiddleware,
-  Clock,
-  HttpLayer,
-  Logger,
-  SettingsService,
-} from '../contracts/index.ts';
+import type { AppConfig, Clock, HttpLayer, Logger, SettingsService } from '../contracts/index.ts';
 import { LIMIT_SPECS } from '../protocol/index.ts';
 import { createAddressMatcher } from './addresses.ts';
+import { createBodyLimit } from './body-limit.ts';
 import { createClientInfo } from './client-info.ts';
 import { createErrorHandlers } from './errors.ts';
 import { createHostGuard, createOriginGuard, createPeerGuard } from './guards.ts';
@@ -27,18 +19,6 @@ export interface HttpLayerDeps {
   settings: SettingsService;
   clock: Clock;
   logger: Logger;
-}
-
-function createBodyLimit(settings: SettingsService): AppMiddleware {
-  const tooLarge = (): never => {
-    throw new AppError('payload_too_large', 'Request body is too large');
-  };
-  // The limit is a setting, so it is read for every request.
-  return (c, next) => {
-    if (c.req.method === 'GET' || c.req.method === 'HEAD') return next();
-    const maxSize = settings.get().limits.maxRequestBodyBytes;
-    return bodyLimit({ maxSize, onError: tooLarge })(c, next);
-  };
 }
 
 /**

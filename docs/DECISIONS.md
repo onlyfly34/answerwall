@@ -276,7 +276,7 @@ GET/PUT /api/settings                  secrets are write-only: reads return { ha
 | Limit | Default | Hard max |
 |---|---|---|
 | targets per ask | 32 | 64 |
-| request body | 1 MB | — |
+| request body (also chunked or without a length: the bytes are counted) | 1 MB | — |
 | prompt | 200 KB | — |
 | asks in flight | 4 | 16 |
 | queued slots total | 64 | 256 |

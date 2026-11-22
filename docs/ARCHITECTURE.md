@@ -123,6 +123,10 @@ throwing an `AppError`.
    requests on which `requireAuth` or an auth route set `authFailure` (a
    credential was presented and rejected), not every 401.
 
+   `bodyLimit` judges a declared `Content-Length` by its value; a chunked
+   body, or a request without one, is read through a byte counter and handed
+   to the route through hono's body cache.
+
 7. The route modules, then a JSON 404 for any other `/api/*` path
 8. `staticUi` — the built UI with an `index.html` fallback
 
