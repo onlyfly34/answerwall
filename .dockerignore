@@ -12,9 +12,12 @@
 **/*.tsbuildinfo
 **/.vite
 
-# Not part of the server: documentation, the browser tests' output, editor and
+# Not part of the server: the desktop app (only its manifest, which the
+# lockfile check reads), documentation, the browser tests' output, editor and
 # runtime leftovers. The manifests of every workspace package stay, because
 # `pnpm install --frozen-lockfile` checks them against the lockfile.
+apps/desktop/*
+!apps/desktop/package.json
 docs
 e2e/test-results
 e2e/playwright-report

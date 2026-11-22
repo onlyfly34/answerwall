@@ -56,7 +56,9 @@ RUN --mount=type=cache,id=answerwall-pnpm-store,target=/pnpm/store \
 COPY . .
 RUN --mount=type=cache,id=answerwall-pnpm-store,target=/pnpm/store \
     pnpm install --frozen-lockfile --offline
-RUN pnpm build
+# The server and what it depends on (core, the web UI); not the desktop app,
+# of which only the manifest is in the build context.
+RUN pnpm --filter "@answerwall/server..." run build
 
 ARG IMAGE_TITLE
 ARG IMAGE_SOURCE
