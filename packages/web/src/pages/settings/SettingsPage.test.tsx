@@ -1,9 +1,10 @@
 import { cleanup, fireEvent, screen, waitFor, within } from '@solidjs/testing-library';
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { DEFAULT_LIMITS, SettingsPatchSchema } from '@answerwall/core/protocol';
+import { API_VERSION, DEFAULT_LIMITS, SettingsPatchSchema } from '@answerwall/core/protocol';
 import type {
   Device,
   DevicesResponse,
+  Meta,
   PairingCodeResponse,
   ServerInfo,
 } from '@answerwall/core/protocol';
@@ -46,6 +47,7 @@ function serverInfo(tls: Partial<ServerInfo['tls']>, publicOrigins: string[] = [
 }
 
 interface SetupOptions {
+  meta?: Meta;
   server?: ServerInfo;
   api?: Partial<ApiClient>;
   /** Replaces `settings.update`, to make the server refuse. */
@@ -57,6 +59,7 @@ function setup(options: SetupOptions = {}) {
   const onSignedOut = vi.fn();
   const fake = createFakeServices({
     ...(options.server ? { server: options.server } : {}),
+    ...(options.meta ? { meta: options.meta } : {}),
     api: { listDevices: async () => twoDevices(), ...options.api },
   });
   const services = options.update
@@ -446,6 +449,25 @@ describe('connection security', () => {
     expect(tls().getByRole('alert').textContent).toContain(
       'Unencrypted connections from other machines are allowed.',
     );
+  });
+});
+
+describe('desktop mode', () => {
+  test('has no devices section, since the desktop app never pairs devices', async () => {
+    const { services } = setup({
+      meta: {
+        name: 'AnswerWall',
+        version: '0.0.0-test',
+        apiVersion: API_VERSION,
+        mode: 'desktop',
+        tls: 'off',
+        authRequired: true,
+      },
+    });
+
+    expect(section('About').getByText('Desktop app')).toBeDefined();
+    expect(screen.queryByRole('region', { name: 'Devices' })).toBeNull();
+    expect(services.apiCalls.map((call) => call.method)).not.toContain('listDevices');
   });
 });
 

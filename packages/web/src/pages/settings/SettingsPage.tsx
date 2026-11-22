@@ -40,7 +40,10 @@ export const SettingsPage: Component<DevicesSectionProps> = (props) => {
         {(_generation) => <GeneralSection save={save} />}
       </Show>
       <LimitsSection save={save} />
-      <DevicesSection onLogout={() => props.onLogout()} onSignedOut={() => props.onSignedOut()} />
+      {/* The desktop app signs in with a token per launch; it has no paired devices. */}
+      <Show when={meta()?.mode !== 'desktop'}>
+        <DevicesSection onLogout={() => props.onLogout()} onSignedOut={() => props.onSignedOut()} />
+      </Show>
       <TlsSection />
       <section class="app-card" aria-labelledby={aboutId}>
         <h2 id={aboutId}>{t('app.settings.about.title')}</h2>
