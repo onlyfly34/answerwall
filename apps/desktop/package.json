@@ -14,6 +14,7 @@
     "start": "pnpm run build && electron .",
     "package": "node --conditions=answerwall-source scripts/package.mjs",
     "verify-package": "node scripts/verify-package.mjs",
+    "enable-inspector": "node scripts/enable-inspector.mjs",
     "icons": "node scripts/generate-icons.mjs",
     "e2e": "playwright test --config e2e/playwright.config.ts"
   },

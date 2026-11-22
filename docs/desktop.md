@@ -24,7 +24,9 @@ often cannot start (containers, and distributions that deny unprivileged
 user namespaces). Start it with `electron . --no-sandbox` there. The
 end-to-end tests do so on Linux and also use Chromium's headless display
 (`--ozone-platform=headless`), so they need neither a display nor xvfb. On
-Windows the tests start the app exactly as shipped.
+Windows the tests start the installed app with the switches it is shipped
+with; the one difference from the shipped files is the inspector fuse (see
+"What is in the package").
 
 A build that is not installed keeps its data in `AnswerWall-dev` next to
 where the installed app keeps `AnswerWall` (`%APPDATA%` on Windows), unless
@@ -44,7 +46,10 @@ Packaging:
 pnpm --filter @answerwall/desktop package          # release/: installer, blockmap, latest.yml
 pnpm --filter @answerwall/desktop package --dir    # release/<platform>-unpacked only
 pnpm --filter @answerwall/desktop verify-package   # inspect what was packed
-E2E_APP_EXECUTABLE=<path> pnpm --filter @answerwall/desktop e2e   # test a packaged app
+# test a packaged app: the tests need the inspector, which the package has off
+export E2E_APP_EXECUTABLE=<path>
+pnpm --filter @answerwall/desktop enable-inspector   # this copy is then for testing only
+pnpm --filter @answerwall/desktop e2e
 ```
 
 The installer can only be built on Windows; `--dir` works anywhere and is
@@ -95,11 +100,29 @@ all come from `packages/core/src/brand.ts`:
 - Artifacts: `answerwall-desktop-<version>-windows-x64-setup.exe`, the same
   name with `.blockmap`, and `latest.yml`.
 - Not code-signed.
-- Fuses: `runAsNode` stays on (the reaper needs it), and so does
-  `enableNodeCliInspectArguments` (the end-to-end tests drive the packaged
-  app through the inspector). `NODE_OPTIONS` is ignored, the app loads only
-  from `app.asar`, the archive's integrity is validated, cookies are
-  encrypted with the system's key, and `file:` pages get no extra privileges.
+- Fuses: `enableNodeCliInspectArguments` is off, so the shipped app accepts
+  no `--inspect`; `NODE_OPTIONS` is ignored, the app loads only from
+  `app.asar`, the archive's integrity is validated, cookies are encrypted
+  with the system's key, and `file:` pages get no extra privileges.
+  `verify-package` reads the fuses back from the executable and fails when
+  they differ. `runAsNode` stays on, because the reaper needs it.
+- What the fuses do not give. With `runAsNode` on, whoever can start the
+  installed executable can make it run any script as plain Node
+  (`ELECTRON_RUN_AS_NODE`). And `reaper.cjs` (full Node rights),
+  `connection/` (the page that chooses the server) and `web/` are real files
+  outside the archive, which the integrity validation does not cover. The
+  integrity fuses therefore detect a damaged or exchanged `app.asar`, not a
+  program that already runs as the user; such a program can also replace an
+  app that is installed per user, or read what the user can read. Turning
+  `runAsNode` off needs another way to start the reaper: it must outlive
+  both the main process and the core host, which a utility process does not.
+
+The end-to-end tests drive the main process through the inspector. For a
+packaged app they first switch that one fuse on in the copy under test
+(`pnpm --filter @answerwall/desktop enable-inspector <executable>`, or with
+`E2E_APP_EXECUTABLE` set): the unpacked application on Linux, the installed
+copy on the CI runner. The installer that is published is never changed,
+and `verify-package` fails for a copy that was.
 
 ## Processes
 
@@ -339,11 +362,12 @@ web UI also exercises the app; `release.yml` calls it for the installer. It
 can also be run by hand.
 
 - `windows` (windows-latest): builds the installer, inspects the package,
-  installs it silently for the current user, runs the end-to-end tests
-  against the installed executable, uninstalls it, and uploads the
-  installer, its blockmap and `latest.yml` as one artifact.
-- `linux` (ubuntu-latest): assembles the unpacked application, inspects it
-  and runs the same tests against it.
+  installs it silently for the current user, switches the inspector fuse on
+  in the installed copy, runs the end-to-end tests against the installed
+  executable, uninstalls it, and uploads the installer (untouched), its
+  blockmap and `latest.yml` as one artifact.
+- `linux` (ubuntu-latest): assembles the unpacked application, inspects it,
+  switches the inspector fuse on and runs the same tests against it.
 
 Inputs when called: `artifact-name` (default `windows-installer`) and
 `expected-version` (fails unless the app has this version). Outputs:

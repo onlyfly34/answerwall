@@ -107,6 +107,16 @@ jobs:
           "executable=$executable" >> $env:GITHUB_OUTPUT
           "directory=$($found[0].DirectoryName)" >> $env:GITHUB_OUTPUT
 
+      # The tests drive the main process through Node's inspector, which the
+      # app as shipped refuses (a fuse; "Inspect the package" above checked
+      # that it is off). It is switched on in the installed copy only: the
+      # installer that is uploaded below is not touched.
+      - name: Let the tests drive the installed copy
+        env:
+          # Read from the environment, so that no shell has to quote a Windows path.
+          E2E_APP_EXECUTABLE: ${{ steps.install.outputs.executable }}
+        run: pnpm --filter @answerwall/desktop run enable-inspector
+
       - name: End-to-end tests against the installed app
         env:
           E2E_APP_EXECUTABLE: ${{ steps.install.outputs.executable }}
@@ -174,10 +184,13 @@ jobs:
         run: pnpm --filter @answerwall/desktop run package --dir
       - name: Inspect the package
         run: pnpm --filter @answerwall/desktop run verify-package
+      # The inspector the tests need is off in the package; see the Windows job.
       - name: End-to-end tests against the unpacked application
         run: |
           executable="$(echo "$PWD"/apps/desktop/release/linux-*unpacked/answerwall)"
-          E2E_APP_EXECUTABLE="$executable" pnpm --filter @answerwall/desktop run e2e
+          export E2E_APP_EXECUTABLE="$executable"
+          pnpm --filter @answerwall/desktop run enable-inspector
+          pnpm --filter @answerwall/desktop run e2e
       - name: Upload the traces
         if: ${{ failure() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

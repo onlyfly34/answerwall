@@ -64,8 +64,10 @@ const config = {
   electronFuses: {
     // On: the reaper runs this executable as plain Node (ELECTRON_RUN_AS_NODE).
     runAsNode: true,
-    // On: the end-to-end tests drive the packaged app through the inspector.
-    enableNodeCliInspectArguments: true,
+    // Off: what is shipped accepts no --inspect. The end-to-end tests need the
+    // inspector and switch this fuse on in the copy they test, never in what
+    // is published (scripts/enable-inspector.mjs).
+    enableNodeCliInspectArguments: false,
     enableNodeOptionsEnvironmentVariable: false,
     enableCookieEncryption: true,
     onlyLoadAppFromAsar: true,

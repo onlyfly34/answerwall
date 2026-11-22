@@ -5,12 +5,15 @@
 // Without an argument it takes the one *-unpacked directory in release/.
 // It checks that the archive holds the bundled scripts and nothing else of
 // substance (no node_modules, no native module anywhere), that the files
-// other processes read are real files next to it, and that the update
-// configuration names this repository and no publisher to verify.
+// other processes read are real files next to it, that the update
+// configuration names this repository and no publisher to verify, and that
+// the executable's fuses are the shipped ones (so it fails for a copy that
+// scripts/enable-inspector.mjs prepared for the tests).
 //
-// No dependencies: the archive's index is read directly.
+// No dependencies: the archive's index and the fuses are read directly.
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
+import { hasFuses, readFuses } from './fuses.mjs';
 
 const root = path.join(import.meta.dirname, '..');
 const release = path.join(root, 'release');
@@ -69,6 +72,36 @@ function listFiles(dir, prefix = '') {
     else found.push(relative);
   }
   return found;
+}
+
+// The fuses as scripts/package.mjs sets them. What is shipped must not accept
+// --inspect or NODE_OPTIONS; runAsNode stays on for the reaper.
+const SHIPPED_FUSES = {
+  runAsNode: 'on',
+  enableNodeCliInspectArguments: 'off',
+  enableNodeOptionsEnvironmentVariable: 'off',
+  enableCookieEncryption: 'on',
+  onlyLoadAppFromAsar: 'on',
+  enableEmbeddedAsarIntegrityValidation: 'on',
+  grantFileProtocolExtraPrivileges: 'off',
+};
+if (existsSync(appDir)) {
+  // The executable is named after the product; it is the one file here with fuses.
+  const executables = readdirSync(appDir, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && /^[^.]+(\.exe)?$/i.test(entry.name))
+    .map((entry) => entry.name)
+    .filter((name) => hasFuses(readFileSync(path.join(appDir, name))));
+  check(
+    executables.length === 1,
+    `expected one executable with fuses, found ${executables.length}: ${executables.join(', ')}`,
+  );
+  if (executables.length === 1) {
+    const fuses = readFuses(readFileSync(path.join(appDir, executables[0])));
+    for (const [name, expected] of Object.entries(SHIPPED_FUSES)) {
+      check(fuses[name] === expected, `the fuse ${name} is ${fuses[name]}, not ${expected}`);
+    }
+    console.log(`Executable: ${executables[0]} (fuses as shipped: inspector off)`);
+  }
 }
 
 const asarFile = path.join(resources, 'app.asar');
