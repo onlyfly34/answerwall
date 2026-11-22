@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { deleteCookie, setCookie } from 'hono/cookie';
+import { z } from 'zod';
 import { BRAND } from '../brand.ts';
 import { AppError } from '../contracts/index.ts';
 import type { AppDeps, AppEnv } from '../contracts/index.ts';
@@ -18,7 +19,11 @@ import type {
 import { readJson } from './shared.ts';
 import type { AppContext } from './shared.ts';
 
-/** Browsers cap cookie lifetimes at about 400 days; the cookie is renewed on every sign-in. */
+/**
+ * Browsers cap cookie lifetimes at about 400 days. The auth middleware issues
+ * the cookie again while the device stays in use; it states the same
+ * attributes, because units do not import each other.
+ */
 const SESSION_MAX_AGE_SECONDS = 400 * 24 * 60 * 60;
 
 function setSessionCookie(c: AppContext, token: string): void {
@@ -31,11 +36,26 @@ function setSessionCookie(c: AppContext, token: string): void {
   });
 }
 
+function clearSessionCookie(c: AppContext): void {
+  deleteCookie(c, BRAND.sessionCookie, { path: '/', secure: c.var.client.secure });
+}
+
+/**
+ * People read the code off a log line or another screen, where it is shown
+ * in two groups; spaces and dashes typed along with the digits are dropped
+ * before validation.
+ */
+const TypedPairRequestSchema = z.preprocess((body) => {
+  if (typeof body !== 'object' || body === null) return body;
+  const { code } = body as { code?: unknown };
+  return typeof code === 'string' ? { ...body, code: code.replace(/[\s-]/g, '') } : body;
+}, PairRequestSchema);
+
 export function authRoutes({ auth }: Pick<AppDeps, 'auth'>): Hono<AppEnv> {
   const routes = new Hono<AppEnv>();
 
   routes.post('/pair', async (c) => {
-    const request = await readJson(c, PairRequestSchema);
+    const request = await readJson(c, TypedPairRequestSchema);
     const { token, device } = await auth.pair(request).catch((error: unknown) => {
       if (error instanceof AppError && error.code === 'invalid_code') c.set('authFailure', true);
       throw error;
@@ -58,7 +78,7 @@ export function authRoutes({ auth }: Pick<AppDeps, 'auth'>): Hono<AppEnv> {
   routes.post('/logout', async (c) => {
     await readJson(c, EmptyBodySchema);
     await auth.logout(c.var.auth);
-    deleteCookie(c, BRAND.sessionCookie, { path: '/' });
+    clearSessionCookie(c);
     return c.json({ ok: true } satisfies OkResponse);
   });
 
@@ -74,7 +94,7 @@ export function authRoutes({ auth }: Pick<AppDeps, 'auth'>): Hono<AppEnv> {
     if (!(await auth.revokeDevice(id))) throw new AppError('not_found', 'No such device');
     const caller = c.var.auth;
     if (caller.kind === 'device' && caller.deviceId === id) {
-      deleteCookie(c, BRAND.sessionCookie, { path: '/' });
+      clearSessionCookie(c);
     }
     return c.json({ ok: true } satisfies OkResponse);
   });

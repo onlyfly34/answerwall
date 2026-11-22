@@ -1,3 +1,5 @@
+import { bodyLimit } from 'hono/body-limit';
+import { AppError } from '../contracts/index.ts';
 import type {
   AppConfig,
   AppMiddleware,
@@ -6,9 +8,18 @@ import type {
   Logger,
   SettingsService,
 } from '../contracts/index.ts';
+import { LIMIT_SPECS } from '../protocol/index.ts';
+import { createAddressMatcher } from './addresses.ts';
+import { createClientInfo } from './client-info.ts';
 import { createErrorHandlers } from './errors.ts';
+import { createHostGuard, createOriginGuard, createPeerGuard } from './guards.ts';
+import { createAuthRateLimit, createFailureLimiter } from './rate-limit.ts';
+import { createRequestLog } from './request-log.ts';
+import { createSecurityHeaders } from './security-headers.ts';
+import { createStaticUi } from './static-ui.ts';
 
 export { createErrorHandlers } from './errors.ts';
+export { CONTENT_SECURITY_POLICY } from './security-headers.ts';
 
 export interface HttpLayerDeps {
   config: AppConfig;
@@ -18,27 +29,42 @@ export interface HttpLayerDeps {
   logger: Logger;
 }
 
-const pass: AppMiddleware = (_c, next) => next();
+function createBodyLimit(settings: SettingsService): AppMiddleware {
+  const tooLarge = (): never => {
+    throw new AppError('payload_too_large', 'Request body is too large');
+  };
+  // The limit is a setting, so it is read for every request.
+  return (c, next) => {
+    if (c.req.method === 'GET' || c.req.method === 'HEAD') return next();
+    const maxSize = settings.get().limits.maxRequestBodyBytes;
+    return bodyLimit({ maxSize, onError: tooLarge })(c, next);
+  };
+}
 
 /**
- * Scaffold: error mapping is real, every guard still lets requests through.
- * Nothing is exposed by that, because the auth service rejects every
- * non-public route until it exists.
+ * Builds the guards from the configuration.
+ * @throws Error when a trusted proxy entry or a public origin is malformed.
  */
-export function createHttpLayer({ logger }: HttpLayerDeps): HttpLayer {
+export function createHttpLayer({ config, settings, clock, logger }: HttpLayerDeps): HttpLayer {
+  const isTrustedProxy = createAddressMatcher(config.trustedProxies);
+  const limiter = createFailureLimiter({
+    clock,
+    maxFailuresKept: LIMIT_SPECS.authFailuresPerMinute.max,
+  });
+
   return {
-    requestLog: pass,
-    clientInfo: (c, next) => {
-      const peer = c.env.incoming?.socket.remoteAddress ?? 'unknown';
-      c.set('client', { peer, address: peer, secure: false });
-      return next();
-    },
-    peerGuard: pass,
-    hostGuard: pass,
-    securityHeaders: pass,
-    originGuard: pass,
-    authRateLimit: pass,
-    bodyLimit: pass,
+    requestLog: createRequestLog({ clock, logger }),
+    securityHeaders: createSecurityHeaders(config.publicOrigins),
+    clientInfo: createClientInfo(isTrustedProxy),
+    peerGuard: createPeerGuard(config, isTrustedProxy),
+    hostGuard: createHostGuard(config.publicOrigins),
+    originGuard: createOriginGuard(config.publicOrigins),
+    authRateLimit: createAuthRateLimit({
+      limit: () => settings.get().limits.authFailuresPerMinute,
+      limiter,
+    }),
+    bodyLimit: createBodyLimit(settings),
+    ...(config.webRoot === undefined ? {} : { staticUi: createStaticUi(config.webRoot) }),
     ...createErrorHandlers(logger),
   };
 }
