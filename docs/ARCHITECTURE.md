@@ -201,6 +201,8 @@ why pairing codes are read from storage on every attempt and never cached.
 Secrets can also come from the environment: the variable
 `secretEnvName(key)` (prefix `SECRET_ENV_PREFIX`) overrides the stored value
 of `key`, read-only. Configuration parsing skips variables with that prefix.
+The openai-compat adapter receives the same environment and sends a key that
+comes from it only to the origin in `apiKeyOriginEnvName(id)`.
 
 The data directory holds `answerwall.sqlite`, `secrets.json`, `work/` (one
 directory per running slot), `work.lock` and, in TLS `auto` mode, `tls/`

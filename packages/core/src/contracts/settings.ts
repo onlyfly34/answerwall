@@ -25,6 +25,18 @@ export function secretEnvName(key: string): string {
   return SECRET_ENV_PREFIX + key.toUpperCase().replace(/[^A-Z0-9]/g, '_');
 }
 
+/**
+ * The environment variable that names the one origin (scheme, host, port) an
+ * endpoint's API key may be sent to. An API key supplied by the environment
+ * is sent only when this is set and matches: whoever holds a session can
+ * change an endpoint's address, and must not be able to point an operator's
+ * key at a server of their own. A key stored through the API needs no pin;
+ * moving its endpoint to another origin deletes it.
+ */
+export function apiKeyOriginEnvName(providerId: string): string {
+  return secretEnvName(`provider.${providerId}.api-key-origin`);
+}
+
 /** The keys used with {@link SecretStore}. */
 export const SECRET_KEYS = {
   providerApiKey: (providerId: string) => `provider.${providerId}.api-key`,

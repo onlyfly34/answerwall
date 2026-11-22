@@ -1,5 +1,5 @@
 import { createParser } from 'eventsource-parser';
-import { SECRET_KEYS } from '../contracts/index.ts';
+import { apiKeyOriginEnvName, SECRET_KEYS, secretEnvName } from '../contracts/index.ts';
 import type {
   Clock,
   Logger,
@@ -24,6 +24,8 @@ export interface OpenAiCompatDeps {
   logger: Logger;
   /** Aborted on shutdown; stops detection requests. */
   shutdownSignal: AbortSignal;
+  /** The environment that supplies the secret overlay; see {@link apiKeyOriginEnvName}. */
+  env?: NodeJS.ProcessEnv;
   /** Replaced in tests. */
   fetch?: typeof fetch;
   detectTimeoutMs?: number;
@@ -251,12 +253,41 @@ function completionEvents(payload: unknown, state: StreamState, apiKey?: string)
   return events;
 }
 
+/** Whether both addresses name the same scheme, host and port. */
+function sameOrigin(a: string, b: string): boolean {
+  try {
+    const origin = new URL(a).origin;
+    return origin !== 'null' && origin === new URL(b.trim()).origin;
+  } catch {
+    return false;
+  }
+}
+
 export function createOpenAiCompatAdapter(deps: OpenAiCompatDeps): ProviderAdapter {
   const { clock, secrets } = deps;
   const request: typeof fetch = (input, init) => (deps.fetch ?? fetch)(input, init);
 
+  const env = deps.env ?? {};
+
+  /**
+   * The key to send to `root`, if any. `withheld`: there is a key, but it
+   * comes from the environment and `root` is not the origin pinned for it.
+   */
+  const keyFor = async (
+    instance: ProviderInstance,
+    root: string | undefined,
+  ): Promise<{ apiKey?: string; withheld: boolean }> => {
+    const key = SECRET_KEYS.providerApiKey(instance.id);
+    const apiKey = (await secrets.get(key)) || undefined;
+    if (apiKey === undefined) return { withheld: false };
+    if (!env[secretEnvName(key)]) return { apiKey, withheld: false };
+    const pin = env[apiKeyOriginEnvName(instance.id)];
+    return root !== undefined && pin !== undefined && sameOrigin(root, pin)
+      ? { apiKey, withheld: false }
+      : { withheld: true };
+  };
   const apiKeyOf = async (instance: ProviderInstance): Promise<string | undefined> =>
-    (await secrets.get(SECRET_KEYS.providerApiKey(instance.id))) || undefined;
+    (await keyFor(instance, rootOf(instance))).apiKey;
 
   const rootOf = (instance: ProviderInstance): string | undefined => {
     if (instance.kind !== 'openai-compat') return undefined;
@@ -316,8 +347,17 @@ export function createOpenAiCompatAdapter(deps: OpenAiCompatDeps): ProviderAdapt
     toolAccess: 'none',
 
     async detect(instance): Promise<ProviderDetection> {
-      const hasKey = (await apiKeyOf(instance)) !== undefined;
+      const { apiKey, withheld } = await keyFor(instance, rootOf(instance));
+      const hasKey = apiKey !== undefined;
       const base = { billing: hasKey ? 'api-key' : 'unknown', streaming: 'token' } as const;
+      if (withheld) {
+        return {
+          installed: true,
+          loggedIn: 'no',
+          ...base,
+          hint: `The API key from the environment is not sent: set ${apiKeyOriginEnvName(instance.id)} to this endpoint's origin (scheme, host and port) to allow it.`,
+        };
+      }
       const result = await fetchModels(instance);
       switch (result.status) {
         case 'ok':
@@ -380,7 +420,15 @@ export function createOpenAiCompatAdapter(deps: OpenAiCompatDeps): ProviderAdapt
       let body: ReadableStreamDefaultReader<Uint8Array> | undefined;
       const state: StreamState = { finished: false, sawCompletion: false };
       try {
-        apiKey = await apiKeyOf(instance);
+        const key = await keyFor(instance, root);
+        if (key.withheld) {
+          yield fail({
+            code: 'not_logged_in',
+            message: `The API key from the environment is not sent to this address: ${apiKeyOriginEnvName(instance.id)} does not name its origin.`,
+          });
+          return;
+        }
+        apiKey = key.apiKey;
         const post = (withUsage: boolean): Promise<Response> =>
           request(`${root}/chat/completions`, {
             method: 'POST',

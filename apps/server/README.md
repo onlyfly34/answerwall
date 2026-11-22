@@ -18,7 +18,14 @@ what the `answerwall` binary points to.
 Every option is an environment variable; most also have a command-line flag,
 which wins. An unknown `ANSWERWALL_*` variable stops the start, so a typo is
 never silently ignored. Variables starting with `ANSWERWALL_SECRET_` belong to
-the secret store and are not listed here.
+the secret store and are not listed here, with one pair worth knowing: an
+OpenAI-compatible endpoint's API key can come from
+`ANSWERWALL_SECRET_PROVIDER_<ID>_API_KEY` (the endpoint id upper-cased, other
+characters as `_`), and it is then sent only to the origin given in
+`ANSWERWALL_SECRET_PROVIDER_<ID>_API_KEY_ORIGIN`, for example
+`https://llm.example.com`. Without that second variable the key is never
+sent, so a signed-in device cannot point the endpoint elsewhere and collect
+the key.
 
 | Variable                     | Flag                | Default            | Meaning                                                                         |
 | ---------------------------- | ------------------- | ------------------ | ------------------------------------------------------------------------------- |

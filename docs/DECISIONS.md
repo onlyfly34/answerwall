@@ -404,6 +404,14 @@ leaked token cannot fan out into thousands of processes.
   variables as a read-only overlay (`ANSWERWALL_SECRET_<KEY>`, the key
   upper-cased with every other character replaced by `_`). Desktop: Electron `safeStorage`, injected
   from the main process. The database never holds a plaintext secret.
+- An endpoint's API key supplied by the environment
+  (`ANSWERWALL_SECRET_PROVIDER_<ID>_API_KEY`) is sent only to the origin
+  named by `ANSWERWALL_SECRET_PROVIDER_<ID>_API_KEY_ORIGIN` (scheme, host and
+  port; the path may differ). Without that variable, or for any other
+  origin, the key is not sent and the provider page says why. Reason:
+  anyone holding a session can create or retarget an endpoint with that id,
+  and the stored-key rule in §5.2 cannot apply, because the environment
+  value cannot be deleted.
 
 ## 8. Storage
 

@@ -2,7 +2,7 @@ import { createServer } from 'node:http';
 import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
-import { SECRET_KEYS } from '../contracts/index.ts';
+import { apiKeyOriginEnvName, SECRET_KEYS, secretEnvName } from '../contracts/index.ts';
 import type { ProviderAdapter, ProviderEvent, RunRequest } from '../contracts/index.ts';
 import type { OpenAiCompatInstance } from '../protocol/index.ts';
 import { systemClock } from '../system.ts';
@@ -245,12 +245,13 @@ describe('the openai-compat adapter', () => {
   });
   const run = (overrides: Partial<RunRequest> = {}, inst = instance()): Promise<ProviderEvent[]> =>
     collect(adapter.run(inst, request(overrides)));
-  const build = (secrets: Record<string, string>, clock = systemClock) =>
+  const build = (secrets: Record<string, string>, clock = systemClock, env?: NodeJS.ProcessEnv) =>
     createOpenAiCompatAdapter({
       secrets: createFakeSecretStore(secrets),
       clock,
       logger,
       shutdownSignal: shutdown.signal,
+      ...(env === undefined ? {} : { env }),
     });
 
   beforeEach(async () => {
@@ -265,6 +266,59 @@ describe('the openai-compat adapter', () => {
   test('has no tools and no login command', () => {
     expect(adapter).toMatchObject({ kind: 'openai-compat', toolAccess: 'none' });
     expect(adapter.loginCommand).toBeUndefined();
+  });
+
+  describe('an API key from the environment', () => {
+    const KEY_VARIABLE = secretEnvName(SECRET_KEYS.providerApiKey('local'));
+    const PIN_VARIABLE = apiKeyOriginEnvName('local');
+    // The fake store stands in for the overlay: it returns the key, the environment says where it came from.
+    const fromEnvironment = (env: NodeJS.ProcessEnv) =>
+      build({ [SECRET_KEYS.providerApiKey('local')]: KEY }, systemClock, {
+        [KEY_VARIABLE]: KEY,
+        ...env,
+      });
+
+    test('names the variable the pin is read from', () => {
+      expect(PIN_VARIABLE).toBe(`${secretEnvName('provider.local.api-key-origin')}`);
+      expect(PIN_VARIABLE.endsWith('_PROVIDER_LOCAL_API_KEY_ORIGIN')).toBe(true);
+    });
+
+    test('is sent to the pinned origin, whatever the path', async () => {
+      adapter = fromEnvironment({ [PIN_VARIABLE]: origin });
+      endpoint.handler = sse(chunk({ content: 'ok' }), DONE);
+
+      const events = await run({}, instance({ baseUrl: `${origin}/proxy/v1` }));
+
+      expect(events.at(-1)?.type).toBe('done');
+      expect(endpoint.requests[0]?.headers.authorization).toBe(`Bearer ${KEY}`);
+    });
+
+    test.each([
+      ['without a pin', {}],
+      ['with a pin for another origin', { [PIN_VARIABLE]: 'https://llm.example' }],
+      ['with a pin that is not an address', { [PIN_VARIABLE]: 'anything' }],
+    ])('is never sent %s', async (_, env: NodeJS.ProcessEnv) => {
+      adapter = fromEnvironment(env);
+      endpoint.handler = sse(chunk({ content: 'ok' }), DONE);
+
+      const events = await run();
+      const detection = await adapter.detect(instance());
+
+      expect(events.at(-1)).toMatchObject({ type: 'error', code: 'not_logged_in' });
+      expect(JSON.stringify(events)).toContain(PIN_VARIABLE);
+      expect(detection).toMatchObject({ loggedIn: 'no' });
+      expect(detection.hint).toContain(PIN_VARIABLE);
+      expect(endpoint.requests).toEqual([]);
+    });
+
+    test('a stored key needs no pin', async () => {
+      adapter = build({ [SECRET_KEYS.providerApiKey('local')]: KEY }, systemClock, {});
+      endpoint.handler = sse(chunk({ content: 'ok' }), DONE);
+
+      await run();
+
+      expect(endpoint.requests[0]?.headers.authorization).toBe(`Bearer ${KEY}`);
+    });
   });
 
   describe('run', () => {

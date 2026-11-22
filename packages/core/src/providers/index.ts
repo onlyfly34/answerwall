@@ -44,6 +44,7 @@ export function createProviderRegistry(deps: ProviderRegistryDeps): ProviderRegi
       clock: deps.clock,
       logger,
       shutdownSignal: shutdown.signal,
+      env: deps.env,
     }),
   ];
   return createRegistry({ settings: deps.settings, clock: deps.clock, logger, adapters, shutdown });
