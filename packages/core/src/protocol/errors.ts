@@ -38,7 +38,6 @@ export const API_ERROR_CODES = [
   'too_many_asks',
   'queue_full',
   'internal',
-  'not_implemented',
 ] as const;
 export const ApiErrorCodeSchema = z.enum(API_ERROR_CODES);
 export type ApiErrorCode = z.infer<typeof ApiErrorCodeSchema>;

@@ -62,7 +62,6 @@ export const en = {
   'app.error.tooManyAsks': 'Too many asks are running. Wait for one to finish.',
   'app.error.queueFull': 'The queue is full. Wait for some answers to finish.',
   'app.error.internal': 'The server ran into an error.',
-  'app.error.notImplemented': 'The server does not support this yet.',
 
   'app.signIn.intro': 'Pair this device with the server to continue.',
   'app.signIn.method': 'Sign in with',

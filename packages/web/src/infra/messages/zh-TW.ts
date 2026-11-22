@@ -60,7 +60,6 @@ export const zhTW: Record<keyof typeof en, string> = {
   'app.error.tooManyAsks': '同時進行的提問太多。請等其中一個完成。',
   'app.error.queueFull': '佇列已滿。請等部分回答完成。',
   'app.error.internal': '伺服器發生錯誤。',
-  'app.error.notImplemented': '伺服器尚未支援這項功能。',
 
   'app.signIn.intro': '請先將這台裝置與伺服器配對。',
   'app.signIn.method': '登入方式',

@@ -22,7 +22,6 @@ const ERROR_KEYS: Record<ApiError['code'], MessageKey> = {
   too_many_asks: 'app.error.tooManyAsks',
   queue_full: 'app.error.queueFull',
   internal: 'app.error.internal',
-  not_implemented: 'app.error.notImplemented',
 };
 
 /**

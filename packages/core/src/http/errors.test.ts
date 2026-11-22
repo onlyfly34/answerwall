@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { describe, expect, test } from 'vitest';
-import { AppError, HTTP_STATUS, NotImplementedError } from '../contracts/index.ts';
+import { AppError, HTTP_STATUS } from '../contracts/index.ts';
 import type { AppEnv } from '../contracts/index.ts';
 import { API_ERROR_CODES, ApiErrorBodySchema } from '../protocol/index.ts';
 import { createMemoryLogger } from '../testing/index.ts';
@@ -35,12 +35,6 @@ describe('onError', () => {
       expect(logger.entries).toEqual([]);
     },
   );
-
-  test('a unit that is not built yet answers 501', async () => {
-    const { app } = appThatThrows(new NotImplementedError('Storage.turns.get'));
-    const response = await app.request('/fail');
-    expect(response.status).toBe(501);
-  });
 
   test('any other error becomes a generic 500 that leaks nothing', async () => {
     const error = new TypeError(

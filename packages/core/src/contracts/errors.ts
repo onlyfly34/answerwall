@@ -18,7 +18,6 @@ export const HTTP_STATUS: Record<ApiErrorCode, number> = {
   too_many_asks: 429,
   queue_full: 429,
   internal: 500,
-  not_implemented: 501,
 };
 
 /**
@@ -38,33 +37,4 @@ export class AppError extends Error {
   get status(): number {
     return HTTP_STATUS[this.code];
   }
-}
-
-export class NotImplementedError extends AppError {
-  constructor(what: string) {
-    super('not_implemented', `${what} is not implemented yet`);
-    this.name = 'NotImplementedError';
-  }
-}
-
-/**
- * Placeholder for a unit that has not been built: every member that is not in
- * `implemented` is a function (or a namespace of functions) that throws
- * {@link NotImplementedError}. Deleted once every unit has landed.
- */
-export function unimplemented<T extends object>(unit: string, implemented: Partial<T> = {}): T {
-  const missing = (path: string): unknown =>
-    new Proxy(() => undefined, {
-      get: (_target, key) =>
-        typeof key === 'symbol' || key === 'then' ? undefined : missing(`${path}.${key}`),
-      apply: () => {
-        throw new NotImplementedError(path);
-      },
-    });
-  return new Proxy(implemented, {
-    get: (target, key, receiver) =>
-      typeof key === 'symbol' || key === 'then' || key in target
-        ? Reflect.get(target, key, receiver)
-        : missing(`${unit}.${key}`),
-  }) as T;
 }
