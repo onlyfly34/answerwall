@@ -348,8 +348,12 @@ describe('provider registry', () => {
     const second = t.registry.refresh('codex');
     await flushPromises();
     expect(detections).toHaveLength(1);
+    // A list read meanwhile says that this one is about to change.
+    expect(t.status('codex')).toMatchObject({ detection: null, detecting: true });
+    expect(t.status('claude').detecting).toBe(false);
     detections[0]?.(READY_DETECTION);
     await Promise.all([first, second]);
+    expect(t.status('codex')).toMatchObject({ detection: READY_DETECTION, detecting: false });
 
     // A refresh after that one has finished detects again.
     const third = t.registry.refresh('codex');

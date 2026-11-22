@@ -134,6 +134,10 @@ type ErrorCode = 'not_installed' | 'not_logged_in' | 'quota' | 'rate_limited'
 
 `detect()` results are cached; they are recomputed only at server start and
 when the user presses Refresh. `GET /api/providers` never spawns anything.
+While a detection is running, the status of that provider says
+`detecting: true`; a page that was loaded meanwhile reads the list again
+(once a second, a plain `GET`) until it is `false`, so the result of the
+detection at server start reaches a page opened right after the start.
 `detect()` must drop identifying fields (email, org, absolute paths) before
 anything reaches the API, the log or the database.
 

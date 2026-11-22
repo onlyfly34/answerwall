@@ -140,7 +140,16 @@ export const ProviderCard: Component<ProviderCardProps> = (props) => {
         )}
       </Show>
 
-      <Show when={detection()} fallback={<p class="app-muted">{t('app.providers.notChecked')}</p>}>
+      <Show
+        when={detection()}
+        fallback={
+          <p class="app-muted">
+            {props.status?.detecting
+              ? t('app.providers.refreshing')
+              : t('app.providers.notChecked')}
+          </p>
+        }
+      >
         {(detected) => (
           <dl class="app-facts">
             <dt>{isCli() ? t('app.providers.installed') : t('app.providers.reachable')}</dt>

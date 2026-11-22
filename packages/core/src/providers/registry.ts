@@ -101,6 +101,7 @@ export function createRegistry(parts: RegistryParts): ProviderRegistry {
         instance,
         detection: current?.detection ?? null,
         detectedAt: current?.detectedAt ?? null,
+        detecting: inFlight.has(instance.id),
         models: mergeModels(instance, current?.models ?? []),
         toolAccess: adapter.toolAccess,
         webSearch: webSearchSupport(instance.kind),
