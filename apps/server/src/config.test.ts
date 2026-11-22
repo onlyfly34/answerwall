@@ -1,6 +1,6 @@
 import { isAbsolute } from 'node:path';
 import { expect, test } from 'vitest';
-import { BRAND } from '@answerwall/core';
+import { BRAND, SECRET_KEYS, secretEnvName } from '@answerwall/core';
 import { loadConfig } from './config.ts';
 
 const env = (values: Record<string, string>) =>
@@ -29,6 +29,12 @@ test('host, port and data dir come from the environment', () => {
 
 test('an invalid port is refused', () => {
   expect(() => loadConfig(env({ PORT: 'eighty' }))).toThrow(/PORT/);
+});
+
+test('secret overlay variables are left to the secret store', () => {
+  const name = secretEnvName(SECRET_KEYS.providerApiKey('my-endpoint'));
+  expect(name).toBe(`${BRAND.envPrefix}SECRET_PROVIDER_MY_ENDPOINT_API_KEY`);
+  expect(loadConfig({ [name]: 'sk-value' }).port).toBe(BRAND.defaultPort);
 });
 
 test('settings that are not implemented yet are refused instead of ignored', () => {

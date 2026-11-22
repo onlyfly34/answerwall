@@ -12,6 +12,10 @@ export type TlsConfig =
  * Everything the process is told from outside (environment and flags),
  * already parsed and validated. `apps/server` and the desktop shell build it;
  * core never reads `process.env` for configuration.
+ *
+ * Whoever parses the environment refuses unknown `<PREFIX>*` variables but
+ * must skip those starting with `SECRET_ENV_PREFIX`: they belong to the
+ * secret store's overlay, not to the configuration.
  */
 export interface AppConfig {
   mode: DeploymentMode;

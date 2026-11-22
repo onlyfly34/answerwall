@@ -16,9 +16,10 @@ export interface TurnRepository {
   create(snapshot: AskSnapshot): Promise<void>;
   conversationExists(conversationId: string): Promise<boolean>;
   /**
-   * Writes the mutable state (ask status and seq; per slot: status, text,
-   * reasoning, notices, truncated, error, usage, startedAt, elapsedMs) of
-   * every slot, or only of `dirtySlotIds`.
+   * Writes the mutable state: the ask's status and seq, and per slot every
+   * `SlotSnapshot` field except `slotId`, `providerId`, `kind`, `model` and
+   * `effort` (which never change after `create`). All slots, or only
+   * `dirtySlotIds`.
    */
   save(snapshot: AskSnapshot, dirtySlotIds?: readonly string[]): Promise<void>;
   /**
@@ -80,10 +81,16 @@ export interface PairingCodeRepository {
   list(): Promise<PairingCodeRecord[]>;
   insert(code: PairingCodeRecord): Promise<void>;
   setFailedAttempts(id: string, failedAttempts: number): Promise<void>;
+  /** `true` for exactly one caller per code, also across processes. */
   delete(id: string): Promise<boolean>;
 }
 
-/** Everything persisted. Never holds a plaintext secret or any CLI credential. */
+/**
+ * Everything persisted. Never holds a plaintext secret or any CLI credential.
+ * The database may be opened by a second, short-lived process while the
+ * server runs (the `pair` command), so every read sees committed writes of
+ * other connections and a busy database is waited for, not failed on.
+ */
 export interface Storage {
   readonly turns: TurnRepository;
   readonly presets: PresetRepository;

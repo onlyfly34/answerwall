@@ -104,6 +104,9 @@ interface ProviderInstance {
 }
 ```
 
+Each CLI kind has exactly one instance, which can be disabled but not removed;
+only openai-compat instances are added and removed.
+
 Adapter contract:
 
 ```ts
@@ -114,10 +117,10 @@ interface ProviderAdapter {
     streaming: 'token'|'block'|'unknown'; hint?: string }>;
   listModels?(inst): Promise<{ id: string; label?: string; efforts?: string[] }[]>;
   run(inst, req: { prompt: string; model?: string; effort?: string;
-    signal: AbortSignal; workDir: string }): AsyncIterable<ProviderEvent>;
+    timeoutMs: number; signal: AbortSignal; workDir: string }): AsyncIterable<ProviderEvent>;
 }
 type ProviderEvent =
-  | { type: 'start' }
+  | { type: 'start'; streaming?: 'token'|'block'|'unknown' }
   | { type: 'delta'; text: string }
   | { type: 'reasoning'; text: string }
   | { type: 'notice'; message: string }            // e.g. a tool call was denied
@@ -254,6 +257,10 @@ GET/PUT /api/settings                  secrets are write-only: reads return { ha
 - Event types: `snapshot`, `queued`, `start`, `delta`, `reasoning`, `notice`,
   `done`, `error`, `cancelled`, `timeout` (each with `slotId`, `providerId`),
   and a final `ask_done`.
+- Every stream ends with a terminal event, after which the server closes it
+  and the client does not reconnect: `ask_done`, or — when the ask is already
+  done and nothing remains to replay — a single `snapshot` whose status is
+  `done`.
 - `: ping` comment every 15 s. Headers: `Cache-Control: no-store`,
   `X-Accel-Buffering: no`. No compression on this route.
 - If the server restarts, slots that were running are marked `error` with
@@ -297,8 +304,13 @@ leaked token cannot fan out into thousands of processes.
   tests.
 - Every request: `Host` must be in the allowlist (loopback names plus the
   configured public origins). Every non-GET request: `Origin` must be
-  same-origin and `Content-Type` must be `application/json`. Being on loopback
-  never bypasses auth.
+  same-origin and `Content-Type` must be `application/json`. A non-GET request
+  without an `Origin` header is accepted only when it carries an
+  `Authorization` header and no session cookie (non-browser clients). Being
+  on loopback never bypasses auth.
+- Only failed attempts that presented a credential count towards the failed
+  auth limit (wrong pairing code, wrong or revoked token or cookie); a 401
+  for a request without any credential does not.
 - TLS modes (`ANSWERWALL_TLS`):
   - `cert` — `ANSWERWALL_TLS_CERT` / `ANSWERWALL_TLS_KEY` point to PEM files;
     reload automatically when the files change (certificate renewals).
@@ -334,7 +346,8 @@ leaked token cannot fan out into thousands of processes.
 - Secrets (`SecretStore` interface: get/set/delete): OpenAI-compatible API
   keys, the Electron app's remote token, TLS private keys. Server: a `0600`
   file in the data dir, separate from the database, with environment
-  variables as a read-only overlay. Desktop: Electron `safeStorage`, injected
+  variables as a read-only overlay (`ANSWERWALL_SECRET_<KEY>`, the key
+  upper-cased with every other character replaced by `_`). Desktop: Electron `safeStorage`, injected
   from the main process. The database never holds a plaintext secret.
 
 ## 8. Storage

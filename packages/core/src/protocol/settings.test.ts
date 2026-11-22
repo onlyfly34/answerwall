@@ -6,6 +6,7 @@ import {
   LimitsSchema,
   ProviderInstanceInputSchema,
   ProviderInstanceSchema,
+  SettingsPatchSchema,
   SettingsSchema,
 } from './index.ts';
 import type { CliProviderInstance, OpenAiCompatInstance } from './index.ts';
@@ -57,6 +58,22 @@ describe('default settings', () => {
       authFailuresPerMinute: 10,
       slotTimeoutMs: 300_000,
     });
+  });
+});
+
+describe('provider list', () => {
+  test('a CLI provider can be disabled but not removed; endpoints come and go', () => {
+    const settings = createDefaultSettings();
+    const withEndpoint = { ...settings, providers: [...settings.providers, endpoint] };
+    const withoutGrok = {
+      ...settings,
+      providers: settings.providers.filter((p) => p.id !== 'grok'),
+    };
+
+    expect(SettingsSchema.safeParse(withEndpoint).success).toBe(true);
+    expect(SettingsSchema.safeParse(withoutGrok).success).toBe(false);
+    expect(SettingsPatchSchema.safeParse({ providers: withoutGrok.providers }).success).toBe(false);
+    expect(SettingsPatchSchema.safeParse({ language: 'zh-TW' }).success).toBe(true);
   });
 });
 

@@ -27,7 +27,7 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
   app.onError(http.onError);
   app.notFound(http.notFound);
 
-  app.use(http.requestLog, http.clientInfo, http.peerGuard, http.hostGuard, http.securityHeaders);
+  app.use(http.requestLog, http.securityHeaders, http.clientInfo, http.peerGuard, http.hostGuard);
   app.use(
     '/api/*',
     http.originGuard,

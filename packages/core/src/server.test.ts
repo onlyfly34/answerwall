@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, test } from 'vitest';
@@ -18,7 +18,13 @@ afterEach(async () => {
 
 test('the server starts on a free port, serves meta over HTTP and shuts down', async () => {
   dataDir = await mkdtemp(join(tmpdir(), `${BRAND.slug}-`));
-  server = await createServer(createTestConfig({ dataDir }), { logger: createMemoryLogger() });
+  // Startup detection must find no real CLI on the machine running the tests.
+  const emptyBin = join(dataDir, 'bin');
+  await mkdir(emptyBin);
+  server = await createServer(createTestConfig({ dataDir }), {
+    logger: createMemoryLogger(),
+    env: { PATH: emptyBin },
+  });
 
   const { url, port } = await server.listen();
 

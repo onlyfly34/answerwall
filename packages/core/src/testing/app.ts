@@ -40,7 +40,7 @@ export function createOpenHttpLayer(logger: Logger): HttpLayer {
   return {
     requestLog: pass,
     clientInfo: (c, next) => {
-      c.set('client', { address: '127.0.0.1', secure: false });
+      c.set('client', { peer: '127.0.0.1', address: '127.0.0.1', secure: false });
       return next();
     },
     peerGuard: pass,
@@ -67,7 +67,11 @@ export interface TestApp {
   clock: FakeClock;
   /** The default ask manager, driven with `emit()`; idle when `asks` is overridden. */
   asks: FakeAskManager;
-  /** `app.request()` with the test token and, when `body` is given, a JSON body. */
+  /**
+   * `app.request()` as a non-browser client: the test token as bearer and,
+   * on every method but GET, a JSON body (`{}` when none is given), which is
+   * what the real `originGuard` demands.
+   */
   request(method: string, path: string, body?: unknown): Promise<Response>;
 }
 
@@ -105,9 +109,9 @@ export function createTestApp(overrides: Partial<AppDeps> = {}, clock = new Fake
         method,
         headers: {
           Authorization: `Bearer ${TEST_TOKEN}`,
-          ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+          ...(method === 'GET' ? {} : { 'Content-Type': 'application/json' }),
         },
-        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+        ...(method === 'GET' ? {} : { body: JSON.stringify(body ?? {}) }),
       }),
   };
 }

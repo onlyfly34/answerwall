@@ -18,7 +18,10 @@ export function requireAuth(auth: AuthService, publicRoutes: readonly string[]):
     if (publicRoutes.includes(`${c.req.method} ${c.req.path}`)) return next();
     const token = sessionToken(c);
     const context = token === undefined ? null : await auth.authenticate(token);
-    if (!context) throw new AppError('unauthorized', 'Sign in to continue');
+    if (!context) {
+      if (token !== undefined) c.set('authFailure', true);
+      throw new AppError('unauthorized', 'Sign in to continue');
+    }
     c.set('auth', context);
     return next();
   };

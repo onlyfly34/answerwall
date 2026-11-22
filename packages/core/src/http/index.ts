@@ -29,10 +29,8 @@ export function createHttpLayer({ logger }: HttpLayerDeps): HttpLayer {
   return {
     requestLog: pass,
     clientInfo: (c, next) => {
-      c.set('client', {
-        address: c.env.incoming?.socket.remoteAddress ?? 'unknown',
-        secure: false,
-      });
+      const peer = c.env.incoming?.socket.remoteAddress ?? 'unknown';
+      c.set('client', { peer, address: peer, secure: false });
       return next();
     },
     peerGuard: pass,

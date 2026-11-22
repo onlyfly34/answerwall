@@ -1,5 +1,11 @@
 import { expect, test } from 'vitest';
-import { API_PATHS, AskSnapshotSchema, SSE_PING_INTERVAL_MS } from '../protocol/index.ts';
+import {
+  API_PATHS,
+  AskSnapshotSchema,
+  isTerminalStreamEvent,
+  SSE_PING_INTERVAL_MS,
+  StreamEventSchema,
+} from '../protocol/index.ts';
 import type { AskRequest } from '../protocol/index.ts';
 import { createTestApp, flushPromises, TEST_TOKEN } from '../testing/index.ts';
 import type { TestApp } from '../testing/index.ts';
@@ -71,6 +77,35 @@ test('the stream resumes after ?after= and Last-Event-ID, the header winning', a
     headers: { Authorization: `Bearer ${TEST_TOKEN}`, 'Last-Event-ID': '3' },
   });
   expect(ids(await byHeader.text())).toEqual(['4']);
+});
+
+test('a finished ask with nothing left to replay ends with one snapshot of status done', async () => {
+  const t = createTestApp();
+  const askId = await submit(t);
+  answer(t, askId);
+
+  for (const after of [4, 9]) {
+    const text = await (await t.request('GET', API_PATHS.askStream(askId, after))).text();
+    const messages = text.trimEnd().split('\n\n');
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toMatch(/^id: 4\nevent: snapshot\ndata: /);
+    const event = StreamEventSchema.parse(JSON.parse(messages[0]!.split('\ndata: ')[1]!));
+    expect(isTerminalStreamEvent(event)).toBe(true);
+    expect(event).toMatchObject({ snapshot: { status: 'done', seq: 4 } });
+  }
+});
+
+test('a running ask resumed beyond its last event starts over from a snapshot', async () => {
+  const t = createTestApp();
+  const askId = await submit(t);
+  t.asks.emit(askId, { type: 'start', ...slot, at: t.clock.now(), streaming: 'token' });
+  const response = await t.request('GET', API_PATHS.askStream(askId, 7));
+  const reader = response.body!.pipeThrough(new TextDecoderStream()).getReader();
+
+  expect((await reader.read()).value).toMatch(/^id: 1\nevent: snapshot\n/);
+  t.asks.emit(askId, { type: 'ask_done' });
+  expect((await reader.read()).value).toMatch(/^id: 2\nevent: ask_done\n/);
+  expect((await reader.read()).done).toBe(true);
 });
 
 test('an idle stream is kept alive with ping comments', async () => {

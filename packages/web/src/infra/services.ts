@@ -1,8 +1,8 @@
 import { createSignal } from 'solid-js';
 import type { Meta, ProviderStatus, ServerInfo, Settings } from '@answerwall/core/protocol';
 import type { ApiClient, AppServices, AskStream } from '../contracts/services.ts';
+import { createI18n } from '../contracts/i18n.ts';
 import { createApiClient } from './api.ts';
-import { createI18n } from './i18n.ts';
 
 const notBuilt = (what: string) => (): never => {
   throw new Error(`${what} is not implemented yet`);

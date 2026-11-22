@@ -9,9 +9,17 @@ import type { Hono } from 'hono';
 import { createApp } from './app.ts';
 import { createAuthService } from './auth/index.ts';
 import { BRAND } from './brand.ts';
-import type { AppConfig, AppEnv, Logger, SecretStore } from './contracts/index.ts';
+import type {
+  AppConfig,
+  AppEnv,
+  AuthService,
+  Logger,
+  SecretStore,
+  Storage,
+} from './contracts/index.ts';
 import { createHttpLayer } from './http/index.ts';
 import { createLogger } from './logging/index.ts';
+import type { PairingCodeResponse } from './protocol/index.ts';
 import { createProviderRegistry } from './providers/index.ts';
 import { createAskManager } from './runner/index.ts';
 import { createFileSecretStore, createSettingsService } from './settings/index.ts';
@@ -23,6 +31,11 @@ export interface ServerOverrides {
   logger?: Logger;
   /** The desktop shell injects a store backed by the operating system's keychain. */
   secrets?: SecretStore;
+  /**
+   * The environment the secret overlay reads and child processes start from;
+   * `process.env` by default. Tests pass one whose `PATH` holds no real CLI.
+   */
+  env?: NodeJS.ProcessEnv;
 }
 
 export interface ServerHandle {
@@ -34,6 +47,41 @@ export interface ServerHandle {
   shutdown(): Promise<void>;
 }
 
+async function openStorage(config: AppConfig, logger: Logger): Promise<Storage> {
+  await mkdir(config.dataDir, { recursive: true });
+  return createSqliteStorage({ file: join(config.dataDir, BRAND.databaseFile), logger });
+}
+
+function buildAuthService(config: AppConfig, storage: Storage, logger: Logger): AuthService {
+  return createAuthService({
+    storage,
+    clock: systemClock,
+    ids: randomIds,
+    random: systemRandom,
+    logger,
+    mode: config.mode,
+    staticToken: config.staticToken,
+  });
+}
+
+/**
+ * Creates a pairing code directly in the database of `config.dataDir`, for
+ * the `pair` command. Works while a server is running on the same data
+ * directory: the server reads pairing codes from storage on every attempt.
+ */
+export async function createPairingCode(
+  config: AppConfig,
+  overrides: Pick<ServerOverrides, 'logger'> = {},
+): Promise<PairingCodeResponse> {
+  const logger = overrides.logger ?? createLogger({ level: config.logLevel });
+  const storage = await openStorage(config, logger);
+  try {
+    return await buildAuthService(config, storage, logger).createPairingCode();
+  } finally {
+    await storage.close();
+  }
+}
+
 /** Builds every unit from `config` and wires them into one app. Does not bind a socket yet. */
 export async function createServer(
   config: AppConfig,
@@ -41,18 +89,14 @@ export async function createServer(
 ): Promise<ServerHandle> {
   const logger = overrides.logger ?? createLogger({ level: config.logLevel });
   const clock = systemClock;
-  await mkdir(config.dataDir, { recursive: true });
+  const env = overrides.env ?? process.env;
 
-  const storage = await createSqliteStorage({
-    file: join(config.dataDir, BRAND.databaseFile),
-    logger,
-  });
+  const storage = await openStorage(config, logger);
   const secrets =
-    overrides.secrets ??
-    createFileSecretStore({ file: join(config.dataDir, 'secrets.json'), env: process.env });
+    overrides.secrets ?? createFileSecretStore({ file: join(config.dataDir, 'secrets.json'), env });
   const settings = createSettingsService({ storage, secrets });
   await settings.load();
-  const providers = createProviderRegistry({ settings, secrets, clock, logger, env: process.env });
+  const providers = createProviderRegistry({ settings, secrets, clock, logger, env });
   const asks = createAskManager({
     storage,
     settings,
@@ -63,14 +107,7 @@ export async function createServer(
     workRoot: join(config.dataDir, 'work'),
   });
   await asks.start();
-  const auth = createAuthService({
-    storage,
-    clock,
-    ids: randomIds,
-    random: systemRandom,
-    logger,
-    staticToken: config.staticToken,
-  });
+  const auth = buildAuthService(config, storage, logger);
   const tls = createTlsProvider({ config, secrets, logger });
   const http = createHttpLayer({ config, settings, clock, logger });
   const app = createApp({
@@ -92,8 +129,9 @@ export async function createServer(
     try {
       await providers.refresh();
     } catch (error) {
+      // Only the error's class is logged: its message may contain paths.
       logger.warn('provider detection failed', {
-        reason: error instanceof Error ? error.message : 'unknown',
+        error: error instanceof Error ? error.name : 'unknown',
       });
     }
   };

@@ -23,6 +23,7 @@ export interface AskManagerDeps {
 export function createAskManager(_deps: AskManagerDeps): AskManager {
   return unimplemented<AskManager>('runner', {
     start: async () => {},
+    forget: () => {},
     shutdown: async () => {},
   });
 }

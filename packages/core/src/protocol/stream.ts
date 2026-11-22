@@ -9,6 +9,10 @@ import { ProviderIdSchema, StreamingModeSchema, UsageSchema } from './providers.
  * the JSON-encoded event as `data`. `seq` starts at 1 and increases by one per
  * event within an ask. A `: ping` comment is sent every
  * {@link SSE_PING_INTERVAL_MS}.
+ *
+ * Every stream ends with a terminal event ({@link isTerminalStreamEvent}),
+ * after which the server closes it and the client must not reconnect. A
+ * stream that ends without one was interrupted: the client resumes.
  */
 export const SSE_PING_INTERVAL_MS = 15_000;
 
@@ -21,8 +25,10 @@ const slotEvent = { seq, slotId: SlotIdSchema, providerId: ProviderIdSchema };
 const elapsedMs = z.number().int().nonnegative();
 
 /**
- * Sent first when the requested resume point is no longer available. It
- * replaces everything the client has; its `seq` equals `snapshot.seq`.
+ * Replaces everything the client has; its `seq` equals `snapshot.seq`. Sent
+ * - first, when the requested resume point is not available, and
+ * - as the only event, when the ask is already done and nothing remains to
+ *   replay. A snapshot whose status is `done` is terminal.
  */
 export const SnapshotEventSchema = z.object({
   type: z.literal('snapshot'),
@@ -75,7 +81,7 @@ export const TimeoutEventSchema = z.object({
   ...slotEvent,
   elapsedMs,
 });
-/** Always the last event of an ask; the server closes the stream after it. */
+/** The last event of an ask's log; terminal. */
 export const AskDoneEventSchema = z.object({ type: z.literal('ask_done'), seq });
 
 export const StreamEventSchema = z.discriminatedUnion('type', [
@@ -94,6 +100,13 @@ export const StreamEventSchema = z.discriminatedUnion('type', [
 export type StreamEvent = z.infer<typeof StreamEventSchema>;
 export type StreamEventType = StreamEvent['type'];
 export type SlotStreamEvent = Exclude<StreamEvent, { type: 'snapshot' | 'ask_done' }>;
+
+/** Nothing follows this event: `ask_done`, or a `snapshot` of an ask that is done. */
+export function isTerminalStreamEvent(event: StreamEvent): boolean {
+  return (
+    event.type === 'ask_done' || (event.type === 'snapshot' && event.snapshot.status === 'done')
+  );
+}
 
 export const StreamQuerySchema = z.object({
   after: z.coerce.number().int().nonnegative().optional(),

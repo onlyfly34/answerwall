@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { BRAND } from '@answerwall/core';
+import { BRAND, SECRET_ENV_PREFIX } from '@answerwall/core';
 import type { AppConfig } from '@answerwall/core';
 
 /** Scaffold: the only variables understood so far. Any other prefixed variable is refused. */
@@ -24,7 +24,10 @@ function findWebRoot(): string | undefined {
 export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
   const unsupported = Object.keys(env).filter(
     (name) =>
-      name.startsWith(BRAND.envPrefix) && !SUPPORTED.includes(name.slice(BRAND.envPrefix.length)),
+      name.startsWith(BRAND.envPrefix) &&
+      // Secrets for the secret store's overlay are not configuration.
+      !name.startsWith(SECRET_ENV_PREFIX) &&
+      !SUPPORTED.includes(name.slice(BRAND.envPrefix.length)),
   );
   if (unsupported.length > 0) {
     throw new Error(`Not supported yet: ${unsupported.join(', ')}`);

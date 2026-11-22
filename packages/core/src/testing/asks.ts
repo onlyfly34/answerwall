@@ -1,6 +1,11 @@
 import { AppError } from '../contracts/index.ts';
 import type { AskManager, Clock, IdGenerator, SettingsService } from '../contracts/index.ts';
-import { applyStreamEvent, initialAskSnapshot, isTerminalSlotStatus } from '../protocol/index.ts';
+import {
+  applyStreamEvent,
+  initialAskSnapshot,
+  isTerminalSlotStatus,
+  isTerminalStreamEvent,
+} from '../protocol/index.ts';
 import type { AskRequest, AskSnapshot, StreamEvent } from '../protocol/index.ts';
 
 /** A stream event without its `seq`; the fake assigns the next one. */
@@ -80,12 +85,22 @@ export function createFakeAskManager(deps: {
       const ask = find(askId);
       return (async function* () {
         let next = after;
-        while (!signal.aborted) {
+        const done = ask.snapshot.status === 'done';
+        if (after > ask.log.length || (done && after === ask.log.length)) {
+          next = ask.log.length;
+          yield {
+            type: 'snapshot',
+            seq: ask.snapshot.seq,
+            snapshot: structuredClone(ask.snapshot),
+          } satisfies StreamEvent;
+          if (done) return;
+        }
+        while (!signal.aborted && asks.has(askId)) {
           const event = ask.log[next];
           if (event) {
             next++;
             yield event;
-            if (event.type === 'ask_done') return;
+            if (isTerminalStreamEvent(event)) return;
             continue;
           }
           await new Promise<void>((resolve) => {
@@ -115,6 +130,12 @@ export function createFakeAskManager(deps: {
         });
       }
       return open.map((slot) => slot.slotId);
+    },
+    forget(askId) {
+      const ask = asks.get(askId);
+      if (ask?.snapshot.status !== 'done') return;
+      asks.delete(askId);
+      for (const wake of ask.wake) wake();
     },
     async shutdown() {},
   };

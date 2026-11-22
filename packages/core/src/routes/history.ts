@@ -5,7 +5,7 @@ import { HistoryQuerySchema } from '../protocol/index.ts';
 import type { AskSnapshot, HistoryPage, OkResponse } from '../protocol/index.ts';
 import { parse } from './shared.ts';
 
-export function historyRoutes({ storage }: Pick<AppDeps, 'storage'>): Hono<AppEnv> {
+export function historyRoutes({ storage, asks }: Pick<AppDeps, 'storage' | 'asks'>): Hono<AppEnv> {
   const routes = new Hono<AppEnv>();
   const turns = storage.turns;
 
@@ -26,6 +26,7 @@ export function historyRoutes({ storage }: Pick<AppDeps, 'storage'>): Hono<AppEn
     if (outcome === 'in_progress') {
       throw new AppError('conflict', 'This ask is still running; cancel it first');
     }
+    asks.forget(c.req.param('askId'));
     return c.json({ ok: true } satisfies OkResponse);
   });
 

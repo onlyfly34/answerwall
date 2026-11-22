@@ -1,6 +1,7 @@
 import { render } from 'solid-js/web';
 import { App } from './app/App.tsx';
 import { ServicesContext } from './contracts/services.ts';
+import './contracts/theme.css';
 import { createServices } from './infra/services.ts';
 
 const root = document.getElementById('root');

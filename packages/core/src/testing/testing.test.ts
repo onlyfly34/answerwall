@@ -4,6 +4,7 @@ import { createDefaultSettings } from '../protocol/index.ts';
 import { answerScript, FakeClock, FakeProviderAdapter, flushPromises } from './index.ts';
 
 const instance = createDefaultSettings().providers[0]!;
+const request = { prompt: 'hi', timeoutMs: 300_000, workDir: 'w' };
 
 async function collect(events: AsyncIterable<ProviderEvent>, into: ProviderEvent[]): Promise<void> {
   for await (const event of events) into.push(event);
@@ -35,7 +36,7 @@ test('FakeProviderAdapter replays its script on the clock', async () => {
   });
   const events: ProviderEvent[] = [];
   const finished = collect(
-    adapter.run(instance, { prompt: 'hi', signal: new AbortController().signal, workDir: 'w' }),
+    adapter.run(instance, { ...request, signal: new AbortController().signal }),
     events,
   );
 
@@ -61,10 +62,7 @@ test('FakeProviderAdapter stops a hanging run when the request is aborted', asyn
   });
   const abort = new AbortController();
   const events: ProviderEvent[] = [];
-  const finished = collect(
-    adapter.run(instance, { prompt: 'hi', signal: abort.signal, workDir: 'w' }),
-    events,
-  );
+  const finished = collect(adapter.run(instance, { ...request, signal: abort.signal }), events);
   await flushPromises();
   expect(adapter.active).toBe(1);
 

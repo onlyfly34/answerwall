@@ -1,5 +1,4 @@
 import { describe, expect, test } from 'vitest';
-import { createAuthService } from './auth/index.ts';
 import { BRAND } from './brand.ts';
 import {
   API_PATHS,
@@ -10,22 +9,17 @@ import {
   SettingsResponseSchema,
 } from './protocol/index.ts';
 import type { PresetInput } from './protocol/index.ts';
-import { createAskManager } from './runner/index.ts';
 import {
-  createCountingRandom,
-  createFakeProviderRegistry,
-  createFakeSettingsService,
-  createFakeStorage,
   createMemoryLogger,
-  createSequentialIds,
+  createOpenHttpLayer,
   createTestApp,
-  FakeClock,
   TEST_PAIRING_CODE,
 } from './testing/index.ts';
 
+// What a browser sends: no bearer token, so the request must name its origin.
 const json = (body: unknown) => ({
   method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
+  headers: { 'Content-Type': 'application/json', Origin: 'http://localhost' },
   body: JSON.stringify(body),
 });
 
@@ -77,6 +71,34 @@ describe('authentication boundary', () => {
     );
     expect(response.status).toBe(401);
     expect(await response.json()).toMatchObject({ error: { code: 'invalid_code' } });
+  });
+
+  test('only a rejected credential is flagged as a failed attempt', async () => {
+    const flagged: string[] = [];
+    const http = createOpenHttpLayer(createMemoryLogger());
+    const { app } = createTestApp({
+      http: {
+        ...http,
+        authRateLimit: async (c, next) => {
+          await next();
+          if (c.var.authFailure) flagged.push(`${c.req.method} ${c.req.path}`);
+        },
+      },
+    });
+
+    await app.request(API_PATHS.settings);
+    await app.request(API_PATHS.providers, { headers: { Authorization: 'Bearer wrong-token' } });
+    await app.request(API_PATHS.presets, { headers: { Cookie: `${BRAND.sessionCookie}=stale` } });
+    await app.request(API_PATHS.authPair, json({ code: '00000000', deviceName: 'Phone' }));
+    await app.request(API_PATHS.authSession, json({ token: 'wrong-token-0123456789' }));
+    await app.request(API_PATHS.authPair, json({ code: TEST_PAIRING_CODE, deviceName: 'Phone' }));
+
+    expect(flagged).toEqual([
+      `GET ${API_PATHS.providers}`,
+      `GET ${API_PATHS.presets}`,
+      `POST ${API_PATHS.authPair}`,
+      `POST ${API_PATHS.authSession}`,
+    ]);
   });
 });
 
@@ -167,50 +189,17 @@ describe('routes delegate to their units', () => {
     expect(HistoryPageSchema.parse(await response.json())).toEqual({ items: [], nextCursor: null });
     expect((await t.request('DELETE', API_PATHS.historyEntry('missing'))).status).toBe(404);
   });
-});
 
-describe('units that are not built yet', () => {
-  const clock = new FakeClock();
-  const settings = createFakeSettingsService();
-  const storage = createFakeStorage();
-  const logger = createMemoryLogger();
-  const ids = createSequentialIds();
-
-  test('an unbuilt runner answers 501', async () => {
-    const asks = createAskManager({
-      storage,
-      settings,
-      providers: createFakeProviderRegistry({ settings, clock }),
-      clock,
-      ids,
-      logger,
-      workRoot: 'unused',
-    });
-    const t = createTestApp({ asks }, clock);
-
-    const response = await t.request('POST', API_PATHS.ask, {
+  test('deleting a history entry also drops the ask from the runner', async () => {
+    const t = createTestApp();
+    const { askId } = await t.asks.submit({
       prompt: 'hi',
       targets: [{ slotId: 'a', providerId: 'claude' }],
     });
+    t.asks.emit(askId, { type: 'ask_done' });
+    await t.deps.storage.turns.create(await t.asks.snapshot(askId));
 
-    expect(response.status).toBe(501);
-    expect(await response.json()).toEqual({
-      error: { code: 'not_implemented', message: 'runner.submit is not implemented yet' },
-    });
-  });
-
-  test('an unbuilt auth service fails closed', async () => {
-    const auth = createAuthService({
-      storage,
-      clock,
-      ids,
-      random: createCountingRandom(),
-      logger,
-      staticToken: undefined,
-    });
-    const t = createTestApp({ auth }, clock);
-
-    expect((await t.request('GET', API_PATHS.settings)).status).toBe(501);
-    expect((await t.app.request(API_PATHS.meta)).status).toBe(200);
+    expect((await t.request('DELETE', API_PATHS.historyEntry(askId))).status).toBe(200);
+    expect((await t.request('GET', API_PATHS.askSnapshot(askId))).status).toBe(404);
   });
 });

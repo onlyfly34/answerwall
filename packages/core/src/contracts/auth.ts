@@ -13,16 +13,26 @@ export interface AuthService {
   /**
    * Consumes a pairing code and registers a device. The returned token is
    * shown to nobody: the route puts it in the session cookie.
+   *
+   * Codes are read from `Storage.pairingCodes` on every call and never cached
+   * in memory, so a code created by another process (`createPairingCode` in
+   * `server.ts`, behind the `pair` command) works on the running server.
+   * `pairingCodes.delete()` returning `true` is the single-use claim: only
+   * the call that got `true` may register a device.
    * @throws AppError `invalid_code` | `device_limit`
    */
   pair(request: PairRequest): Promise<{ token: string; device: Device }>;
 
-  /** A new single-use pairing code; earlier unused codes stay valid until they expire. */
+  /**
+   * A new single-use pairing code, persisted in `Storage.pairingCodes`;
+   * earlier unused codes stay valid until they expire.
+   */
   createPairingCode(): Promise<PairingCodeResponse>;
 
   /**
-   * Startup hook: when no device is paired, creates a pairing code and
-   * writes it to the log (the one secret that is meant to be logged).
+   * Startup hook. In server mode, when no device is paired, creates a
+   * pairing code and writes it to the log (the one secret that is meant to
+   * be logged). Does nothing in desktop mode.
    */
   bootstrap(): Promise<void>;
 

@@ -5,12 +5,17 @@ import type {
   ProviderInstance,
   ProviderKind,
   ProviderStatus,
+  StreamingMode,
   ToolAccess,
   Usage,
 } from '../protocol/index.ts';
 
 export type ProviderEvent =
-  | { type: 'start' }
+  /**
+   * `streaming`: what this run turned out to be, when the adapter knows.
+   * Otherwise the runner uses the instance's cached detection, then `unknown`.
+   */
+  | { type: 'start'; streaming?: StreamingMode }
   | { type: 'delta'; text: string }
   | { type: 'reasoning'; text: string }
   /** Something the user should see that is not part of the answer, e.g. a denied tool call. */
@@ -20,8 +25,20 @@ export type ProviderEvent =
 
 export interface RunRequest {
   prompt: string;
+  /**
+   * The runner has already resolved it: the target's model, else the
+   * instance's `defaultModel` (the resolved value is what the snapshot
+   * records). Still absent: the adapter passes no model flag and the
+   * provider picks its own default.
+   */
   model?: string;
   effort?: string;
+  /**
+   * The configured slot timeout. The runner enforces it by aborting `signal`;
+   * it is passed along only for providers that must be told a time limit of
+   * their own.
+   */
+  timeoutMs: number;
   /**
    * Aborted by the runner on cancel, timeout and shutdown. The adapter must
    * then stop the provider (kill the whole process tree, or abort the HTTP

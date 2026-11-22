@@ -4,7 +4,7 @@ import type { SecretStore, SettingsService, Storage } from '../contracts/index.t
 export interface FileSecretStoreOptions {
   /** JSON file with owner-only permissions, separate from the database. */
   file: string;
-  /** Read-only overlay: a secret present in the environment wins over the file. */
+  /** Read-only overlay, looked up with `secretEnvName`; see `SecretStore`. */
   env: NodeJS.ProcessEnv;
 }
 

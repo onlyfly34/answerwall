@@ -11,7 +11,12 @@ import type { TlsProvider } from './tls.ts';
 
 /** What the HTTP layer knows about the peer once proxy headers have been vetted. */
 export interface ClientInfo {
-  /** The client's IP address: the forwarded one when the socket peer is a trusted proxy. */
+  /** The socket's remote address. `peerGuard` and the trusted-proxy check judge this one. */
+  peer: string;
+  /**
+   * The client's IP address: the forwarded one when `peer` is a trusted
+   * proxy, otherwise `peer`. Rate limiting keys on it.
+   */
   address: string;
   /** The request arrived over TLS, or a trusted proxy says it did. Decides the `Secure` cookie flag. */
   secure: boolean;
@@ -25,6 +30,13 @@ export interface AppEnv {
     client: ClientInfo;
     /** Set by the auth middleware for every route that is not public. */
     auth: AuthContext;
+    /**
+     * Set to `true` by `requireAuth` and the auth routes when the request
+     * presented a credential that was rejected: a wrong pairing code, a wrong
+     * token, an unknown bearer token or session cookie. A request without any
+     * credential never sets it. `HttpLayer.authRateLimit` counts it.
+     */
+    authFailure?: boolean;
   };
 }
 
@@ -37,17 +49,36 @@ export type AppMiddleware = MiddlewareHandler<AppEnv>;
 export interface HttpLayer {
   /** Logs method, path, status and duration; never headers, query strings or bodies. */
   requestLog: AppMiddleware;
+  /**
+   * CSP and the other fixed response headers; never any `Access-Control-*`.
+   * Runs before the guards, so their rejections carry the headers too.
+   */
+  securityHeaders: AppMiddleware;
   /** Sets `client`, honouring `X-Forwarded-*` only from trusted proxies. */
   clientInfo: AppMiddleware;
-  /** With TLS off on a non-loopback bind, refuses peers that are neither loopback nor a trusted proxy. */
+  /**
+   * With TLS off on a non-loopback bind, refuses peers that are neither
+   * loopback nor a trusted proxy. Reads only `c.var.client.peer`.
+   */
   peerGuard: AppMiddleware;
   /** Rejects requests whose `Host` is not in the allowlist. */
   hostGuard: AppMiddleware;
-  /** CSP and the other fixed response headers; never any `Access-Control-*`. */
-  securityHeaders: AppMiddleware;
-  /** Non-GET requests: same-origin `Origin` and `Content-Type: application/json`. */
+  /**
+   * Non-GET requests must have `Content-Type: application/json`, and:
+   * - an `Origin` header, when present, must be one of the allowed origins;
+   * - a request without `Origin` is accepted only when it has an
+   *   `Authorization` header and no session cookie (a non-browser client).
+   *
+   * So browsers, and anything calling the public auth routes without a
+   * bearer token, must send `Origin`.
+   */
   originGuard: AppMiddleware;
-  /** Blocks a client address that exceeded the failed-auth limit; counts 401 responses. */
+  /**
+   * Refuses (`rate_limited`) a client address that exceeded the failed-auth
+   * limit, and counts the requests that end with `authFailure` set. A 401
+   * for a request that presented no credential is not counted, so a
+   * signed-out browser cannot lock itself out of pairing.
+   */
   authRateLimit: AppMiddleware;
   /** Enforces the configured request body limit. */
   bodyLimit: AppMiddleware;

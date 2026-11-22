@@ -29,9 +29,20 @@ export interface AskManager {
   snapshot(askId: string): Promise<AskSnapshot>;
 
   /**
-   * The ask's events after `options.after`, then live events until `ask_done`.
-   * When the resume point is no longer available the first event is a
-   * `snapshot`. Any number of subscribers may exist at once.
+   * The ask's events after `options.after`, then live events. Any number of
+   * subscribers may exist at once.
+   *
+   * The iteration always ends with a terminal event (`isTerminalStreamEvent`)
+   * unless the subscriber aborts first:
+   * - normally `ask_done`;
+   * - for an ask that is already done, when nothing remains to replay
+   *   (`after` is at or beyond its last `seq`) or its event log is gone (it
+   *   was loaded from storage): a single `snapshot` event whose snapshot has
+   *   status `done`.
+   *
+   * For a running ask whose resume point is not available (older than the
+   * retained log, or beyond the last `seq`), the first event is a `snapshot`
+   * and live events follow.
    * @throws AppError `not_found` (before anything is yielded)
    */
   subscribe(askId: string, options: SubscribeOptions): Promise<AsyncIterable<StreamEvent>>;
@@ -42,6 +53,13 @@ export interface AskManager {
    * @throws AppError `not_found`
    */
   cancel(askId: string, slotId?: string): Promise<string[]>;
+
+  /**
+   * Drops a finished ask from memory, ending its subscriptions; a no-op for
+   * an ask that is unknown or still running. Called after the ask was deleted
+   * from history, so it stops being readable through the ask routes.
+   */
+  forget(askId: string): void;
 
   /** Cancels everything, waits for every child process to be gone, flushes to storage. */
   shutdown(): Promise<void>;

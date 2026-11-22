@@ -71,7 +71,13 @@ export interface ApiClient {
   updateSettings(patch: SettingsPatch): Promise<SettingsResponse>;
 }
 
-export type StreamConnection = 'connecting' | 'live' | 'reconnecting' | 'closed';
+/**
+ * `connecting`: the first attempt. `live`: receiving events. `reconnecting`:
+ * interrupted; the stream resumes on its own. `closed`: the ask finished (a
+ * terminal event arrived) or `close()` was called. `failed`: gave up for
+ * good; `error` says why.
+ */
+export type StreamConnection = 'connecting' | 'live' | 'reconnecting' | 'closed' | 'failed';
 
 /** One ask being followed over the event stream. */
 export interface AskStream {
@@ -82,8 +88,20 @@ export interface AskStream {
    * `undefined` until the first data arrives.
    */
   snapshot: Accessor<AskSnapshot | undefined>;
-  /** `closed` after `ask_done` or `close()`; reconnects and resumes on its own otherwise. */
+  /**
+   * A terminal event (`isTerminalStreamEvent`: `ask_done`, or a `snapshot`
+   * whose status is `done`) makes it `closed`, and the stream never
+   * reconnects after one. A connection that drops without one is resumed
+   * from the last `seq`.
+   */
   connection: Accessor<StreamConnection>;
+  /**
+   * Set exactly when `connection` is `failed`: the server answered the
+   * stream request with an error (404: the ask no longer exists) or with
+   * something that is not the protocol. Unreachable servers are retried, not
+   * reported here. The store also passes a 401 to `notify.reportError`.
+   */
+  error: Accessor<ApiError | undefined>;
   /** Stops following. Never cancels the ask. */
   close(): void;
 }
@@ -139,8 +157,18 @@ export interface Notifier {
   reportError(error: unknown): void;
 }
 
+/**
+ * The shell mounts `WallPage` and `HistoryPage` only after `settings.load()`
+ * and `providers.load()` have succeeded, so inside them `settings.settings()`
+ * is defined and `providers.providers()` holds the cached statuses.
+ */
 export interface AppServices {
-  /** `undefined` until the first `GET /api/meta` has answered. */
+  /**
+   * `undefined` until the first `GET /api/meta` has answered. When the
+   * server's `apiVersion` differs from the `API_VERSION` this bundle was
+   * built with, or its `version` from the bundle's own, the shell is stale:
+   * it revalidates its cached assets and reloads instead of mounting pages.
+   */
   meta: Accessor<Meta | undefined>;
   api: ApiClient;
   asks: AskStreamStore;

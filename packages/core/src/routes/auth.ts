@@ -35,7 +35,11 @@ export function authRoutes({ auth }: Pick<AppDeps, 'auth'>): Hono<AppEnv> {
   const routes = new Hono<AppEnv>();
 
   routes.post('/pair', async (c) => {
-    const { token, device } = await auth.pair(await readJson(c, PairRequestSchema));
+    const request = await readJson(c, PairRequestSchema);
+    const { token, device } = await auth.pair(request).catch((error: unknown) => {
+      if (error instanceof AppError && error.code === 'invalid_code') c.set('authFailure', true);
+      throw error;
+    });
     setSessionCookie(c, token);
     return c.json({ device } satisfies SessionResponse);
   });
@@ -43,7 +47,10 @@ export function authRoutes({ auth }: Pick<AppDeps, 'auth'>): Hono<AppEnv> {
   routes.post('/session', async (c) => {
     const { token } = await readJson(c, SessionRequestSchema);
     const caller = await auth.authenticate(token);
-    if (!caller) throw new AppError('unauthorized', 'Invalid token');
+    if (!caller) {
+      c.set('authFailure', true);
+      throw new AppError('unauthorized', 'Invalid token');
+    }
     setSessionCookie(c, token);
     return c.json({ device: await auth.getDevice(caller) } satisfies SessionResponse);
   });

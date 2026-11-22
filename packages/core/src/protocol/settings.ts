@@ -19,12 +19,18 @@ export const MAX_PROVIDER_INSTANCES = 64;
 const uniqueIds = (providers: readonly { id: string }[]) =>
   new Set(providers.map((p) => p.id)).size === providers.length;
 
+/** A CLI provider is switched off with `enabled`, never removed; only endpoints come and go. */
+const everyCliKind = (providers: readonly { id: string }[]) =>
+  CLI_PROVIDER_KINDS.every((kind) => providers.some((p) => p.id === kind));
+const everyCliKindMessage = `every CLI provider (${CLI_PROVIDER_KINDS.join(', ')}) must be listed; disable one instead of removing it`;
+
 export const SettingsSchema = z.object({
   language: LanguageSchema,
   providers: z
     .array(ProviderInstanceSchema)
     .max(MAX_PROVIDER_INSTANCES)
-    .refine(uniqueIds, { message: 'provider ids must be unique' }),
+    .refine(uniqueIds, { message: 'provider ids must be unique' })
+    .refine(everyCliKind, { message: everyCliKindMessage }),
   limits: LimitsSchema,
   layout: LayoutSettingsSchema,
   /** The optional check for a newer release; the only third-party request the app can make. */
@@ -34,8 +40,9 @@ export type Settings = z.infer<typeof SettingsSchema>;
 
 /**
  * Body of `PUT /api/settings`. Omitted fields are unchanged. `providers`
- * replaces the whole list (an instance missing from it is removed together
- * with its stored key); `limits` and `layout` are merged field by field.
+ * replaces the whole list: it must still contain every CLI provider, and an
+ * OpenAI-compatible endpoint missing from it is removed together with its
+ * stored key. `limits` and `layout` are merged field by field.
  */
 export const SettingsPatchSchema = z.object({
   language: LanguageSchema.optional(),
@@ -43,6 +50,7 @@ export const SettingsPatchSchema = z.object({
     .array(ProviderInstanceInputSchema)
     .max(MAX_PROVIDER_INSTANCES)
     .refine(uniqueIds, { message: 'provider ids must be unique' })
+    .refine(everyCliKind, { message: everyCliKindMessage })
     .optional(),
   limits: LimitsPatchSchema.optional(),
   layout: LayoutPatchSchema.optional(),
