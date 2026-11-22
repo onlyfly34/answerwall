@@ -3,6 +3,7 @@ import { createServer as createHttpServer } from 'node:http';
 import { createServer } from 'node:net';
 import type { AddressInfo } from 'node:net';
 import type { Page } from '@playwright/test';
+import { API_VERSION } from '@answerwall/core/protocol';
 import { expect, pageApi, test, until } from '../support/fixtures.ts';
 
 const wall = (page: Page) => page.getByRole('form', { name: 'Ask' });
@@ -104,7 +105,9 @@ test.describe('the connection page', () => {
     await address.fill(server.base);
     await expect(connection.getByText('This address uses plain HTTP')).toBeVisible();
     await connection.getByRole('button', { name: 'Check' }).click();
-    await expect(result).toContainText(`Found AnswerWall ${serverVersion} (protocol version 1).`);
+    await expect(result).toContainText(
+      `Found AnswerWall ${serverVersion} (protocol version ${API_VERSION}).`,
+    );
     await connection.getByRole('button', { name: 'Continue' }).click();
 
     const page = await first.contentWindow();
@@ -156,7 +159,7 @@ test.describe('the connection page', () => {
           JSON.stringify({
             name: 'AnswerWall',
             version: serverVersion,
-            apiVersion: 1,
+            apiVersion: API_VERSION,
             mode: 'server',
             tls: 'off',
             authRequired: true,
