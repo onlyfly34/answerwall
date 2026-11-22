@@ -7,13 +7,27 @@ interface CacheListing {
   paths: string[];
 }
 
-/** Waits until a service worker is active and controls the page. */
+/**
+ * Waits until a service worker controls the page and has finished activating.
+ * It claims the page from inside its `activate` event, so the page can be
+ * controlled a moment before the worker's state says `activated`.
+ */
 async function controlled(page: Page): Promise<void> {
   await page.evaluate(async () => {
-    await navigator.serviceWorker.ready;
-    if (navigator.serviceWorker.controller) return;
+    const registration = await navigator.serviceWorker.ready;
+    if (!navigator.serviceWorker.controller) {
+      await new Promise<void>((resolve) => {
+        navigator.serviceWorker.addEventListener('controllerchange', () => resolve(), {
+          once: true,
+        });
+      });
+    }
+    const worker = registration.active;
+    if (worker === null || worker.state === 'activated') return;
     await new Promise<void>((resolve) => {
-      navigator.serviceWorker.addEventListener('controllerchange', () => resolve(), { once: true });
+      worker.addEventListener('statechange', () => {
+        if (worker.state === 'activated') resolve();
+      });
     });
   });
 }
