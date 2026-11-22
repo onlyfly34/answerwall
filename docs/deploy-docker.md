@@ -221,10 +221,28 @@ docker compose exec answerwall answerwall-install-cli agy
 ```
 
 `answerwall-install-cli --list` prints the same information without
-installing anything. The helper never signs in, never reads or writes a
-login, and passes none of AnswerWall's own settings to the installer. It is
-never run automatically. You can just as well run a vendor's command yourself
-in `docker compose exec answerwall bash`.
+installing anything. The helper never signs in and never reads or writes a
+login. It is never run automatically.
+
+The installer does not get the container's environment. The helper starts it
+with a short, fixed list of variables, when they are set, and nothing else:
+`HOME`, `PATH`, `USER`, `LOGNAME`, `TERM`, `LANG`, `LC_ALL`, `LC_CTYPE`,
+`TZ`, `TMPDIR`, the proxy settings (`HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`,
+`ALL_PROXY`, in both spellings) and `SSL_CERT_FILE`, `SSL_CERT_DIR`,
+`CURL_CA_BUNDLE`. So none of AnswerWall's own settings reaches an
+installer, and neither does anything else you added to the service, such as
+an API key of one vendor when you install the tool of another. A proxy
+address is passed as it is, with a user name and password if it has them.
+`answerwall-install-cli --help` prints the list.
+
+After the installer has finished, the helper checks that the executable is
+where the table below says, and does not start it: the version appears on
+the providers page after **Refresh**, which is when AnswerWall runs a tool's
+version command.
+
+You can just as well run a vendor's command yourself in
+`docker compose exec answerwall bash`; it then gets the whole environment of
+the container.
 
 | Tool     | Command the helper runs                                        | Copied from                                       | Installs into                                  |
 | -------- | -------------------------------------------------------------- | ------------------------------------------------- | ---------------------------------------------- |

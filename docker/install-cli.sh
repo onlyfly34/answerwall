@@ -9,11 +9,17 @@
 #   2. waits for you to type "yes" (or takes --yes),
 #   3. runs that command, which is the installation command from the vendor's
 #      documentation, unchanged, as the container's unprivileged user,
-#   4. prints the version the installed tool reports.
+#   4. checks that the executable is where the vendor's installer puts it.
 #
-# It does not sign in, does not write or read any login, and passes none of
-# this application's settings to the installer. Signing in is a separate step
-# that you do yourself with the vendor's own login command.
+# It does not sign in and does not write or read any login. The installer is
+# given a short list of environment variables (PASSED_VARIABLES below: the
+# home directory, the search path, locale, terminal and proxy settings) and
+# nothing else: none of this application's settings, and none of the API keys
+# or other secrets the container's environment may hold. The installed tool
+# itself is not started here, not even for its version: the application runs
+# a tool's version command only at its own start and when you press Refresh
+# on the providers page. Signing in is a separate step that you do yourself
+# with the vendor's own login command.
 #
 # The commands and their sources were read from the vendors' documentation on
 # 2026-11-22. A vendor can change its installer at any time; compare with the
@@ -22,6 +28,13 @@ set -euo pipefail
 
 readonly PROGRAM=answerwall-install-cli
 readonly SUPPORTED="claude codex grok agy"
+# Everything of the environment that an installer gets, when it is set: where
+# to install, how to find programs, how to print, and how to reach the
+# network (a proxy and the certificates to trust). A proxy address is passed
+# as it is, including a user name and password if it carries them.
+readonly PASSED_VARIABLES="HOME PATH USER LOGNAME TERM LANG LC_ALL LC_CTYPE TZ TMPDIR
+HTTP_PROXY HTTPS_PROXY NO_PROXY ALL_PROXY http_proxy https_proxy no_proxy all_proxy
+SSL_CERT_FILE SSL_CERT_DIR CURL_CA_BUNDLE"
 
 # Per tool: the vendor, the documentation page the command was copied from,
 # the command itself, the terms that apply to the tool and the service behind
@@ -70,7 +83,7 @@ https://antigravity.google/docs/faq"
       note="agy keeps its Google sign-in in the operating system's keyring (the
 Secret Service on Linux). This image has no keyring service, so signing in
 with a Google account inside the container is not supported: the tool will
-install and report its version, and that is all that is known to work here.
+install, and that is all that is known to work here.
 Read \"agy in a container\" in docs/deploy-docker.md before you continue."
       ;;
     *) return 1 ;;
@@ -88,7 +101,9 @@ Installs one AI command-line tool into the home directory of the container
   --yes    Do not ask for confirmation (needed when there is no terminal).
   --list   Print the command, its source and the terms for every tool; install nothing.
 
-Nothing is installed without this command, and it never signs you in.
+Nothing is installed without this command, and it never signs you in. The
+installer gets these environment variables, when they are set, and no other:
+$(printf '%s\n' "$PASSED_VARIABLES" | sed 's/^/  /')
 EOF
 }
 
@@ -188,15 +203,22 @@ if [ "$assume_yes" != true ]; then
   fi
 fi
 
-# The installer gets the environment of the container minus this
-# application's own settings and secrets, which no installer needs.
-clean_env=(env)
-while IFS= read -r name; do
-  clean_env+=(-u "$name")
-done < <(compgen -e | grep '^ANSWERWALL_' || true)
+# The installer starts from an empty environment and gets the named
+# variables only. Removing this application's own variables would not be
+# enough: the container's environment can hold other secrets, such as an API
+# key of one vendor, which the installer of another must never see.
+clean_env=(env -i)
+passed=()
+for name in $PASSED_VARIABLES; do
+  if [ -n "${!name+set}" ]; then
+    clean_env+=("$name=${!name}")
+    passed+=("$name")
+  fi
+done
 
 echo
 echo "Running: $command"
+echo "Environment variables passed to it: ${passed[*]}"
 echo
 if ! "${clean_env[@]}" bash -o pipefail -c "$command"; then
   echo >&2
@@ -210,12 +232,10 @@ if [ ! -x "$executable" ]; then
   echo "$PROGRAM: the vendor may have changed where it installs; see $source_url" >&2
   exit 1
 fi
-if ! reported="$("${clean_env[@]}" timeout 60 "$executable" --version 2>&1)"; then
-  echo "$PROGRAM: $executable was installed but \"$tool --version\" failed:" >&2
-  printf '%s\n' "$reported" >&2
-  exit 1
-fi
-echo "Installed: $tool $(printf '%s\n' "$reported" | head -n 1)"
+# The tool is not started, not even for its version: this application runs a
+# tool's version command at its own start and on Refresh, and at no other time.
+echo "Installed: $executable"
+echo "Press Refresh on the providers page to see the version it reports."
 echo
 if [ "$tool" = "agy" ]; then
   echo "It is not signed in, and its Google sign-in needs a keyring service that"
