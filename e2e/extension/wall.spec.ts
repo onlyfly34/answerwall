@@ -107,10 +107,12 @@ test('the content script in a tab of a site cannot read the server address or th
   await cdp.send('Runtime.enable');
   await tab.goto(vendor.origin);
   await expect.poll(() => worlds.length).toBeGreaterThan(0);
+  const world = worlds.at(-1);
+  if (world === undefined) throw new Error('The content script has no world in this tab');
 
   // Asked from that world, as a compromised page of the site could.
   const read = await cdp.send('Runtime.evaluate', {
-    contextId: worlds.at(-1),
+    contextId: world,
     awaitPromise: true,
     returnByValue: true,
     expression: `(async () => {
