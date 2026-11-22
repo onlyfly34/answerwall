@@ -1,7 +1,7 @@
 # nginx as the TLS-terminating reverse proxy in front of AnswerWall
 # (docker/compose.proxy.yaml). Goes into the `http` block, for example as
 # /etc/nginx/conf.d/answerwall.conf. docker/test/smoke.mjs runs this file,
-# with the three marked lines replaced, in front of the image.
+# with only the lines marked "replace" changed, in front of the image.
 
 server {
   listen 443 ssl;

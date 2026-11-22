@@ -59,6 +59,9 @@ app. Full guide: [docs/deploy-docker.md](docs/deploy-docker.md).
    docker compose up -d
    ```
 
+   This pulls `ghcr.io/onlyfly34/answerwall`. Until a release has published
+   it, run `docker compose build` in a clone of the repository first.
+
 2. Install the CLIs you want into the CLI volume with each vendor's official
    installer, and log in to each with `docker exec -it`, as the guide shows.
 3. Read the one-time pairing code with `docker compose logs` (it is printed
@@ -73,27 +76,32 @@ name those devices use: see the guide and
 
 ### 2. The Windows app, local
 
-Everything runs on your PC; nothing listens on the network. Full guide:
-[docs/desktop.md](docs/desktop.md).
+Everything runs on your PC; nothing listens on the network. How the app
+works inside: [docs/desktop.md](docs/desktop.md) (developer notes).
 
 1. Install the CLIs you want on Windows and log in to each in a terminal
    ([docs/providers.md](docs/providers.md)).
 2. Download the installer from the Releases page and run it. It is not
    signed; see [Unsigned Windows build](#unsigned-windows-build).
-3. Start AnswerWall and keep the connection on local. Open **Providers**,
-   press **Refresh all**, add cells on the **Wall**, send.
+3. Start AnswerWall, choose **This computer** on the connection page and
+   press **Continue**. Open **Providers**, press **Refresh all**, add cells
+   on the **Wall**, send. **File > Connection…** brings the connection page
+   back later.
 
 ### 3. The Windows app, connected to a server
 
 The app window shows the server's own UI; the CLIs and the history are on
-the server. Full guide: [docs/desktop.md](docs/desktop.md).
+the server.
 
 1. Set up a server as in 1, reachable over HTTPS.
-2. In the app's connection settings choose remote and enter the server's
-   address.
-3. Pair the app like any other device: create a pairing code in
-   **Settings > Devices** on a device that is already signed in (or with
-   `answerwall pair` on the server) and enter it in the app.
+2. On the app's connection page choose **A server**, enter the server's
+   address (for example `https://wall.example.com`) and press **Continue**.
+   A server with a private CA works once its CA certificate is installed in
+   Windows; certificate errors are never bypassed.
+3. Pair the app like any other device: press **Create pairing code** in
+   **Settings > Devices** on a device that is already signed in (or run
+   `answerwall pair` on the server) and enter the code on the sign-in page
+   the app shows.
 
 ### From source
 
@@ -262,7 +270,7 @@ installs one, and the check can be switched off.
 | ------------------------------------------------------ | ------------------------------------------------------ |
 | [docs/providers.md](docs/providers.md)                 | Each CLI and the OpenAI-compatible endpoints in detail |
 | [docs/deploy-docker.md](docs/deploy-docker.md)         | The server in Docker                                   |
-| [docs/desktop.md](docs/desktop.md)                     | The Windows app                                        |
+| [docs/desktop.md](docs/desktop.md)                     | How the Windows app is built and works (developers)    |
 | [docs/privacy.md](docs/privacy.md)                     | What is stored, what is sent and to whom               |
 | [docs/security.md](docs/security.md)                   | Sign-in, TLS, network exposure, the CLIs' tools        |
 | [docs/verify-on-windows.md](docs/verify-on-windows.md) | A checklist for trying a release on a real Windows PC  |

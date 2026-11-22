@@ -49,8 +49,10 @@ in the README.
 
 The Providers page shows, per CLI: **Installed** and the version, **Logged
 in**, **Billing source**, **Streaming**, **Tool access**, the hint the check
-produced, the login command with a copy button, and the switches below. The
-hints come from the server and are in English in both languages.
+produced, the login command with a copy button (in the Windows app in local
+mode also **Open a terminal to log in**, which opens a terminal window running
+that command; the app does not see what happens in it), and the switches
+below. The hints come from the server and are in English in both languages.
 
 ### Billing: subscription login or API key
 

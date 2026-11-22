@@ -21,7 +21,7 @@ Everything is in the **data directory** of the machine that runs the server:
 | ------------------------ | --------------------------------------------------------------------------------------- |
 | Server on a host         | `~/.answerwall`, or what `ANSWERWALL_DATA_DIR` says                                     |
 | Server in Docker         | `/data` in the container, a volume on the host                                          |
-| Windows app, local mode  | the app's own user-data folder in your Windows profile                                  |
+| Windows app, local mode  | `%APPDATA%\AnswerWall\data` (see below for what the app keeps beside it)                |
 | Windows app, remote mode | only the connection settings and the sign-in for that server; the data is on the server |
 
 | File                | Content                                                                                                                                                                                                     |
@@ -31,6 +31,14 @@ Everything is in the **data directory** of the machine that runs the server:
 | `tls/`              | The generated certificates (TLS `auto` mode only).                                                                                                                                                          |
 | `work/`             | One empty directory per running cell, deleted when the cell finishes. For `grok` it briefly holds the prompt in a file.                                                                                     |
 | `work.lock`         | An empty lock file.                                                                                                                                                                                         |
+
+The Windows app keeps its folder `%APPDATA%\AnswerWall`: the data directory
+`data\` (the files above, without `secrets.json`), its own `secrets.json`
+(the API keys, encrypted by Windows for your user account; without that
+encryption nothing is stored), `desktop.json` (local or remote, the server
+address, the local port, the update setting), `logs\` and the browser
+profile of its windows (in remote mode the server's session cookie).
+Uninstalling keeps this folder; delete it by hand to remove everything.
 
 History is kept until you delete it (**History**, **Delete**) or until it
 passes the limits in **Settings > Limits** (1000 asks or 500 MiB by default),

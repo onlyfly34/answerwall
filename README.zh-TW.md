@@ -34,6 +34,8 @@ Windows 應用程式與容器映像檔發布在 [Releases 頁面](https://github
    docker compose up -d
    ```
 
+   這會下載 `ghcr.io/onlyfly34/answerwall`。在第一個版本發布這個映像檔之前，請先在儲存庫的複本中執行 `docker compose build`。
+
 2. 依照說明，用各廠商的官方安裝程式把你要用的 CLI 裝進 CLI 專用的 volume，再用 `docker exec -it` 逐一登入。
 3. 用 `docker compose logs` 讀取一次性配對碼（尚未配對任何裝置時會印出；在容器內執行 `answerwall pair` 可以取得新的）。
 4. 用瀏覽器開啟伺服器的位址，輸入配對碼，新增格子，送出。
@@ -42,19 +44,19 @@ compose 檔原本的設定只把連接埠發布在 Docker 主機的 `127.0.0.1`�
 
 ### 2. Windows 應用程式，本機模式
 
-所有東西都在你的電腦上執行，不對網路開放任何連接埠。完整說明：[docs/desktop.md](docs/desktop.md)。
+所有東西都在你的電腦上執行，不對網路開放任何連接埠。應用程式內部如何運作：[docs/desktop.md](docs/desktop.md)（開發者說明，英文）。
 
 1. 在 Windows 上安裝你要用的 CLI，並在終端機裡逐一登入（[docs/providers.zh-TW.md](docs/providers.zh-TW.md)）。
 2. 從 Releases 頁面下載安裝程式並執行。安裝程式沒有簽章，見[未簽章的 Windows 版本](#未簽章的-windows-版本)。
-3. 啟動 AnswerWall，連線方式維持本機。開啟**供應商**頁面，按**全部重新檢查**，在**回答牆**新增格子，送出。
+3. 啟動 AnswerWall，在連線頁面選擇**這台電腦**，按**繼續**。開啟**供應商**頁面，按**全部重新檢查**，在**回答牆**新增格子，送出。之後可以用**檔案 > 連線…**回到連線頁面。
 
 ### 3. Windows 應用程式，連線到伺服器
 
-應用程式的視窗顯示的是伺服器自己的介面；CLI 與歷史紀錄都在伺服器上。完整說明：[docs/desktop.md](docs/desktop.md)。
+應用程式的視窗顯示的是伺服器自己的介面；CLI 與歷史紀錄都在伺服器上。
 
 1. 依照方式 1 架好伺服器，並讓它可以用 HTTPS 連線。
-2. 在應用程式的連線設定中選擇遠端，輸入伺服器的位址。
-3. 像其他裝置一樣配對：在已登入的裝置上從**設定 > 裝置**建立配對碼（或在伺服器上執行 `answerwall pair`），然後在應用程式中輸入。
+2. 在應用程式的連線頁面選擇**伺服器**，輸入伺服器的位址（例如 `https://wall.example.com`），按**繼續**。使用私有 CA 的伺服器，要先把它的 CA 憑證安裝到 Windows 才能連線；憑證錯誤一律不會被略過。
+3. 像其他裝置一樣配對：在已登入的裝置上，於**設定 > 裝置**按**建立配對碼**（或在伺服器上執行 `answerwall pair`），然後在應用程式顯示的登入頁面輸入配對碼。
 
 ### 從原始碼執行
 
@@ -143,18 +145,18 @@ Windows 安裝程式沒有程式碼簽章，Windows 會提醒你：
 
 ## 文件
 
-| 文件                                                               | 內容                                      |
-| ------------------------------------------------------------------ | ----------------------------------------- |
-| [docs/providers.zh-TW.md](docs/providers.zh-TW.md)                 | 各個 CLI 與 OpenAI 相容端點的詳細說明     |
-| [docs/deploy-docker.md](docs/deploy-docker.md)                     | 用 Docker 執行伺服器                      |
-| [docs/desktop.md](docs/desktop.md)                                 | Windows 應用程式                          |
-| [docs/privacy.zh-TW.md](docs/privacy.zh-TW.md)                     | 儲存了什麼、送出了什麼、送給誰            |
-| [docs/security.zh-TW.md](docs/security.zh-TW.md)                   | 登入、TLS、網路暴露範圍、CLI 的工具       |
-| [docs/verify-on-windows.zh-TW.md](docs/verify-on-windows.zh-TW.md) | 在真實 Windows 電腦上試用新版本的檢查清單 |
-| [apps/server/README.md](apps/server/README.md)                     | 伺服器的所有選項（英文）                  |
-| [docs/DECISIONS.md](docs/DECISIONS.md)                             | 工程決策（英文）                          |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)                       | 模組配置（英文）                          |
-| [docs/RELEASING.md](docs/RELEASING.md)                             | 發布流程（英文）                          |
+| 文件                                                               | 內容                                         |
+| ------------------------------------------------------------------ | -------------------------------------------- |
+| [docs/providers.zh-TW.md](docs/providers.zh-TW.md)                 | 各個 CLI 與 OpenAI 相容端點的詳細說明        |
+| [docs/deploy-docker.md](docs/deploy-docker.md)                     | 用 Docker 執行伺服器                         |
+| [docs/desktop.md](docs/desktop.md)                                 | Windows 應用程式的建置與運作（開發者，英文） |
+| [docs/privacy.zh-TW.md](docs/privacy.zh-TW.md)                     | 儲存了什麼、送出了什麼、送給誰               |
+| [docs/security.zh-TW.md](docs/security.zh-TW.md)                   | 登入、TLS、網路暴露範圍、CLI 的工具          |
+| [docs/verify-on-windows.zh-TW.md](docs/verify-on-windows.zh-TW.md) | 在真實 Windows 電腦上試用新版本的檢查清單    |
+| [apps/server/README.md](apps/server/README.md)                     | 伺服器的所有選項（英文）                     |
+| [docs/DECISIONS.md](docs/DECISIONS.md)                             | 工程決策（英文）                             |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)                       | 模組配置（英文）                             |
+| [docs/RELEASING.md](docs/RELEASING.md)                             | 發布流程（英文）                             |
 
 ## 參與貢獻
 

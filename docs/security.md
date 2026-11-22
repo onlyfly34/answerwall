@@ -103,8 +103,9 @@ including text you paste into a prompt. For `agy`, and for `grok` on
 Windows, assume that anything your user can read or change is within reach.
 
 - **In Docker the container is the boundary.** Only the data volume and the
-  CLI home volume are mounted, never your home directory, and the process
-  does not run as root. This is the place to run a CLI whose tools cannot be
+  CLI home volume are mounted (and, with your own certificate, its directory,
+  read-only), never your home directory, and the process does not run as
+  root. This is the place to run a CLI whose tools cannot be
   switched off.
 - **On Windows there is no such boundary.** In local mode the CLIs run as
   you.
@@ -127,9 +128,11 @@ and forbids framing.
 
 - API keys for OpenAI-compatible endpoints and TLS private keys are in
   `secrets.json`, apart from the database. On Linux and macOS only the
-  account that runs the server can read the file. On Windows it is protected
-  by the permissions of the data directory, so keep the data directory
-  inside your user profile.
+  account that runs the server can read the file. A server run on Windows
+  relies on the permissions of the data directory, so keep the data
+  directory inside your user profile. The Windows app keeps its keys in a
+  file of its own, encrypted by Windows for your user account, and stores
+  nothing when that encryption is not available.
 - The page can set or delete a key but never read it back.
 - A stored key is tied to the address it was entered for; a key supplied
   through the environment is sent only to the origin you name next to it.

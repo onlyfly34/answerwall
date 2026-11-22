@@ -63,7 +63,7 @@ platform.
 
 Nothing can answer yet: continue with [Installing the
 command-line tools](#installing-the-command-line-tools), or add an
-OpenAI-compatible endpoint in the settings.
+OpenAI-compatible endpoint on the providers page (**Add endpoint**).
 
 ### Why there is no plain-HTTP quick start
 
@@ -329,7 +329,7 @@ login.
   API key (`"modelProvider": "gemini"` in
   `~/.gemini/antigravity-cli/settings.json` plus the `GEMINI_API_KEY`
   variable, which you would add to the service's environment and allow with
-  the provider's "use API key from environment" switch), or Application
+  the provider's **Use the API key from the server environment** switch), or Application
   Default Credentials. Both are billed as API use, not through a consumer
   plan.
 
@@ -479,7 +479,8 @@ What this does not cover, so that you can judge it:
 
 A model server on the Docker host (anything that speaks
 `/v1/chat/completions`) is reached from the container as
-`host.docker.internal`. Add the endpoint in the settings with a base URL like:
+`host.docker.internal`. Add the endpoint on the providers page (**Add
+endpoint**) with a base URL like:
 
 ```
 http://host.docker.internal:11434
@@ -495,7 +496,7 @@ http://host.docker.internal:11434
 - An endpoint in another container: attach both to one network and use the
   service name instead.
 
-An API key entered in the settings is stored in `secrets.json` in the data
+An API key entered on the providers page is stored in `secrets.json` in the data
 volume. To supply it from the environment instead, add both
 `ANSWERWALL_SECRET_PROVIDER_<ID>_API_KEY` and
 `ANSWERWALL_SECRET_PROVIDER_<ID>_API_KEY_ORIGIN` to the service's
