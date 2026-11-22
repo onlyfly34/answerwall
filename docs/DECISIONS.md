@@ -614,25 +614,63 @@ ends with the process, even on `SIGKILL`, so it never goes stale.
 
 Planned additions, not yet scheduled into a phase's contract:
 
-- **Web cells (P2, desktop app only, off by default).** The owner asked for
+- **Web cells (browser extension, off by default).** The owner asked for
   cells that show a vendor's own web app next to CLI and API cells, so the
-  web apps' own features (memory, projects, search) stay available.
-  - A web cell embeds the unmodified site in the Electron app; the user signs
-    in there themselves. The app never reads or exports that session's cookies.
-  - On Send the app types the prompt into the page and submits it. When the
-    answer has finished, the app reads the text of the last answer from the
-    page and stores it in history next to the other cells' answers. History
-    therefore needs slot runs the server did not execute: the desktop client
-    submits the captured text, and the protocol gains a `web` provider kind.
-  - Per-site rules (input, submit, answer, "finished" detection) are data
+  web apps' own features (memory, projects, search) stay available, with the
+  prompt filled in automatically and the answer kept in history.
+  - **Where it runs.** In the user's own Chrome or Edge, through an
+    extension in `apps/extension` (Manifest V3). Not in the Electron app and
+    not on phones or in the PWA; those show the stored answers only. The
+    user is signed in to each vendor in that browser as usual; the extension
+    has no `cookies` permission and never reads, exports or sends a session.
+  - **The wall is an extension page.** The extension ships the web UI and
+    opens it as its own page; that page talks to the AnswerWall server the
+    user paired it with (device token as `Authorization: Bearer`, kept in
+    the extension's storage; the server origin is an optional host
+    permission the user grants). Vendor pages are frames directly under that
+    page, mixed into the grid with the other cells. This is what makes the
+    vendor's own sign-in cookies apply inside the frame without touching
+    them. The first task of the implementation is to prove this in a real
+    Chromium against a local stand-in site (frame-refusing headers, a
+    `SameSite=Lax` session cookie); if it does not hold, stop and report
+    instead of rewriting cookies.
+  - **Headers.** The extension removes the response headers that refuse
+    framing (`X-Frame-Options`, `Content-Security-Policy`) only for
+    sub-frame requests to the listed vendor hosts that the extension's own
+    page started. No other request, tab or site is changed. It never changes
+    the user agent or any other request header.
+  - **Send.** A content script, active only in a vendor frame whose parent
+    is the extension's wall page, types the prompt into the page and submits
+    it. When the answer has finished it reads the text of the last answer
+    and the wall page submits it to the server.
+  - **History.** The protocol gains a `web` provider kind. The server does
+    not execute a web slot: it records it as running, and the paired client
+    submits the result (text, or failed/cancelled) once, within the slot
+    timeout and the answer size limit. The text is stored and rendered like
+    any other answer (same sanitising). Other devices see it in history.
+  - **Site rules.** Input, submit, answer and "finished" detection are data
     files, one per site, so a site change is a rule update. When a rule
-    fails the cell stays usable by hand and that answer is simply not stored.
-  - The app never disguises its browser identity. Sites that refuse sign-in
-    inside an embedded browser (Google does) stay unsupported.
-  - Reading answers out of a page programmatically is restricted by vendor
-    terms more explicitly than CLI use is. The feature is opt-in, and the
-    README says so plainly.
-  - Phones and the PWA cannot show web cells; they show the stored answers.
+    fails the cell stays usable by hand and that answer is not stored.
+    First sites: claude.ai, chatgpt.com, gemini.google.com, grok.com,
+    chat.z.ai. Rules for real sites cannot be tested in CI; they are marked
+    unverified until checked by hand, and CI tests the mechanism against the
+    stand-in site.
+  - **Opt-in and terms.** Filling in the prompt and reading the answer are
+    two separate switches, both off by default. Vendor terms restrict
+    automated access to their web apps more explicitly than CLI use; the
+    README says so plainly and claims nothing about what is allowed.
+  - **Distribution.** A zip in the GitHub Release, loaded unpacked. No
+    store listing for now.
+
+- **opencode provider.** A fifth CLI kind, `opencode`, run headless through
+  the official `opencode` CLI under the common rules of §5.1. The model is
+  whatever the user configured in opencode itself (for the owner: a model
+  behind their own OpenAI-compatible gateway); AnswerWall does not write
+  opencode's configuration or credentials. The invocation, the stream
+  format and how far tools can be switched off are taken from the CLI's own
+  help and documentation and confirmed by running the real CLI against the
+  local OpenAI-compatible stub, which costs nothing. Until a behaviour is
+  confirmed the provider card says so, as for grok and agy.
 
 ## 12. Testing
 
