@@ -18,3 +18,8 @@ Thumbs.db
 # Playwright
 /e2e/test-results/
 /e2e/playwright-report/
+/apps/desktop/e2e/test-results/
+/apps/desktop/e2e/playwright-report/
+
+# Packaged desktop app
+/apps/desktop/release/

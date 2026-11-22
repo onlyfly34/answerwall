@@ -1,0 +1,31 @@
+{
+  "name": "@answerwall/desktop",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "description": "One prompt in, many answers side by side.",
+  "author": "AnswerWall contributors",
+  "homepage": "https://github.com/onlyfly34/answerwall",
+  "type": "module",
+  "main": "dist/main.cjs",
+  "scripts": {
+    "build": "node --conditions=answerwall-source scripts/build.mjs",
+    "typecheck": "tsc -p tsconfig.json && tsc -p src/connection/tsconfig.json && tsc -p e2e/tsconfig.json",
+    "start": "pnpm run build && electron .",
+    "package": "node --conditions=answerwall-source scripts/package.mjs",
+    "verify-package": "node scripts/verify-package.mjs",
+    "icons": "node scripts/generate-icons.mjs",
+    "e2e": "playwright test --config e2e/playwright.config.ts"
+  },
+  "devDependencies": {
+    "@answerwall/core": "workspace:*",
+    "@answerwall/mock-clis": "workspace:*",
+    "@answerwall/server": "workspace:*",
+    "@answerwall/web": "workspace:*",
+    "@playwright/test": "1.65.1",
+    "electron": "45.4.1",
+    "electron-builder": "26.18.0",
+    "electron-updater": "6.8.11",
+    "esbuild": "0.28.2"
+  }
+}

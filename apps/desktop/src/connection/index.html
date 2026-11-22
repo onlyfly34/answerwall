@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; base-uri 'none'; form-action 'none'"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title></title>
+    <link rel="stylesheet" href="connection.css" />
+  </head>
+  <body>
+    <main hidden>
+      <h1 data-t="connection.title"></h1>
+      <p class="muted" data-t="connection.intro"></p>
+      <p id="problem" class="notice is-error" role="alert" hidden></p>
+
+      <form id="form" novalidate>
+        <fieldset>
+          <legend class="visually-hidden" data-t="connection.title"></legend>
+
+          <label class="choice">
+            <input type="radio" name="mode" value="local" />
+            <span>
+              <strong data-t="connection.local.title"></strong>
+              <span class="muted" data-t="connection.local.help"></span>
+            </span>
+          </label>
+
+          <label class="choice">
+            <input type="radio" name="mode" value="remote" />
+            <span>
+              <strong data-t="connection.remote.title"></strong>
+              <span class="muted" data-t="connection.remote.help"></span>
+            </span>
+          </label>
+
+          <div id="remote-fields" class="nested" hidden>
+            <label for="url" data-t="connection.remote.url"></label>
+            <div class="row">
+              <input
+                id="url"
+                type="text"
+                inputmode="url"
+                autocomplete="off"
+                autocapitalize="off"
+                spellcheck="false"
+                maxlength="2048"
+                placeholder="https://wall.example.com"
+                aria-describedby="check-result insecure certificate-help"
+              />
+              <button type="button" id="check" data-t="connection.remote.check"></button>
+            </div>
+            <p
+              id="insecure"
+              class="notice is-warning"
+              hidden
+              data-t="connection.remote.insecure"
+            ></p>
+            <p id="check-result" class="notice" role="status" hidden></p>
+            <p id="certificate-help" class="muted" data-t="connection.remote.certificateHelp"></p>
+          </div>
+        </fieldset>
+
+        <div class="update">
+          <label class="check">
+            <input type="checkbox" id="update-check" />
+            <span data-t="connection.updateCheck"></span>
+          </label>
+          <p id="update-help" class="muted"></p>
+        </div>
+
+        <div class="actions">
+          <span id="version" class="muted"></span>
+          <button
+            type="submit"
+            id="continue"
+            class="is-primary"
+            data-t="connection.continue"
+          ></button>
+        </div>
+      </form>
+    </main>
+    <script src="connection.js"></script>
+  </body>
+</html>

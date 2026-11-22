@@ -51,6 +51,9 @@ export default tseslint.config(
       '**/node_modules/',
       'e2e/playwright-report/',
       'e2e/test-results/',
+      'apps/desktop/release/',
+      'apps/desktop/e2e/playwright-report/',
+      'apps/desktop/e2e/test-results/',
     ],
   },
   js.configs.recommended,
@@ -111,6 +114,16 @@ export default tseslint.config(
       regex: '^(\\.\\./)+(app|infra|pages)/',
       message: 'Use the interfaces in src/contracts/ instead.',
     }),
+  },
+  {
+    // The connection page and the pages' preload scripts run in a browser context.
+    files: ['apps/desktop/src/connection/**'],
+    languageOptions: { globals: globals.browser },
+  },
+  {
+    // The desktop shell uses core as a package too.
+    files: ['apps/desktop/src/**'],
+    rules: restrictImports(coreSources),
   },
   { files: ['apps/server/src/**'], rules: restrictImports(coreSources) },
   {

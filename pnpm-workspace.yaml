@@ -3,3 +3,10 @@ packages:
   - apps/*
   - tools/*
   - e2e
+
+# Install scripts of dependencies never run. Both packages work without theirs:
+# esbuild takes its binary from an optional dependency, and electron-winstaller
+# (a dependency of electron-builder) is not used by the NSIS target.
+allowBuilds:
+  electron-winstaller: false
+  esbuild: false
