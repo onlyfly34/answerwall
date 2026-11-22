@@ -4,6 +4,7 @@ import { AppError, SECRET_KEYS } from '../contracts/index.ts';
 import type { Logger, SecretStore, SettingsService, Storage } from '../contracts/index.ts';
 import { createDefaultSettings, SettingsPatchSchema, SettingsSchema } from '../protocol/index.ts';
 import type { ProviderInstance, Settings, SettingsPatch } from '../protocol/index.ts';
+import { baseUrlIssue, sameOrigin } from './base-url.ts';
 import { repairSettings } from './repair.ts';
 import type { StoredProvider, StoredSettings } from './repair.ts';
 
@@ -18,9 +19,13 @@ type ProviderInputs = NonNullable<SettingsPatch['providers']>;
 
 /** What an update does to the secret store. */
 interface SecretPlan {
-  /** Secret key → new API key. */
-  set: Map<string, string>;
-  /** Secret keys whose stored value must go. */
+  /**
+   * Changes made before the document is saved, and undone when the save
+   * fails. Secret key → new API key, or `undefined` for a key that must be
+   * gone before its endpoint's new address takes effect.
+   */
+  before: Map<string, string | undefined>;
+  /** Secret keys whose stored value must go once the document is saved. */
   remove: Set<string>;
 }
 
@@ -59,23 +64,39 @@ const withoutKeys = (stored: StoredSettings): Settings => ({
 });
 
 function planSecrets(inputs: ProviderInputs, before: readonly StoredProvider[]): SecretPlan {
-  const plan: SecretPlan = { set: new Map(), remove: new Set() };
-  const endpointsBefore = new Set(
-    before.filter((provider) => provider.kind === 'openai-compat').map((provider) => provider.id),
+  const plan: SecretPlan = { before: new Map(), remove: new Set() };
+  const endpointsBefore = new Map(
+    before.flatMap((provider) =>
+      provider.kind === 'openai-compat' ? [[provider.id, provider.baseUrl] as const] : [],
+    ),
   );
   const kept = new Set(inputs.map((input) => input.id));
   // A removed endpoint takes its key with it.
-  for (const id of endpointsBefore) {
+  for (const id of endpointsBefore.keys()) {
     if (!kept.has(id)) plan.remove.add(SECRET_KEYS.providerApiKey(id));
   }
   for (const input of inputs) {
     if (input.kind !== 'openai-compat') continue;
     const key = SECRET_KEYS.providerApiKey(input.id);
-    if (typeof input.apiKey === 'string') plan.set.set(key, input.apiKey);
+    const previousUrl = endpointsBefore.get(input.id);
+    if (typeof input.apiKey === 'string') plan.before.set(key, input.apiKey);
     // A new endpoint must not inherit a key that an earlier one left under its id.
-    else if (input.apiKey === null || !endpointsBefore.has(input.id)) plan.remove.add(key);
+    else if (input.apiKey === null || previousUrl === undefined) plan.remove.add(key);
+    // A key belongs to the origin it was entered for. Kept across a move, it
+    // would be sent to the new address: a way to read a write-only secret.
+    else if (!sameOrigin(previousUrl, input.baseUrl)) plan.before.set(key, undefined);
   }
   return plan;
+}
+
+/** The first endpoint address that may not be stored, as a validation message. */
+function addressIssue(inputs: ProviderInputs): string | undefined {
+  for (const [index, input] of inputs.entries()) {
+    if (input.kind !== 'openai-compat') continue;
+    const issue = baseUrlIssue(input.baseUrl);
+    if (issue) return `providers.${index}.baseUrl: ${issue}`;
+  }
+  return undefined;
 }
 
 function stripApiKeys(inputs: ProviderInputs): StoredProvider[] {
@@ -111,11 +132,12 @@ export function createSettingsService(deps: SettingsServiceDeps): SettingsServic
   });
 
   /**
-   * Stores the new keys. When one is refused (its provider's key comes from
-   * the environment), the keys already written by this update are put back,
-   * so a rejected update changes nothing.
+   * Stores the new keys and deletes the ones that must not outlive a move.
+   * When a change is refused (a provider's key comes from the environment),
+   * the changes already made by this update are put back, so a rejected
+   * update changes nothing.
    */
-  const storeKeys = async (keys: SecretPlan['set']): Promise<() => Promise<void>> => {
+  const changeKeys = async (changes: SecretPlan['before']): Promise<() => Promise<void>> => {
     const previous = new Map<string, string | undefined>();
     const undo = async () => {
       for (const [key, value] of previous) {
@@ -123,9 +145,11 @@ export function createSettingsService(deps: SettingsServiceDeps): SettingsServic
       }
     };
     try {
-      for (const [key, value] of keys) {
+      for (const [key, value] of changes) {
         const before = await secrets.get(key);
-        await secrets.set(key, value);
+        if (value !== undefined) await secrets.set(key, value);
+        else if (before !== undefined) await secrets.delete(key);
+        else continue;
         previous.set(key, before);
       }
     } catch (error) {
@@ -152,6 +176,8 @@ export function createSettingsService(deps: SettingsServiceDeps): SettingsServic
     const request = SettingsPatchSchema.safeParse(patch);
     if (!request.success) throw new AppError('bad_request', describeIssue(request.error));
     const { language, providers, limits, layout, updateCheck } = request.data;
+    const refused = providers && addressIssue(providers);
+    if (refused) throw new AppError('bad_request', refused);
 
     const merged = SettingsSchema.safeParse(
       withoutKeys({
@@ -166,9 +192,9 @@ export function createSettingsService(deps: SettingsServiceDeps): SettingsServic
     const next = toStored(merged.data);
     const plan: SecretPlan = providers
       ? planSecrets(providers, stored.providers)
-      : { set: new Map(), remove: new Set() };
+      : { before: new Map(), remove: new Set() };
 
-    const undoKeys = await storeKeys(plan.set);
+    const undoKeys = await changeKeys(plan.before);
     try {
       await storage.settings.save(next);
     } catch (error) {

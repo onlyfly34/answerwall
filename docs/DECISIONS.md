@@ -227,7 +227,13 @@ real runs, and updates this section.
 - **openai-compat** — `POST {baseUrl}/v1/chat/completions` with
   `stream: true` (SSE), `GET {baseUrl}/v1/models`; supports
   `reasoning_content`; normalise base URLs with or without `/v1`; tolerate
-  non-chat models in the list. Any number of endpoints.
+  non-chat models in the list. Any number of endpoints. A base URL never
+  carries a user name, password, query string or fragment (rejected on
+  write, cut from an address stored by an older version): the address is
+  returned by the API, and the credential belongs in the write-only API key.
+  A stored API key belongs to the origin it was entered for: changing an
+  endpoint's base URL to another scheme, host or port without sending a new
+  key deletes the stored one.
 
 ## 6. HTTP API
 

@@ -62,11 +62,33 @@ const cliInstanceShape = {
   riskAcknowledged: z.boolean(),
 };
 
+/** Any http(s) address, before the rule on what a stored address may carry. */
+export const HttpUrlSchema = z.url({ protocol: /^https?$/ }).max(2048);
+
+/** Whether an address carries user info, a query string or a fragment. */
+function carriesExtras(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.username !== '' || url.password !== '' || url.search !== '' || url.hash !== '';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The address of an OpenAI-compatible endpoint. It is stored in the settings
+ * document and returned by the API, so it must not carry anything secret.
+ */
+export const EndpointBaseUrlSchema = HttpUrlSchema.refine((value) => !carriesExtras(value), {
+  message:
+    'the address must not contain a user name, password, query string or fragment; put the credential in the API key field',
+});
+
 const openAiCompatBase = {
   ...instanceBase,
   kind: z.literal('openai-compat'),
   /** With or without a trailing `/v1`; the adapter normalises it. */
-  baseUrl: z.url({ protocol: /^https?$/ }).max(2048),
+  baseUrl: EndpointBaseUrlSchema,
 };
 
 interface InstanceRuleInput {

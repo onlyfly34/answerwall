@@ -359,6 +359,47 @@ describe('update', () => {
     });
   });
 
+  describe('credentials in an endpoint address', () => {
+    test.each([
+      ['a user name and password', 'https://alice:s3cretpass@llm.example/v1'],
+      ['a user name', 'https://token-abcdef@llm.example/v1'],
+      ['a query string', 'https://llm.example/v1?api-key=sk-abcdef123456'],
+      ['a fragment', 'https://llm.example/v1#sk-abcdef123456'],
+    ])('an address with %s is refused and nothing of it is stored', async (_, baseUrl) => {
+      const { service, storage } = await setup();
+      const before = service.get();
+
+      const error = await rejection(service.update(withEndpoints(endpoint('local', { baseUrl }))));
+
+      expect(error).toMatchObject({ name: 'AppError', code: 'bad_request' });
+      expect((error as Error).message).toMatch(/providers\.\d+\.baseUrl: .*API key/);
+      expect((error as Error).message).not.toMatch(/s3cretpass|abcdef/);
+      expect(service.get()).toEqual(before);
+      expect(await storage.settings.load()).toBeUndefined();
+    });
+
+    test('a stored address loses its credentials on load, and the cleaned document is saved', async () => {
+      const document = {
+        ...createDefaultSettings(),
+        providers: [
+          ...createDefaultSettings().providers,
+          endpoint('local', {
+            baseUrl: 'https://alice:s3cretpass@llm.example/v1?api-key=sk-abcdef123456',
+          }),
+        ],
+      };
+
+      const { service, storage, logger } = await setup({ document });
+
+      const stored = JSON.stringify(await storage.settings.load());
+      expect(stored).not.toMatch(/s3cretpass|abcdef|alice/);
+      expect(service.get().providers.find((provider) => provider.id === 'local')).toMatchObject({
+        baseUrl: 'https://llm.example/v1',
+      });
+      expect(logger.entries.some((entry) => entry.level === 'warn')).toBe(true);
+    });
+  });
+
   describe('providers', () => {
     test('a CLI provider can be disabled and reconfigured, never removed', async () => {
       const { service } = await setup();
@@ -482,6 +523,152 @@ describe('update', () => {
 
       expect(hasApiKey(updated, 'local')).toBe(false);
       expect(await secrets.get(KEY('local'))).toBeUndefined();
+    });
+
+    test('pointing an endpoint at another origin without a new key drops the stored key', async () => {
+      const { service, secrets } = await setup();
+      await service.update(
+        withEndpoints(endpoint('local', { baseUrl: 'https://llm.example/v1', apiKey: 'sk-one' })),
+      );
+
+      const moved = await service.update(
+        withEndpoints(endpoint('local', { baseUrl: 'https://elsewhere.example/v1' })),
+      );
+
+      expect(hasApiKey(moved, 'local')).toBe(false);
+      expect(await secrets.get(KEY('local'))).toBeUndefined();
+    });
+
+    test.each([
+      ['another host', 'https://other.example/v1'],
+      ['another port', 'https://llm.example:8443/v1'],
+      ['another scheme', 'http://llm.example/v1'],
+      ['a look-alike host', 'https://llm.example.evil.test/v1'],
+    ])('%s is another origin', async (_, baseUrl) => {
+      const { service, secrets } = await setup();
+      await service.update(
+        withEndpoints(endpoint('local', { baseUrl: 'https://llm.example/v1', apiKey: 'sk-one' })),
+      );
+
+      await service.update(withEndpoints(endpoint('local', { baseUrl })));
+
+      expect(await secrets.get(KEY('local'))).toBeUndefined();
+    });
+
+    test.each([
+      ['another path', 'https://llm.example/openai/v1'],
+      ['the default port spelled out', 'https://llm.example:443/v1'],
+      ['another letter case', 'HTTPS://LLM.EXAMPLE/v1'],
+    ])('%s on the same origin keeps the key', async (_, baseUrl) => {
+      const { service, secrets } = await setup();
+      await service.update(
+        withEndpoints(endpoint('local', { baseUrl: 'https://llm.example/v1', apiKey: 'sk-one' })),
+      );
+
+      const updated = await service.update(withEndpoints(endpoint('local', { baseUrl })));
+
+      expect(hasApiKey(updated, 'local')).toBe(true);
+      expect(await secrets.get(KEY('local'))).toBe('sk-one');
+    });
+
+    test('a key sent together with the new origin is stored for it', async () => {
+      const { service, secrets } = await setup();
+      await service.update(
+        withEndpoints(endpoint('local', { baseUrl: 'https://llm.example/v1', apiKey: 'sk-one' })),
+      );
+
+      const moved = await service.update(
+        withEndpoints(
+          endpoint('local', { baseUrl: 'https://elsewhere.example/v1', apiKey: 'sk-two' }),
+        ),
+      );
+
+      expect(hasApiKey(moved, 'local')).toBe(true);
+      expect(await secrets.get(KEY('local'))).toBe('sk-two');
+    });
+
+    test('the key is gone before the new origin is saved, and no subscriber sees both', async () => {
+      const inner = createFakeStorage();
+      const secrets = createFakeSecretStore();
+      const keyWhenSaved: (string | undefined)[] = [];
+      const storage: Storage = {
+        ...inner,
+        settings: {
+          load: () => inner.settings.load(),
+          save: async (document) => {
+            keyWhenSaved.push(await secrets.get(KEY('local')));
+            await inner.settings.save(document);
+          },
+        },
+      };
+      const { service } = await setup({ storage, secrets });
+      await service.update(
+        withEndpoints(endpoint('local', { baseUrl: 'https://llm.example/v1', apiKey: 'sk-one' })),
+      );
+      const seen: Settings[] = [];
+      service.subscribe((settings) => seen.push(settings));
+
+      await service.update(
+        withEndpoints(endpoint('local', { baseUrl: 'https://elsewhere.example/v1' })),
+      );
+
+      expect(keyWhenSaved.at(-1)).toBeUndefined();
+      expect(seen.map((settings) => hasApiKey(settings, 'local'))).toEqual([false]);
+    });
+
+    test('when the key of a moved endpoint cannot be deleted, the endpoint does not move', async () => {
+      const inner = createFakeSecretStore();
+      const secrets: SecretStore = {
+        get: (key) => inner.get(key),
+        set: (key, value) => inner.set(key, value),
+        delete: async () => {
+          throw new Error('cannot write secrets');
+        },
+      };
+      const { service, storage } = await setup({ secrets });
+      await service.update(
+        withEndpoints(endpoint('local', { baseUrl: 'https://llm.example/v1', apiKey: 'sk-one' })),
+      );
+      const before = service.get();
+
+      await expect(
+        service.update(
+          withEndpoints(endpoint('local', { baseUrl: 'https://elsewhere.example/v1' })),
+        ),
+      ).rejects.toThrow('cannot write secrets');
+
+      expect(service.get()).toEqual(before);
+      expect(JSON.stringify(await storage.settings.load())).not.toContain('elsewhere.example');
+    });
+
+    test('when the moved endpoint cannot be saved, its key is put back', async () => {
+      const inner = createFakeStorage();
+      let failing = false;
+      const storage: Storage = {
+        ...inner,
+        settings: {
+          load: () => inner.settings.load(),
+          save: async (document) => {
+            if (failing) throw new Error('disk full');
+            await inner.settings.save(document);
+          },
+        },
+      };
+      const { service, secrets } = await setup({ storage });
+      await service.update(
+        withEndpoints(endpoint('local', { baseUrl: 'https://llm.example/v1', apiKey: 'sk-one' })),
+      );
+      const before = service.get();
+
+      failing = true;
+      await expect(
+        service.update(
+          withEndpoints(endpoint('local', { baseUrl: 'https://elsewhere.example/v1' })),
+        ),
+      ).rejects.toThrow('disk full');
+
+      expect(service.get()).toEqual(before);
+      expect(await secrets.get(KEY('local'))).toBe('sk-one');
     });
 
     test('keys of several endpoints are kept apart', async () => {

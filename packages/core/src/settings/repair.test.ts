@@ -316,6 +316,34 @@ describe('repairSettings', () => {
       expect(repaired.providers).toEqual(defaults().providers);
     });
 
+    test.each([
+      ['https://alice:s3cretpass@llm.example/v1', 'https://llm.example/v1'],
+      ['https://token-abcdef@llm.example:8443/openai', 'https://llm.example:8443/openai'],
+      ['https://llm.example/v1?api-key=sk-abcdef', 'https://llm.example/v1'],
+      ['https://llm.example/v1#sk-abcdef', 'https://llm.example/v1'],
+      ['http://u:p@127.0.0.1:4000?k=sk-abcdef#f', 'http://127.0.0.1:4000/'],
+    ])('credentials, query and fragment are cut from the address %s', (baseUrl, cleaned) => {
+      const repaired = repairSettings({
+        ...defaults(),
+        providers: [...defaults().providers, endpoint('local', { baseUrl })],
+      });
+
+      expect(provider(repaired, 'local')).toMatchObject({ baseUrl: cleaned });
+      expectValid(repaired);
+    });
+
+    test.each(['http://127.0.0.1:4000', 'https://LLM.example/v1/', 'https://llm.example'])(
+      'the clean address %s is kept as written',
+      (baseUrl) => {
+        const repaired = repairSettings({
+          ...defaults(),
+          providers: [...defaults().providers, endpoint('local', { baseUrl })],
+        });
+
+        expect(provider(repaired, 'local')).toMatchObject({ baseUrl });
+      },
+    );
+
     test('an endpoint cannot take the id of a CLI provider', () => {
       const repaired = repairSettings({
         providers: [{ ...endpoint('claude'), kind: 'openai-compat' }],

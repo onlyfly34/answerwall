@@ -117,6 +117,17 @@ describe('provider instances', () => {
     expect(issues({ ...endpoint, baseUrl: 'file:///etc/passwd' })).toEqual(['baseUrl']);
   });
 
+  test.each([
+    'http://user:sk-secret@127.0.0.1:4000/v1',
+    'http://sk-secret@127.0.0.1:4000/v1',
+    'http://127.0.0.1:4000/v1?api_key=sk-secret',
+    'http://127.0.0.1:4000/v1#sk-secret',
+  ])('an endpoint address carries no credential: %s', (baseUrl) => {
+    expect(issues({ ...endpoint, baseUrl })).toEqual(['baseUrl']);
+    const result = ProviderInstanceInputSchema.safeParse({ ...endpoint, baseUrl });
+    expect(JSON.stringify(result.error?.issues)).not.toContain('sk-secret');
+  });
+
   test('the API key is accepted on input and is not part of the stored shape', () => {
     const input = ProviderInstanceInputSchema.parse({ ...endpoint, apiKey: 'sk-secret' });
     expect(input).toMatchObject({ apiKey: 'sk-secret' });

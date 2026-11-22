@@ -6,6 +6,7 @@ import {
   createDefaultSettings,
   DEFAULT_LAYOUT,
   DEFAULT_LIMITS,
+  HttpUrlSchema,
   KINDS_REQUIRING_ACKNOWLEDGEMENT,
   LanguageSchema,
   LayoutSettingsSchema,
@@ -24,6 +25,7 @@ import type {
   ProviderKind,
   Settings,
 } from '../protocol/index.ts';
+import { withoutCredentials } from './base-url.ts';
 
 /** A provider as persisted: `hasApiKey` is derived from the secret store, never stored. */
 export type StoredProvider = CliProviderInstance | Omit<OpenAiCompatInstance, 'hasApiKey'>;
@@ -128,7 +130,8 @@ function repairCliProvider(kind: CliProviderKind, fields: Fields): CliProviderIn
 function repairEndpoint(fields: Fields): StoredProvider | null {
   const shape = OpenAiCompatInstanceSchema.shape;
   const id = shape.id.safeParse(fields.id);
-  const baseUrl = shape.baseUrl.safeParse(fields.baseUrl);
+  // Checked as a plain address: one with a credential in it is cleaned below, not dropped.
+  const baseUrl = HttpUrlSchema.safeParse(fields.baseUrl);
   if (!id.success || !baseUrl.success) return null;
   return {
     id: id.data,
@@ -138,7 +141,8 @@ function repairEndpoint(fields: Fields): StoredProvider | null {
     concurrency: repairConcurrency('openai-compat', fields.concurrency),
     models: repairModels(fields.models, []),
     ...defaultModel(fields.defaultModel),
-    baseUrl: baseUrl.data,
+    // An older version stored the address as typed; a credential in it must not stay in the database.
+    baseUrl: withoutCredentials(baseUrl.data),
   };
 }
 
