@@ -2,7 +2,8 @@
  * Entry point of the utility process the main process starts for local mode.
  * See `host.ts` for what it does; this file only supplies the real process.
  */
-import { spawn } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
+import path from 'node:path';
 import {
   createLogger,
   createServer,
@@ -11,6 +12,8 @@ import {
 } from '@answerwall/core';
 import { runHost } from './host.ts';
 import type { Reaper } from './host.ts';
+import { watchParentProcess } from './parent-watch.ts';
+import type { ParentWatch } from './parent-watch.ts';
 
 const logger = createLogger({ level: 'info', format: 'json' });
 
@@ -54,29 +57,69 @@ function startReaper(script: string): Reaper | undefined {
   }
 }
 
-/** How often the host looks whether the main process still exists. */
-const PARENT_CHECK_MS = 2_000;
-
-function watchParent(gone: () => void): void {
-  const parent = process.ppid;
-  const alive = (): boolean => {
-    // Adopted by another process: the one that started this one has ended.
-    if (process.ppid !== parent) return false;
+/**
+ * The creation time of the process with this id, which no other process with
+ * the same id shares. Windows only: elsewhere a process whose parent ended
+ * is adopted, which shows in `process.ppid`. Asked of the system's own
+ * PowerShell, since Node has no call for it; `undefined` when that fails.
+ */
+function identifyProcess(pid: number): Promise<string | undefined> {
+  const systemRoot = process.env['SystemRoot'];
+  if (process.platform !== 'win32' || systemRoot === undefined || !Number.isInteger(pid)) {
+    return Promise.resolve(undefined);
+  }
+  const powershell = path.win32.join(
+    systemRoot,
+    'System32',
+    'WindowsPowerShell',
+    'v1.0',
+    'powershell.exe',
+  );
+  return new Promise((resolve) => {
     try {
-      process.kill(parent, 0);
-      return true;
-    } catch (error) {
-      // Not allowed to signal it: it exists.
-      return (error as NodeJS.ErrnoException).code === 'EPERM';
+      execFile(
+        powershell,
+        [
+          '-NoProfile',
+          '-NonInteractive',
+          '-Command',
+          `(Get-Process -Id ${pid}).StartTime.ToFileTimeUtc()`,
+        ],
+        { windowsHide: true, timeout: 15_000 },
+        (error, stdout) => {
+          const value = stdout.trim();
+          resolve(error === null && /^\d+$/.test(value) ? value : undefined);
+        },
+      );
+    } catch {
+      resolve(undefined);
     }
-  };
-  const timer = setInterval(() => {
-    if (alive()) return;
-    clearInterval(timer);
-    gone();
-  }, PARENT_CHECK_MS);
-  // The check alone must not keep the process running.
-  timer.unref();
+  });
+}
+
+function watchParent(gone: () => void): ParentWatch {
+  return watchParentProcess(
+    {
+      parentPid: () => process.ppid,
+      exists(pid) {
+        try {
+          process.kill(pid, 0);
+          return true;
+        } catch (error) {
+          // Not allowed to signal it: it exists.
+          return (error as NodeJS.ErrnoException).code === 'EPERM';
+        }
+      },
+      identify: identifyProcess,
+      every(ms, task) {
+        const timer = setInterval(task, ms);
+        // The check alone must not keep the process running.
+        timer.unref();
+        return () => clearInterval(timer);
+      },
+    },
+    gone,
+  );
 }
 
 // No exit, however it comes about, may leave a CLI child behind.

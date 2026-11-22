@@ -93,6 +93,8 @@ export interface ConnectionApi {
 export type HostRequest =
   | { type: 'start'; config: HostConfig }
   | { type: 'shutdown' }
+  /** Sent every few seconds: the main process still runs (see `parent-watch.ts`). */
+  | { type: 'alive' }
   | { type: 'secret-result'; id: number; ok: true; value?: string }
   /** `unavailable`: the system offers no encryption, so nothing was stored. */
   | { type: 'secret-result'; id: number; ok: false; reason: 'unavailable' | 'error' };

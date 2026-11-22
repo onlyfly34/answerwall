@@ -18,6 +18,7 @@ import type {
   ServerOverrides,
 } from '@answerwall/core';
 import type { HostConfig, HostEvent, HostRequest } from '../shared/ipc.ts';
+import type { ParentWatch } from './parent-watch.ts';
 
 /** How long a shutdown may take before the host exits anyway. */
 export const SHUTDOWN_TIMEOUT_MS = 10_000;
@@ -48,9 +49,10 @@ export interface HostDeps {
    * Calls `gone` once when the process that started this one no longer
    * exists. A utility process normally ends with the main process by itself;
    * where it does not (seen on Windows while children were running), it must
-   * not stay behind holding the port and the data directory.
+   * not stay behind holding the port and the data directory. The host tells
+   * the watch of every message of the main process (`parent-watch.ts`).
    */
-  watchParent(gone: () => void): void;
+  watchParent(gone: () => void): ParentWatch;
   exit(code: number): void;
   schedule(ms: number, task: () => void): () => void;
 }
@@ -183,7 +185,7 @@ export function runHost(deps: HostDeps): void {
     );
   }
 
-  deps.watchParent(() => {
+  const parent = deps.watchParent(() => {
     logger.error('the main process is gone; exiting');
     deps.killChildren();
     deps.exit(1);
@@ -191,6 +193,8 @@ export function runHost(deps: HostDeps): void {
 
   port.onMessage((message) => {
     if (!isRecord(message)) return;
+    // Whatever it says: the main process is there to say it.
+    parent.heard();
     const request = message as HostRequest;
     switch (request.type) {
       case 'start':

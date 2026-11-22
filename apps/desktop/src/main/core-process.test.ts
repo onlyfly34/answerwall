@@ -1,7 +1,13 @@
 import { describe, expect, test } from 'vitest';
 import { createMemoryLogger } from '@answerwall/core/testing';
 import type { HostEvent, HostRequest } from '../shared/ipc.ts';
-import { CoreStartError, START_TIMEOUT_MS, startCore, STOP_TIMEOUT_MS } from './core-process.ts';
+import {
+  ALIVE_INTERVAL_MS,
+  CoreStartError,
+  START_TIMEOUT_MS,
+  startCore,
+  STOP_TIMEOUT_MS,
+} from './core-process.ts';
 import type { CoreProcessOptions, HostProcess } from './core-process.ts';
 import { SecretsUnavailableError } from './secrets.ts';
 import type { EncryptedSecretStore } from './secrets.ts';
@@ -174,6 +180,23 @@ describe('a running core', () => {
     expect(fake.killed()).toBe(0);
     expect(timers.find((timer) => timer.ms === STOP_TIMEOUT_MS)?.cancelled).toBe(true);
     expect(await core.exited).toBe(false);
+  });
+
+  test('keeps telling the host that the main process is alive, until the host has exited', async () => {
+    const { fake, timers } = await running();
+    /** The interval passes once more: its newest timer runs. */
+    const pass = (): void => timers.findLast((timer) => timer.ms === ALIVE_INTERVAL_MS)?.task();
+
+    pass();
+    pass();
+    pass();
+    expect(fake.sent).toEqual([{ type: 'alive' }, { type: 'alive' }, { type: 'alive' }]);
+
+    fake.exit(0);
+    fake.sent.length = 0;
+    expect(timers.findLast((timer) => timer.ms === ALIVE_INTERVAL_MS)?.cancelled).toBe(true);
+    for (const timer of timers.filter((entry) => entry.ms === ALIVE_INTERVAL_MS)) timer.task();
+    expect(fake.sent).toEqual([]);
   });
 
   test('a host that does not stop in time is killed', async () => {

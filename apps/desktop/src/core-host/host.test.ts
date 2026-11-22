@@ -30,6 +30,7 @@ function setup(overrides: Partial<HostDeps> = {}) {
   const logger = createMemoryLogger();
   let deliver: (message: unknown) => void = () => undefined;
   let parentGone: () => void = () => undefined;
+  let heard = 0;
   let killed = 0;
   let waiters: (() => void)[] = [];
 
@@ -56,6 +57,7 @@ function setup(overrides: Partial<HostDeps> = {}) {
     startReaper: () => ({ report: (pid, state) => void reported.push([pid, state]) }),
     watchParent: (gone) => {
       parentGone = gone;
+      return { heard: () => void (heard += 1) };
     },
     exit: (code) => {
       exits.push(code);
@@ -92,6 +94,7 @@ function setup(overrides: Partial<HostDeps> = {}) {
     send: (message: unknown) => deliver(message),
     /** The main process has disappeared. */
     loseParent: () => parentGone(),
+    heard: () => heard,
     posted,
     exits,
     timers,
@@ -376,6 +379,21 @@ describe('runHost', () => {
 
     expect(host.killed()).toBe(1);
     expect(host.exits).toEqual([1]);
+  });
+
+  test('every message of the main process tells the watch that it is alive', async () => {
+    const host = setup({ createServer: async () => fakeServer() });
+    host.send({ type: 'start', config: config() });
+    await host.next('listening');
+    expect(host.heard()).toBe(1);
+
+    host.send({ type: 'alive' });
+    host.send({ type: 'alive' });
+
+    expect(host.heard()).toBe(3);
+    // Being alive is all that message says.
+    expect(host.exits).toEqual([]);
+    expect(host.posted.map((message) => message.type)).toEqual(['listening']);
   });
 
   test('messages of no known shape are ignored', () => {

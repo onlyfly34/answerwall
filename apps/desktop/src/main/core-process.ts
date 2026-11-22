@@ -13,6 +13,11 @@ import type { EncryptedSecretStore } from './secrets.ts';
 export const START_TIMEOUT_MS = 30_000;
 /** How long a graceful stop may take; the host's own limit is shorter. */
 export const STOP_TIMEOUT_MS = 12_000;
+/**
+ * How often the host is told that the main process still runs. The host
+ * cannot rely on the process id alone to know that (`parent-watch.ts`).
+ */
+export const ALIVE_INTERVAL_MS = 2_000;
 
 /** The parts of Electron's `UtilityProcess` used here; tests pass a stand-in. */
 export interface HostProcess {
@@ -121,8 +126,18 @@ export function startCore(options: CoreProcessOptions, port: number): Promise<Ru
       child.kill();
     });
 
+    let cancelAlive = (): void => undefined;
+    const keepSayingAlive = (): void => {
+      cancelAlive = options.schedule(ALIVE_INTERVAL_MS, () => {
+        if (exitedFlag) return;
+        child.postMessage({ type: 'alive' });
+        keepSayingAlive();
+      });
+    };
+
     child.on('spawn', () => {
       child.postMessage({ type: 'start', config: { ...options.config, token, port } });
+      keepSayingAlive();
     });
 
     child.on('message', (message) => {
@@ -150,6 +165,7 @@ export function startCore(options: CoreProcessOptions, port: number): Promise<Ru
 
     child.on('exit', (code) => {
       exitedFlag = true;
+      cancelAlive();
       logger.info('the local server exited', { code });
       fail('exited');
       resolveExited(!stopRequested);

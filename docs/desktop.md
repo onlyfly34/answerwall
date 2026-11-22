@@ -133,6 +133,7 @@ port:
 | `start`               | The configuration, including the launch token and the port to try.   |
 | `shutdown`            | Stop like the server's own `shutdown` message: graceful, 10 s limit. |
 | `secret-result`       | The answer to a secret store request.                                |
+| `alive`               | Every two seconds: the main process still runs (see the reaper).     |
 
 | Message (host → main) | Meaning                                                   |
 | --------------------- | --------------------------------------------------------- |
@@ -170,6 +171,15 @@ The core host also looks every two seconds whether the process that started
 it still exists, and otherwise kills its children and exits: on Windows a
 core host with running children was seen to stay behind when the main
 process was killed, where it would keep the port and the data directory.
+A process id alone does not settle that on Windows, which never re-parents
+a process and hands the id of an ended one to a new one. So the main
+process sends `alive` every two seconds, and when nothing has arrived for
+ten seconds the core host compares the creation time of the process that
+holds its parent's id with the one it read at start (through the system's
+PowerShell; Node has no call for it). Only a different creation time counts
+as "gone": silence alone does not, since a main process can be busy for a
+long time. Where the creation time cannot be read, the watch is the id
+check alone (`parent-watch.ts`).
 An end-to-end test kills the main process while three stubborn mock CLIs
 run and expects every process to be gone, on Windows and on Linux.
 
@@ -350,6 +360,9 @@ by `pnpm lint`).
 
 - The first start after download: SmartScreen, and Smart App Control, which
   blocks unsigned installers outright where it is on.
+- The creation-time comparison of the parent watch (the PowerShell call and
+  a reused process id): its logic is unit-tested with a stand-in system, the
+  call itself has never run on Windows.
 - The real CLIs on Windows; the tests use the mocks only.
 - The login terminal with Windows Terminal installed (the tests have no
   Windows Terminal alias and exercise the `cmd` path), and what each real
