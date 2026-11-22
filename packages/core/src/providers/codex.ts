@@ -7,6 +7,7 @@ import type {
   StreamingMode,
   Usage,
 } from '../protocol/index.ts';
+import { LOGIN_COMMANDS } from '../protocol/index.ts';
 import { captureCli } from './cli/capture.ts';
 import { isRecord, parseJsonLine, runCli } from './cli/run-cli.ts';
 import type { CliContext, ContentEvent, ParserOutcome, StreamParser } from './cli/run-cli.ts';
@@ -26,7 +27,7 @@ import {
 import { sanitizeDiagnostic } from './failure.ts';
 
 const EXECUTABLE = 'codex';
-const LOGIN_COMMAND = 'codex login';
+const LOGIN_COMMAND = LOGIN_COMMANDS.codex;
 /**
  * `exec --json` prints every agent message and reasoning summary whole, in one
  * `item.completed` line: real runs (0.167.0) showed no `item.updated` and no

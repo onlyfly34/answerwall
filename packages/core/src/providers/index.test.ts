@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, test } from 'vitest';
-import { createDefaultSettings, PROVIDER_KINDS } from '../protocol/index.ts';
+import {
+  CLI_PROVIDER_KINDS,
+  createDefaultSettings,
+  LOGIN_COMMANDS,
+  PROVIDER_KINDS,
+} from '../protocol/index.ts';
 import { systemClock } from '../system.ts';
 import { createFakeSecretStore, createFakeSettingsService } from '../testing/index.ts';
 import { createProviderRegistry } from './index.ts';
@@ -24,6 +29,20 @@ describe('createProviderRegistry', () => {
     const registry = build();
 
     expect(PROVIDER_KINDS.map((kind) => registry.adapter(kind).kind)).toEqual([...PROVIDER_KINDS]);
+    await registry.shutdown();
+  });
+
+  test('every CLI adapter shows the login command of the shared table, which stays plain words', async () => {
+    harness = await createMockCliHarness();
+    const registry = build();
+
+    for (const kind of CLI_PROVIDER_KINDS) {
+      expect(registry.adapter(kind).loginCommand).toBe(LOGIN_COMMANDS[kind]);
+      // The desktop shell hands the command to a terminal: the CLI's own name, then flags.
+      expect(LOGIN_COMMANDS[kind]).toMatch(new RegExp(`^${kind}( [a-z-]+)*$`));
+    }
+    expect(Object.keys(LOGIN_COMMANDS).sort()).toEqual([...CLI_PROVIDER_KINDS].sort());
+    expect(registry.adapter('openai-compat').loginCommand).toBeUndefined();
     await registry.shutdown();
   });
 

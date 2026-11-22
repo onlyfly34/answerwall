@@ -13,6 +13,19 @@ export function isCliKind(kind: ProviderKind): kind is CliProviderKind {
   return kind !== 'openai-compat';
 }
 
+/**
+ * The official login command of each CLI, exactly as its vendor documents it.
+ * The single source: the adapters show it, and the desktop shell runs nothing
+ * else when it opens a terminal to log in.
+ */
+export const LOGIN_COMMANDS: Readonly<Record<CliProviderKind, string>> = {
+  claude: 'claude auth login',
+  codex: 'codex login',
+  // The CLI has no login subcommand: starting it interactively signs in.
+  agy: 'agy',
+  grok: 'grok login --device-auth',
+};
+
 /** Kinds whose first enable requires the user to acknowledge the vendor's wording. */
 export const KINDS_REQUIRING_ACKNOWLEDGEMENT: readonly ProviderKind[] = ['agy'];
 

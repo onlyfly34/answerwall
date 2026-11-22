@@ -7,6 +7,7 @@ import type {
   ToolAccess,
   Usage,
 } from '../protocol/index.ts';
+import { LOGIN_COMMANDS } from '../protocol/index.ts';
 import { captureCli } from './cli/capture.ts';
 import { parseModelListing } from './cli/model-list.ts';
 import { isRecord, runCli } from './cli/run-cli.ts';
@@ -22,7 +23,7 @@ import {
 } from './cli/support.ts';
 
 const EXECUTABLE = 'grok';
-const LOGIN_COMMAND = 'grok login --device-auth';
+const LOGIN_COMMAND = LOGIN_COMMANDS.grok;
 /** `text` events carry fragments of the answer. */
 const STREAMING: StreamingMode = 'token';
 /** The documented switch for the CLI's cross-session memory. */

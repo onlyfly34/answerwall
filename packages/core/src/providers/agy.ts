@@ -1,5 +1,6 @@
 import type { ProviderAdapter } from '../contracts/index.ts';
 import type { ModelInfo, ProviderDetection, StreamingMode, Usage } from '../protocol/index.ts';
+import { LOGIN_COMMANDS } from '../protocol/index.ts';
 import { captureCli } from './cli/capture.ts';
 import { parseModelListing } from './cli/model-list.ts';
 import { isRecord, runCli } from './cli/run-cli.ts';
@@ -16,8 +17,7 @@ import {
 } from './cli/support.ts';
 
 const EXECUTABLE = 'agy';
-/** The CLI has no login subcommand: starting it interactively signs in. */
-const LOGIN_COMMAND = 'agy';
+const LOGIN_COMMAND = LOGIN_COMMANDS.agy;
 /** `step_update` events carry `text_delta`. */
 const STREAMING: StreamingMode = 'token';
 /** The CLI updates itself in the background unless told not to; updating is the user's call. */

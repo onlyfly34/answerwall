@@ -7,6 +7,7 @@ import type {
   StreamingMode,
   Usage,
 } from '../protocol/index.ts';
+import { LOGIN_COMMANDS } from '../protocol/index.ts';
 import { captureCli } from './cli/capture.ts';
 import { hasVariable, LOGIN_TOKEN_VARIABLE } from './cli/child-env.ts';
 import { isRecord, parseJsonLine, runCli } from './cli/run-cli.ts';
@@ -23,7 +24,7 @@ import {
 } from './cli/support.ts';
 
 const EXECUTABLE = 'claude';
-const LOGIN_COMMAND = 'claude auth login';
+const LOGIN_COMMAND = LOGIN_COMMANDS.claude;
 /** `--include-partial-messages` makes the CLI forward the API's text deltas. */
 const STREAMING: StreamingMode = 'token';
 /** Keeps the account's claude.ai connectors out of the session. */
