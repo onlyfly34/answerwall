@@ -41,6 +41,7 @@ import type {
 } from '../shared/ipc.ts';
 import { createTranslator, messagesFor, pickLanguage } from '../shared/messages/index.ts';
 import type { Translate } from '../shared/messages/index.ts';
+import { refuseClientCertificates } from './client-certificate.ts';
 import { CoreStartError, startCore } from './core-process.ts';
 import type { CoreProcessOptions, RunningCore } from './core-process.ts';
 import { createDesktopSettingsStore } from './desktop-settings.ts';
@@ -661,6 +662,9 @@ if (!app.requestSingleInstanceLock()) {
     contents.on('will-attach-webview', (event) => event.preventDefault());
     contents.setWindowOpenHandler(() => ({ action: 'deny' }));
   });
+
+  // No server is ever handed a certificate from the user's store.
+  refuseClientCertificates(app);
 
   app.on('window-all-closed', () => app.quit());
 

@@ -230,7 +230,10 @@ directory).
   and refuses what is not a server of this product. **Certificate errors
   are never bypassed**: there is no `certificate-error` handler, no custom
   verification and no switch. A server with a private CA works once the CA
-  certificate is installed in Windows; the connection page says so.
+  certificate is installed in Windows; the connection page says so. A
+  server that asks for a TLS client certificate is offered none
+  (`client-certificate.ts`): Electron would otherwise send the first one in
+  the user's store, which can name its owner.
 - **The connection page.** One bundled file with a strict
   Content-Security-Policy, in an in-memory partition that cancels every
   network request.
