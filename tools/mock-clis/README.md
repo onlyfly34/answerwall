@@ -284,6 +284,8 @@ adapter's own arguments and project file.
 | `OPENCODE_DISABLE_CLAUDE_CODE=1` removes the `CLAUDE.md` files and keeps the `AGENTS.md` ones                                                                                                                                                                                                               | run                                             | yes                                                     |
 | Failures are one `error` line on stdout, exit code 1, nothing on stderr. `error.type`: `provider.auth` (401), `provider.quota` (429 `insufficient_quota`), `provider.invalid-request` (400, 404), `provider.no-route` (model or variant not in the configuration), `unknown` (`Invalid model reference: x`) | run (the fixtures of those names)               | yes                                                     |
 | After a refused connection (`provider.transport`), a 500 (`provider.internal`) or a 429 rate limit (`provider.rate-limit`) the CLI prints `retry` lines with `attempt` 2 to 11 and gives up after 83 to 89 seconds with an `error` line                                                                     | run (`network`, `server-error`, `rate-limited`) | yes                                                     |
+| Ended by the adapter at the first `retry` line (429 and 500 from the stub): the stub got one request, the run was over 0.7 s after its start, no request followed in the next 20 s, no process was left                                                                                                     | run (the adapter, twice)                        | yes                                                     |
+| The binary reads `OPENCODE_CONFIG_PROJECT_DISABLE` before `OPENCODE_DISABLE_PROJECT_CONFIG` (`a ?? b`), reads `OPENCODE_API_KEY` for its vendor's hosted provider, and names `GOOGLE_GENERATIVE_AI_API_KEY` and a key variable for each of many other providers                                             | strings of the 2.3.2 binary, not a run          | no                                                      |
 | A variant is selected as `provider/model#variant`, and its `body` reaches the request; an unknown one is `provider.no-route` "Variant unavailable"                                                                                                                                                          | run (`bad-variant.jsonl`)                       | yes                                                     |
 | SIGTERM and SIGKILL to the process group of `run` end it within 0.2 s; the private server, which the signal does not reach, is gone within a second and the request to the endpoint is closed; no process is left                                                                                           | run                                             | yes                                                     |
 | The session of every run is stored in the CLI's database (`debug paths db`); `session list` shows it also with `--archived`; nothing is written into the working directory                                                                                                                                  | run                                             | yes                                                     |
@@ -306,8 +308,16 @@ plugin setting. Without the file, or with `OPENCODE_DISABLE_PROJECT_CONFIG=1`
 on a run, it answers `Agent not found` like the real CLI. A model is
 `provider/model`; the scenario is named by the model part
 (`mock/mock-echo`). Its `auth list` and `models` commands are a usage error
-without `--standalone` or without `OPENCODE_DISABLE_PROJECT_CONFIG=1`. Set
+without `--standalone` or unless both `OPENCODE_DISABLE_PROJECT_CONFIG` and
+`OPENCODE_CONFIG_PROJECT_DISABLE` are `1`; on a run it decides as the real
+binary does (the second name wins whenever it is set). Set
 `MOCK_OPENCODE_LEGACY=1` and it behaves like version 1.
+
+Its `rate-limited` scenario prints the recording up to the first `retry`
+line, waits `MOCK_OPENCODE_RETRY_MS` (default 1500), appends a log line with
+`resent: true`, and only then prints the remaining `retry` lines and the
+`error` line. The adapter ends the run at the first `retry` line, so its
+tests assert that no `resent` line is ever written.
 
 ### agy
 

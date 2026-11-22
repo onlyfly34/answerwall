@@ -49,15 +49,34 @@ export const OPENCODE_PROJECT_FILE = 'opencode.json';
  */
 const RUN_ENV = { OPENCODE_DISABLE_CLAUDE_CODE: '1' };
 /**
+ * The two variables the CLI reads for "no project configuration". The first
+ * is the documented one; when the second is set at all, the CLI (2.3.2)
+ * takes its value and does not look at the first.
+ */
+const PROJECT_CONFIG_SWITCHES = [
+  'OPENCODE_DISABLE_PROJECT_CONFIG',
+  'OPENCODE_CONFIG_PROJECT_DISABLE',
+] as const;
+/**
  * Status and listing commands run in the system's temporary directory, and
  * the CLI reads project configuration from its working directory upwards. A
  * file planted there by someone else could name commands to start, so those
- * commands run with project configuration switched off. A question never
- * does: its project file is the one written here.
+ * commands run with project configuration switched off, under both names: a
+ * value of the user's for either one would otherwise switch it on again. A
+ * question never does: its project file is the one written here.
  */
-const PROBE_ENV = { ...RUN_ENV, OPENCODE_DISABLE_PROJECT_CONFIG: '1' };
+const PROBE_ENV = {
+  ...RUN_ENV,
+  ...Object.fromEntries(PROJECT_CONFIG_SWITCHES.map((name) => [name, '1'])),
+};
 
-/** The variables through which the CLI's catalogue providers take a key from the environment. */
+/**
+ * The variables of the billing group (§5.1) through which the CLI takes a key
+ * from the environment: its own hosted provider's and those of the vendors
+ * the other CLIs sign in to. Its catalogue knows many more providers, each
+ * with a variable of its own; those are a key the user set for that provider
+ * and are passed on.
+ */
 const KEY_VARIABLES: readonly string[] = [
   'OPENCODE_API_KEY',
   'ANTHROPIC_API_KEY',
@@ -173,7 +192,7 @@ const AGENT_NOT_LOADED: Failure = {
   code: 'unsupported',
   message:
     'opencode did not load the agent that switches its tools off, so nothing was sent. ' +
-    'Its project configuration is probably disabled on this machine (OPENCODE_DISABLE_PROJECT_CONFIG).',
+    `Its project configuration is probably disabled on this machine (${PROJECT_CONFIG_SWITCHES.join(' or ')}).`,
 };
 /** Leads the message of a run that was ended at the CLI's first `retry` line. */
 const RETRY_STOPPED =

@@ -297,7 +297,9 @@ describe('createOpencodeParser', () => {
 
     expect(failure?.code).toBe('unsupported');
     expect(failure?.message).toContain('did not load the agent');
-    expect(failure?.message).toContain('OPENCODE_DISABLE_PROJECT_CONFIG');
+    expect(failure?.message).toContain(
+      'OPENCODE_DISABLE_PROJECT_CONFIG or OPENCODE_CONFIG_PROJECT_DISABLE',
+    );
   });
 
   test('an error after a finished step is still a failure', () => {
@@ -524,19 +526,25 @@ describe('the opencode adapter against the mock CLI', () => {
     },
   );
 
-  test('a run whose project file was not read fails instead of answering with tools', async () => {
-    await harness.cleanup();
-    // The user's own environment can switch project configuration off; the CLI then lacks the agent.
-    await setup({ OPENCODE_DISABLE_PROJECT_CONFIG: '1' });
+  test.each([
+    { OPENCODE_DISABLE_PROJECT_CONFIG: '1' },
+    { OPENCODE_CONFIG_PROJECT_DISABLE: 'true' },
+  ])(
+    'a run whose project file was not read (%j) fails instead of answering with tools',
+    async (env) => {
+      await harness.cleanup();
+      // The user's own environment can switch project configuration off; the CLI then lacks the agent.
+      await setup(env);
 
-    const events = await run();
+      const events = await run();
 
-    expect(typesOf(events)).toEqual(['start', 'error']);
-    expect(events.at(-1)).toMatchObject({ code: 'unsupported' });
-    expect(events.at(-1)).toMatchObject({
-      message: expect.stringContaining('did not load the agent') as unknown,
-    });
-  });
+      expect(typesOf(events)).toEqual(['start', 'error']);
+      expect(events.at(-1)).toMatchObject({ code: 'unsupported' });
+      expect(events.at(-1)).toMatchObject({
+        message: expect.stringContaining('did not load the agent') as unknown,
+      });
+    },
+  );
 
   test('version 1 of the CLI is reported as too old, by detection and by a run', async () => {
     await harness.cleanup();
@@ -647,6 +655,29 @@ describe('the opencode adapter against the mock CLI', () => {
         expect(call.env).toMatchObject({ OPENCODE_DISABLE_PROJECT_CONFIG: '1' });
       }
     });
+
+    test.each(['0', 'false', ''])(
+      'project configuration stays off for the checks when the other variable of the CLI says %j',
+      async (value) => {
+        await harness.cleanup();
+        // The CLI takes this name first, whatever its value, when it is set at all.
+        await setup({ OPENCODE_CONFIG_PROJECT_DISABLE: value });
+
+        const detection = await adapter.detect(instance);
+        const models = await adapter.listModels?.(instance);
+
+        expect(detection.loggedIn).toBe('yes');
+        expect(models).toHaveLength(2);
+        const calls = await harness.invocations();
+        expect(calls).toHaveLength(3);
+        for (const call of calls) {
+          expect(call.env).toMatchObject({
+            OPENCODE_DISABLE_PROJECT_CONFIG: '1',
+            OPENCODE_CONFIG_PROJECT_DISABLE: '1',
+          });
+        }
+      },
+    );
 
     test('no connected provider is "unknown" and names the login command', async () => {
       await harness.cleanup();

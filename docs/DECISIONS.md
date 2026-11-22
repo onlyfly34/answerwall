@@ -338,8 +338,9 @@ lists the evidence item by item.
     offered. The CLI appends agent rules after the user's global rules, so a
     global `allow` did not reopen anything; and a run that did not read the
     file fails with `Agent not found` (also when the user's environment has
-    `OPENCODE_DISABLE_PROJECT_CONFIG=1`) instead of answering with the
-    default agent. With the file one tool stays listed, `skill`, which
+    `OPENCODE_DISABLE_PROJECT_CONFIG=1`, or the second name the binary reads
+    for the same switch, `OPENCODE_CONFIG_PROJECT_DISABLE`) instead of
+    answering with the default agent. With the file one tool stays listed, `skill`, which
     cannot load a skill (`Unable to load skill`); an MCP server of the user's
     configuration was not started; no skill was listed. Policies only
     tighten and a broader configuration of the user outranks them, which is
@@ -396,9 +397,14 @@ lists the evidence item by item.
     `unknown`, never `no`, because a provider without a key still answered);
     `opencode models --standalone` (one `provider/model` per line, about
     0.6 s, works with the network refused). These run in the system's
-    temporary directory with `OPENCODE_DISABLE_PROJECT_CONFIG=1`, because the
-    CLI reads project configuration from its working directory upwards and a
-    file planted there could name commands to start. Both commands load
+    temporary directory with `OPENCODE_DISABLE_PROJECT_CONFIG=1` and
+    `OPENCODE_CONFIG_PROJECT_DISABLE=1`, because the CLI reads project
+    configuration from its working directory upwards and a file planted
+    there could name commands to start. The second name is not documented;
+    the 2.3.2 binary reads it first and takes its value whenever it is set
+    at all (seen in the binary's strings, not by a run), so a value of the
+    user's under that name would otherwise switch project configuration on
+    again for these commands. Setting it only tightens. Both commands load
     the user's global configuration and start the MCP servers named in it
     for their duration (3.6 s instead of 0.6 s with a test server that
     takes 3 s); nothing documented prevents that outside a project file.

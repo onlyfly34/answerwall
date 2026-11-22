@@ -167,6 +167,7 @@ export function logInvocation(kind, extra = {}) {
         'GROK_MEMORY',
         'OPENCODE_DISABLE_CLAUDE_CODE',
         'OPENCODE_DISABLE_PROJECT_CONFIG',
+        'OPENCODE_CONFIG_PROJECT_DISABLE',
       ].map((name) => [name, process.env[name] ?? null]),
     ),
     ...extra,

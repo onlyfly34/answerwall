@@ -110,6 +110,19 @@ function checkProjectFile() {
   return true;
 }
 
+/**
+ * How the real CLI (2.3.2) decides that project configuration is off: the
+ * second name wins whenever it is set at all, whatever its value.
+ */
+const PROJECT_CONFIG_SWITCHES = [
+  'OPENCODE_CONFIG_PROJECT_DISABLE',
+  'OPENCODE_DISABLE_PROJECT_CONFIG',
+];
+function projectConfigOff() {
+  const [second, first] = PROJECT_CONFIG_SWITCHES.map((name) => process.env[name]);
+  return ['1', 'true'].includes((second ?? first ?? '').toLowerCase());
+}
+
 /** `provider/model` with an optional `#variant`; the scenario is named by the model part. */
 function parseModel(reference) {
   if (reference === undefined) return {};
@@ -169,8 +182,9 @@ main(KIND, async (argv) => {
     if (flags['--format'] !== expectedFormat) {
       throw new UsageError(`--format must be ${expectedFormat ?? 'absent'}`);
     }
-    if (process.env.OPENCODE_DISABLE_PROJECT_CONFIG !== '1') {
-      throw new UsageError('OPENCODE_DISABLE_PROJECT_CONFIG must be "1" outside a run');
+    // Either name alone leaves the decision to whatever the user set under the other.
+    for (const name of PROJECT_CONFIG_SWITCHES) {
+      if (process.env[name] !== '1') throw new UsageError(`${name} must be "1" outside a run`);
     }
     logInvocation(KIND);
   };
@@ -217,7 +231,7 @@ main(KIND, async (argv) => {
     return fail(`Invalid model reference: ${flags['--model']}`);
   }
   // With project configuration switched off the real CLI never sees the agent.
-  if (process.env.OPENCODE_DISABLE_PROJECT_CONFIG === '1' || !checkProjectFile()) {
+  if (projectConfigOff() || !checkProjectFile()) {
     logInvocation(KIND);
     return fail(`Agent not found: "${AGENT}"`);
   }

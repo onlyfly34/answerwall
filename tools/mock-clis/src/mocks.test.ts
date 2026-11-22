@@ -654,15 +654,46 @@ describe('the mock opencode CLI and its project file', () => {
     });
   });
 
-  test('with project configuration switched off the file is not read', async () => {
-    const result = await runMock('opencode', args, {
-      env: { OPENCODE_DISABLE_PROJECT_CONFIG: '1' },
-    });
+  test.each([
+    { OPENCODE_DISABLE_PROJECT_CONFIG: '1' },
+    { OPENCODE_CONFIG_PROJECT_DISABLE: 'true' },
+    { OPENCODE_CONFIG_PROJECT_DISABLE: '1', OPENCODE_DISABLE_PROJECT_CONFIG: '0' },
+  ])('with project configuration switched off (%j) the file is not read', async (env) => {
+    const result = await runMock('opencode', args, { env });
 
     expect(result.code).toBe(1);
     expect(lastEvent(result)).toMatchObject({
       error: { message: 'Agent not found: "answerwall"' },
     });
+  });
+
+  test('the second name of that switch wins when it is set, whatever it says', async () => {
+    const result = await runMock('opencode', args, {
+      env: { OPENCODE_CONFIG_PROJECT_DISABLE: '0', OPENCODE_DISABLE_PROJECT_CONFIG: '1' },
+    });
+
+    expect(result.code).toBe(0);
+  });
+
+  test('a rate-limited run waits after its first retry line, then logs that it sent the question again', async () => {
+    const log = path.join(workDir, 'invocations.jsonl');
+    const child = start('opencode', [...args, '--model', 'mock/mock-rate-limited'], {
+      MOCK_OPENCODE_RETRY_MS: '200',
+      MOCK_CLI_LOG: log,
+    });
+    const done = finished(child);
+    let output = '';
+    child.stdout.on('data', (chunk: Buffer) => (output += chunk.toString()));
+    child.stdin.end('ping');
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(jsonLines(output).map((line) => line.type)).toEqual(['step_start', 'retry']);
+    expect(jsonLines(await readFile(log, 'utf8')).some((entry) => entry.resent)).toBe(false);
+
+    const result = await done;
+    expect(result.code).toBe(1);
+    expect(lastEvent(result)).toMatchObject({ type: 'error' });
+    expect(jsonLines(await readFile(log, 'utf8')).some((entry) => entry.resent)).toBe(true);
   });
 
   test('refuses an agent that allows something, a missing policy and provider settings', async () => {
@@ -712,7 +743,9 @@ describe('the mock opencode CLI and its project file', () => {
   });
 
   test('the status and listing commands insist on a private server and no project configuration', async () => {
-    const off = { env: { OPENCODE_DISABLE_PROJECT_CONFIG: '1' } };
+    const off = {
+      env: { OPENCODE_DISABLE_PROJECT_CONFIG: '1', OPENCODE_CONFIG_PROJECT_DISABLE: '1' },
+    };
     const list = ['auth', 'list', '--standalone', '--format', 'json'];
 
     const listed = await runMock('opencode', list, off);
@@ -726,6 +759,9 @@ describe('the mock opencode CLI and its project file', () => {
     expect(models.stdout).toBe('mock/mock-large\nmock/mock-fast\n');
     for (const refused of [
       await runMock('opencode', list),
+      // One name alone leaves the decision to what the user set under the other.
+      await runMock('opencode', list, { env: { OPENCODE_DISABLE_PROJECT_CONFIG: '1' } }),
+      await runMock('opencode', list, { env: { OPENCODE_CONFIG_PROJECT_DISABLE: '1' } }),
       await runMock('opencode', ['models', '--standalone']),
       await runMock('opencode', ['models'], off),
       await runMock('opencode', ['auth', 'list', '--standalone'], off),

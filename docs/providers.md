@@ -465,9 +465,12 @@ skills out.
 **Checks.** `opencode --version`, `opencode auth list` and `opencode models`
 run in the system's temporary directory, where a file left by someone else
 could otherwise be read as project configuration. They are started with
-`OPENCODE_DISABLE_PROJECT_CONFIG=1`. A question is not: it needs its file.
-If that variable is set in the environment of the AnswerWall process,
-questions fail with a message that says so. The two commands after the
+`OPENCODE_DISABLE_PROJECT_CONFIG=1` and `OPENCODE_CONFIG_PROJECT_DISABLE=1`,
+the two names opencode 2.3.2 reads for that switch (the second is not
+documented, and opencode takes its value first whenever it is set). A
+question is not: it needs its file. If either variable switches project
+configuration off in the environment of the AnswerWall process, questions
+fail with a message that names both. The two commands after the
 version load your global opencode configuration, and opencode starts the
 MCP servers configured there for as long as the command runs (seen with a
 test server; the check then took as long as that server did to start). A

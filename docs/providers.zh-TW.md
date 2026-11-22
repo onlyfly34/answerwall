@@ -235,7 +235,7 @@ opencode 也可以登入其他廠商的訂閱方案。某個廠商是否允許�
 - 提問執行期間，私有伺服器會在 `127.0.0.1` 的隨機連接埠上監聽。沒有憑證時，它的 API 回應 401。
 - opencode 會在系統暫存目錄裡建立一個名為 `opencode` 的目錄。
 
-**檢查。** `opencode --version`、`opencode auth list` 與 `opencode models` 會在系統暫存目錄裡執行，別人留在那裡的檔案原本可能被當成專案設定讀取。所以這些指令會帶著 `OPENCODE_DISABLE_PROJECT_CONFIG=1` 啟動。提問則不會：它需要自己的檔案。如果 AnswerWall 程序的環境裡設定了這個變數，提問會失敗，訊息會說明原因。版本指令之後的那兩個指令會載入你的 opencode 全域設定，而 opencode 會在指令執行期間啟動那裡設定的 MCP 伺服器（以一個測試伺服器觀察到；檢查所花的時間就是那個伺服器啟動所需的時間）。提問不會啟動它們。
+**檢查。** `opencode --version`、`opencode auth list` 與 `opencode models` 會在系統暫存目錄裡執行，別人留在那裡的檔案原本可能被當成專案設定讀取。所以這些指令會帶著 `OPENCODE_DISABLE_PROJECT_CONFIG=1` 與 `OPENCODE_CONFIG_PROJECT_DISABLE=1` 啟動，也就是 opencode 2.3.2 為這個開關讀取的兩個名稱（第二個沒有文件記載，而且只要有設定，opencode 就優先採用它的值）。提問則不會：它需要自己的檔案。如果 AnswerWall 程序的環境裡有任何一個變數把專案設定關掉，提問會失敗，訊息會列出這兩個名稱。版本指令之後的那兩個指令會載入你的 opencode 全域設定，而 opencode 會在指令執行期間啟動那裡設定的 MCP 伺服器（以一個測試伺服器觀察到；檢查所花的時間就是那個伺服器啟動所需的時間）。提問不會啟動它們。
 
 **計費。** **計費來源**一律顯示**未知**：它取決於你所選模型背後的供應商，而 opencode 不會回報。開關關閉時，[計費](#計費訂閱登入或-api-金鑰)一節列出的 API 金鑰變數會被移除，其中包括 opencode 原本會讀取的 `OPENAI_API_KEY`、`ANTHROPIC_API_KEY`、`GOOGLE_GENERATIVE_AI_API_KEY` 與 `OPENCODE_API_KEY`（opencode 自家代管模型的金鑰）；卡片會列出其中有設定的。**其他所有金鑰變數都會傳入**：用你自己取的名稱的金鑰（例如上面的 `GATEWAY_API_KEY`），以及 opencode 的目錄為其他供應商所認得的變數，例如 `OPENROUTER_API_KEY`、`GROQ_API_KEY` 或 `AZURE_API_KEY`。如果 AnswerWall 程序的環境裡設定了其中之一，即使開關關閉，opencode 也可能使用它並由它計費，而卡片不會提到。opencode 的文件說明，已儲存的帳號優先於環境裡的金鑰。
 
