@@ -18,3 +18,4 @@ export * from './meta.ts';
 export * from './settings.ts';
 export * from './auth.ts';
 export * from './paths.ts';
+export * from './desktop.ts';

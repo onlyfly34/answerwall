@@ -15,4 +15,6 @@ export const BRAND = {
   databaseFile: `${slug}.sqlite`,
   defaultPort: 7717,
   repository: `https://github.com/onlyfly34/${slug}`,
+  /** The property of `window` under which the desktop shell offers its bridge to the local page. */
+  desktopBridge: `${slug}Desktop`,
 } as const;
