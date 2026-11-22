@@ -304,7 +304,11 @@ describe('spawnCli', () => {
       expect(helpers).toEqual([]);
       expect((await output.next()).done).toBe(true);
     } finally {
-      if (grandchild !== undefined) process.kill(grandchild, 'SIGKILL');
+      try {
+        if (grandchild !== undefined) process.kill(grandchild, 'SIGKILL');
+      } catch {
+        // On Windows a child that Node started ends together with the Node that started it.
+      }
     }
   });
 
