@@ -1,15 +1,18 @@
 name: Build the server bundle
 
 # The reusable build: compiles the workspace, packages the platform-neutral
-# server bundle and proves that the packaged archives start with plain Node.
-# CI calls it on every change; the release workflow calls it to produce the
-# assets, and its other build jobs start from the artifact uploaded here.
+# server bundle and the browser extension, and proves that the packaged
+# server archives start with plain Node. CI calls it on every change; the
+# release workflow calls it to produce the assets, and its other build jobs
+# start from the artifact uploaded here.
 
 on:
   workflow_call:
     inputs:
       artifact-name:
-        description: Name of the artifact that holds the .tar.gz and the .zip.
+        description: >-
+          Name of the artifact that holds the server's .tar.gz and .zip and the
+          extension's .zip.
         type: string
         default: server-bundle
       expected-version:
@@ -47,6 +50,12 @@ jobs:
       - name: Package the server bundle
         id: package
         run: node .github/scripts/package-server.mjs --out "$RUNNER_TEMP/bundle" --expect-version "$EXPECTED_VERSION"
+        env:
+          EXPECTED_VERSION: ${{ inputs.expected-version }}
+      # The release build of apps/extension as <name>-extension-<version>.zip,
+      # next to the server archives: one more file of the same artifact.
+      - name: Package the browser extension
+        run: node .github/scripts/package-extension.mjs --out "$RUNNER_TEMP/bundle" --expect-version "$EXPECTED_VERSION"
         env:
           EXPECTED_VERSION: ${{ inputs.expected-version }}
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

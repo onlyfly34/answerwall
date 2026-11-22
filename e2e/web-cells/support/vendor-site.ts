@@ -77,26 +77,31 @@ const SIGNED_OUT = page(
    <form method="post" action="/login"><button id="sign-in" type="submit">Sign in</button></form>`,
 );
 
+/** A prompt that contains this is answered very slowly, so a test can act while the answer runs. */
+export const SLOW_MARK = '[slow]';
+
 /**
  * The chat page. `?editor=rich` uses a contenteditable element in place of
  * the textarea, as most real chat apps do. The button stays disabled until an
  * `input` event has been seen, so a script that only assigns `.value` fails.
+ * `?layout=changed` is the site after a redesign: the same page under other
+ * ids, which a rule written for the old ones no longer finds.
  */
-const chatPage = (rich: boolean): string =>
+const chatPage = (rich: boolean, changed: boolean): string =>
   page(
     'Vendor: chat',
     `<h1 data-testid="chat">Chat</h1>
-     <div id="answers"></div>
+     <div id="${changed ? 'thread' : 'answers'}"></div>
      ${
        rich
-         ? '<div id="prompt" contenteditable="true" role="textbox" aria-label="Message"></div>'
-         : '<textarea id="prompt" aria-label="Message"></textarea>'
+         ? `<div id="${changed ? 'composer' : 'prompt'}" contenteditable="true" role="textbox" aria-label="Message"></div>`
+         : `<textarea id="${changed ? 'composer' : 'prompt'}" aria-label="Message"></textarea>`
      }
-     <button id="send" type="button" disabled>Send</button>
+     <button id="${changed ? 'go' : 'send'}" type="button" disabled>Send</button>
      <script>
-       const input = document.getElementById('prompt');
-       const send = document.getElementById('send');
-       const answers = document.getElementById('answers');
+       const input = document.querySelector('[aria-label="Message"]');
+       const send = document.querySelector('button');
+       const answers = document.querySelector('#answers, #thread');
        const read = () => ('value' in input ? input.value : input.textContent);
        let seen = '';
        input.addEventListener('input', () => { seen = read(); send.disabled = seen.trim() === ''; });
@@ -211,15 +216,25 @@ export async function startVendorSite(): Promise<VendorSite> {
         'Cache-Control': 'no-store',
         ...REFUSE_FRAMING,
       });
+      const pause = prompt.includes(SLOW_MARK) ? 2_000 : 15;
       for (const word of answerFor(prompt).split(/(?<= )/)) {
+        if (response.destroyed) break;
         response.write(word);
-        await sleep(15);
+        await sleep(pause);
       }
       response.end();
       return;
     }
     if (url.pathname === '/' && request.method === 'GET') {
-      html(200, signedIn ? chatPage(url.searchParams.get('editor') === 'rich') : SIGNED_OUT);
+      html(
+        200,
+        signedIn
+          ? chatPage(
+              url.searchParams.get('editor') === 'rich',
+              url.searchParams.get('layout') === 'changed',
+            )
+          : SIGNED_OUT,
+      );
       return;
     }
     html(404, page('Vendor: not found', '<p>Not found</p>'));

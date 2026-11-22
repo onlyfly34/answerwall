@@ -9,7 +9,7 @@ what to check after a tag. The decisions behind this are in
 | File            | Runs on                                       | Does                                                                                                                                                                                                        |
 | --------------- | --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `ci.yml`        | push to `main`, pull requests, manual run     | typecheck, lint, unit tests, build and `pnpm smoke:mock` on Linux and Windows; the end-to-end tests on both; and the three reusable workflows below, without publishing                                     |
-| `build.yml`     | called by `ci.yml` and `release.yml`          | builds the workspace, packages the server bundle, starts the packaged archives with plain Node on Linux and Windows                                                                                         |
+| `build.yml`     | called by `ci.yml` and `release.yml`          | builds the workspace, packages the server bundle and the browser extension, starts the packaged server archives with plain Node on Linux and Windows                                                        |
 | `desktop.yml`   | called by `ci.yml` and `release.yml`; by hand | builds the NSIS installer on `windows-latest`, installs it for the current user, runs the desktop end-to-end tests against the installed app, uninstalls it; Linux: the same tests against the unpacked app |
 | `docker.yml`    | called by `ci.yml` and `release.yml`          | builds the image on an amd64 and an arm64 runner and tests it (`docker/test/smoke.mjs`); with `push`, pushes both by digest to GHCR and tags the multi-architecture manifest                                |
 | `release.yml`   | push of a tag `v*`, manual run                | checks the versions, runs `ci.yml` (without its artifact jobs), builds every asset and the image, and for a tag publishes the GitHub Release                                                                |
@@ -73,6 +73,7 @@ holds exactly these assets:
 | ----------------------------------------------------- | ------------------------------------------------ |
 | `answerwall-server-X.tar.gz`                          | `build.yml` (server bundle)                      |
 | `answerwall-server-X.zip`                             | `build.yml` (the same bundle)                    |
+| `answerwall-extension-X.zip`                          | `build.yml` (browser extension, loaded unpacked) |
 | `answerwall-desktop-X-windows-x64-setup.exe`          | `desktop.yml` (NSIS installer, x64, unsigned)    |
 | `answerwall-desktop-X-windows-x64-setup.exe.blockmap` | `desktop.yml` (for differential updates)         |
 | `latest.yml`                                          | `desktop.yml` (what the installed app reads)     |
@@ -106,15 +107,16 @@ plan ──┬─► verify (ci.yml, no artifact jobs) ────────�
 - `verify` is `ci.yml` with `skip-artifacts`: the bundle, desktop and image
   jobs are left out because the jobs below build and test them themselves.
 - `build` is `build.yml`; its artifact `release-server-bundle` holds the two
-  archives, and it fails when `apps/server/package.json` is not the tagged
-  version.
+  server archives and the extension's zip, and it fails when
+  `apps/server/package.json` or `apps/extension/package.json` is not the
+  tagged version.
 - `windows-installer` is `desktop.yml` with
   `artifact-name: release-windows-installer`: the installer is built,
   installed and tested on `windows-latest` before it is uploaded, and the
   build refuses another version than the tag.
 - `assets` downloads every artifact whose name starts with `release-`,
-  checks that exactly one bundle pair, installer, blockmap and `latest.yml`
-  are there, writes `SHA256SUMS` and uploads the result as the artifact
+  checks that exactly one bundle pair, extension zip, installer, blockmap and
+  `latest.yml` are there, writes `SHA256SUMS` and uploads the result as the artifact
   `assets`.
 - `container` is `docker.yml`. It waits for `verify` and `assets`, so an
   image is never pushed for a release whose tests or assets failed. For a tag
@@ -172,7 +174,7 @@ Before the first release, once:
 
 5. After the Release workflow is green, check:
    - The release `v0.1.0-rc.1` is published, marked **Pre-release**, not
-     **Latest**, and lists the six assets of the table above with `0.1.0-rc.1`
+     **Latest**, and lists the seven assets of the table above with `0.1.0-rc.1`
      in their names.
    - `sha256sum --check SHA256SUMS` passes for the downloaded assets.
    - `latest.yml` names `answerwall-desktop-0.1.0-rc.1-windows-x64-setup.exe`
@@ -213,7 +215,7 @@ Before the first release, once:
 
 3. After the Release workflow is green, check:
    - The release `v0.1.0` is published, is **Latest**, not a pre-release, and
-     lists the six assets with `0.1.0` in their names.
+     lists the seven assets with `0.1.0` in their names.
    - `docker buildx imagetools inspect ghcr.io/onlyfly34/answerwall:latest`
      shows the same digest as `:0.1.0` and `:0.1` (the digest is also in the
      release notes), for both platforms.
@@ -268,6 +270,35 @@ node .github/scripts/package-server.mjs --out /tmp/bundle
 installed bundle on a free loopback port with an empty `PATH`, requests
 `/api/meta` and `/`, and stops it. The `start` jobs of `build.yml` do this
 with the `.tar.gz` on Linux and the `.zip` on Windows.
+
+## The browser extension
+
+`answerwall-extension-<version>.zip` holds one directory of the same name:
+the release build of `apps/extension` (`manifest.json`, `wall.html` with
+the web UI in `assets/`, `content.js`, `worker.js`, the icon and the
+licence). It is not in any store: a user unpacks it and loads the directory
+with **Load unpacked** on the extensions page of Chrome or Edge
+([providers.md](providers.md#web-cells)). Its ID is the same on every
+machine, because the manifest carries a public key
+(`apps/extension/manifest.mjs`).
+
+`.github/scripts/package-extension.mjs` packages it from a built workspace
+and refuses to do so when the manifest is not for the workspace version, the
+permission list is not exactly `declarativeNetRequestWithHostAccess` and
+`storage` with `https` host permissions, or anything of the test build (the
+stand-in site of the automated tests) is in it. The archive is reproducible
+for a given commit. To package locally on Linux (needs zip and unzip):
+
+```
+pnpm install --frozen-lockfile
+pnpm build
+node .github/scripts/package-extension.mjs --out /tmp/bundle
+```
+
+CI loads the extension unpacked in Chromium (the `extension` project of the
+end-to-end tests, as its test build); the zip itself is not loaded by any
+job. After a release, [verify-web-cells.md](verify-web-cells.md) is the hand
+check, including the rules for the real sites, which no job can test.
 
 `SHA256SUMS` lists every asset of the release. To check a download:
 

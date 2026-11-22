@@ -40,6 +40,12 @@ export function runDir(): string {
  */
 export const webCellsExtensionDir = (): string => path.join(runDir(), 'web-cells-extension');
 
+/**
+ * The browser extension itself (`apps/extension`) as its test build: the
+ * same code as a release, plus the stand-in site in place of one real site.
+ */
+export const extensionDir = (): string => path.join(runDir(), 'extension');
+
 /** Where running servers register themselves, so the teardown can prove none is left. */
 export const registryDir = (): string => path.join(runDir(), 'servers');
 

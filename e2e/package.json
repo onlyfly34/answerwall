@@ -12,7 +12,8 @@
     "test:phone": "playwright test --project=phone",
     "browsers": "playwright install chromium",
     "report": "playwright show-report playwright-report",
-    "test:web-cells": "playwright test --project=web-cells"
+    "test:web-cells": "playwright test --project=web-cells",
+    "test:extension": "playwright test --project=extension"
   },
   "devDependencies": {
     "@answerwall/mock-clis": "workspace:*",

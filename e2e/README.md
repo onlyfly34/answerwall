@@ -12,6 +12,7 @@ pnpm --filter ./e2e browsers        # once: download Chromium for Playwright
 pnpm --filter ./e2e test            # all three viewports
 pnpm --filter ./e2e test:phone      # one viewport: test:desktop, test:tablet, test:phone
 pnpm --filter ./e2e test:web-cells  # the web-cell tests with the unpacked test extension
+pnpm --filter ./e2e test:extension  # the browser extension itself (apps/extension, test build)
 pnpm --filter ./e2e exec playwright test tests/ask.spec.ts -g "12 slots"
 E2E_HTML_REPORT=1 pnpm --filter ./e2e test   # also write an HTML report
 pnpm --filter ./e2e report          # open that report
@@ -54,6 +55,7 @@ A failed test leaves a trace, a screenshot and the server's log in
 | `support/hostile.ts`         | The hostile Markdown and the checks that rendered content is inert.                                                     |
 | `support/touch.ts`           | A real touch swipe.                                                                                                     |
 | `tests/*.spec.ts`            | The tests, one file per area.                                                                                           |
+| `extension/`                 | The `extension` project: `apps/extension` as its test build, against the stand-in site and a real server; see below.    |
 | `web-cells/`                 | The `web-cells` project: a test extension, a stand-in vendor site and their tests; see below.                           |
 
 **A server per test.** Every test starts its own server on an ephemeral
@@ -135,3 +137,11 @@ covers that over the API), and browsers other than Chromium.
 
 None. A test that fails because of a product bug is not marked as an expected
 failure; it stays red until the product is fixed.
+
+The `extension` project (one desktop viewport) loads the test build of
+`apps/extension`, which the global setup builds into the run directory: the
+release code, plus the stand-in site in place of the site `claude`.
+
+| File                     | Covers                                                                                                                                                                                                                                                                                                                                      |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `extension/wall.spec.ts` | The fixed extension ID; the first-run page, a refused and an accepted pairing, change server; a mixed ask with a mock CLI cell and a web cell; a field and a rich editor filled in; the answer in the history; a rule that no longer matches; each combination of the two switches; cancel; sign-in inside a cell; the header rule's reach. |

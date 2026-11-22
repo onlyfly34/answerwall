@@ -41,7 +41,15 @@ declare global {
   }
   /** The part of the extension API the tests call from inside an extension page. */
   const chrome: {
-    storage: { local: { get(key: string): Promise<Record<string, unknown>> } };
+    storage: {
+      local: {
+        get(keys: string | string[]): Promise<Record<string, unknown>>;
+        set(items: Record<string, unknown>): Promise<void>;
+      };
+    };
+    declarativeNetRequest: {
+      getSessionRules(): Promise<{ id: number; condition: Record<string, unknown> }[]>;
+    };
   };
 }
 

@@ -1,7 +1,7 @@
 name: Release
 
-# A tag v<version> builds every asset (the server bundle, the Windows
-# installer with its update metadata), builds, tests and pushes the
+# A tag v<version> builds every asset (the server bundle, the browser
+# extension, the Windows installer with its update metadata), builds, tests and pushes the
 # multi-architecture container image to GHCR, creates the GitHub Release as a
 # draft, uploads the assets and SHA256SUMS, and publishes the release in the
 # last step, so a release with missing assets is never visible. A tag with a
@@ -114,7 +114,8 @@ jobs:
     with:
       skip-artifacts: true
 
-  # Fails when the version in apps/server/package.json is not the tagged one.
+  # The server bundle and the browser extension. Fails when the version in
+  # apps/server/package.json or apps/extension/package.json is not the tagged one.
   build:
     name: Build
     needs: plan
@@ -155,8 +156,9 @@ jobs:
             echo "::error::No release asset was built."
             exit 1
           fi
-          # The server bundle, the installer, its blockmap and the update metadata.
-          for pattern in '*-server-*.tar.gz' '*-server-*.zip' '*-setup.exe' '*-setup.exe.blockmap' 'latest.yml'; do
+          # The server bundle, the browser extension, the installer, its blockmap
+          # and the update metadata.
+          for pattern in '*-server-*.tar.gz' '*-server-*.zip' '*-extension-*.zip' '*-setup.exe' '*-setup.exe.blockmap' 'latest.yml'; do
             count="$(compgen -G "$pattern" | wc -l)"
             if (( count != 1 )); then
               echo "::error::Expected exactly one asset matching $pattern, found $count."

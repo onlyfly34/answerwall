@@ -6,7 +6,17 @@
 import { expect, test } from '../support/fixtures.ts';
 import { expectInert, expectNothingRan, hostileMarkdown } from '../support/hostile.ts';
 import type { TestServer } from '../support/server.ts';
-import { answer, cells, expectPhase, nav, showCell } from '../support/wall.ts';
+import {
+  answer,
+  arrange,
+  cells,
+  currentAskId,
+  expectPhase,
+  nav,
+  send,
+  sendButton,
+  showCell,
+} from '../support/wall.ts';
 
 const EXTENSION_ID = 'abcdefghijklmnopabcdefghijklmnop';
 
@@ -117,13 +127,19 @@ test.describe('web cells', () => {
     await expect(section.getByRole('checkbox', { name: 'Fill in the prompt' })).not.toBeChecked();
     await expect(section.getByRole('checkbox', { name: /chatgpt\.com/ })).toBeChecked();
 
-    // This page is not the extension: its wall and its providers page offer no web cell.
+    // This page is not the extension: its providers page has no card for the
+    // web app, and its wall names it without offering it.
     await nav(page, 'Providers').click();
     await expect(page.getByRole('heading', { level: 1, name: 'Providers' })).toBeVisible();
-    await expect(page.getByText('ChatGPT (web)')).toHaveCount(0);
+    await expect(page.getByRole('region', { name: 'ChatGPT (web)' })).toHaveCount(0);
     await nav(page, 'Wall').click();
-    await expect(cells(page).first()).toBeVisible();
-    await expect(page.locator('option', { hasText: 'ChatGPT (web)' })).toHaveCount(0);
+    await expect(cells(page).first()).toBeAttached();
+    await expect(cells(page).locator('.wall-cell-name', { hasText: 'ChatGPT (web)' })).toHaveCount(
+      0,
+    );
+    const offered = cells(page).first().locator('option', { hasText: 'ChatGPT (web)' });
+    await expect(offered).toHaveText('ChatGPT (web) (browser extension only)');
+    await expect(offered).toBeDisabled();
   });
 
   test('a web slot answered by a scripted client is stored and shown like any other answer', async ({
@@ -246,5 +262,36 @@ test.describe('web cells', () => {
       text: 'too late',
     });
     expect(afterTimeout.status).toBe(409);
+  });
+
+  test("the server's own page shows a web cell of a preset as a notice and leaves it out of the ask", async ({
+    wallPage: page,
+    server,
+    device,
+  }) => {
+    await enableWebCells(server);
+    await arrange(page, server, [
+      { slotId: 'c1', providerId: 'claude', model: 'mock-echo' },
+      { slotId: 'w1', providerId: 'web-chatgpt' },
+    ]);
+
+    // The web app lives in the browser extension: here it is named, not framed.
+    const web = await showCell(page, device, 'w1');
+    await expect(web.getByRole('heading', { level: 3 })).toHaveText('ChatGPT (web)');
+    await expect(web).toContainText('works only on the wall page of the browser extension');
+    await expect(web.locator('iframe')).toHaveCount(0);
+
+    await expect(sendButton(page)).toHaveText('Send to 1');
+    await send(page, 'For the cell this page can run');
+    await showCell(page, device, 'c1');
+    await expectPhase(page, 'c1', 'done');
+    const stored = await server.finished(await currentAskId(page));
+    expect(stored.slots.map((slot) => slot.slotId)).toEqual(['c1']);
+
+    // The providers page says how to get the extension.
+    await nav(page, 'Providers').click();
+    const section = page.getByRole('region', { name: 'Web cells (browser extension)' });
+    await expect(section).toContainText('answerwall-extension-<version>.zip');
+    await expect(section).toContainText('restrict automated access');
   });
 });

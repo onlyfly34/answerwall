@@ -65,5 +65,11 @@ export default defineConfig({
       name: 'web-cells',
       testDir: 'web-cells',
     },
+    {
+      // The browser extension itself (apps/extension, as its test build)
+      // against the stand-in site and a real server with the mock CLIs.
+      name: 'extension',
+      testDir: 'extension',
+    },
   ],
 });

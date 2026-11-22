@@ -8,8 +8,10 @@ import { existsSync, readdirSync, statSync } from 'node:fs';
 import { cp, mkdtemp, readFile, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { buildExtension } from '../../apps/extension/build.mjs';
 import {
   CORE_MAIN,
+  extensionDir,
   prepareSandbox,
   ROOT,
   RUN_DIR_ENV,
@@ -110,6 +112,8 @@ export default async function globalSetup(): Promise<void> {
   try {
     await prepareSandbox();
     await buildWebCellsExtension();
+    // The real extension, with the stand-in site in place of one real site.
+    await buildExtension({ outDir: extensionDir(), test: true });
   } catch (error) {
     // The teardown does not run after a failed setup.
     await rm(dir, { recursive: true, force: true });
