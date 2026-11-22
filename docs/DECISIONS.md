@@ -585,8 +585,13 @@ ends with the process, even on `SIGKILL`, so it never goes stale.
   passed, create the GitHub Release as a draft, upload all assets and
   `SHA256SUMS`, then publish it in the last step so the release is directly
   downloadable. A tag with a hyphen is a pre-release (no `latest` image tag,
-  ignored by the desktop updater). `workflow_dispatch` only builds and tests
-  artifacts and pushes nothing.
+  ignored by the desktop updater). The image tag `latest` and GitHub's
+  "Latest" move only for a release higher than every other one, and
+  `<major>.<minor>` only for the highest patch of its line, so a fix for an
+  older line never moves them back. A tag whose release is already
+  published is refused before anything is built or pushed. Only the push of
+  a tag publishes: `workflow_dispatch` only builds and tests artifacts and
+  pushes nothing, whichever ref it is started on, a tag included.
 - Windows: Electron + electron-builder, NSIS x64, unsigned (documented,
   including Smart App Control). Auto-update checks only this repository's
   releases, asks before installing, can be turned off.

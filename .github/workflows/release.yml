@@ -5,10 +5,14 @@ name: Release
 # multi-architecture container image to GHCR, creates the GitHub Release as a
 # draft, uploads the assets and SHA256SUMS, and publishes the release in the
 # last step, so a release with missing assets is never visible. A tag with a
-# hyphen (v1.2.3-rc.1) becomes a pre-release.
+# hyphen (v1.2.3-rc.1) becomes a pre-release. A release of an older version
+# line does not move the image tag `latest` or GitHub's "Latest". A tag whose
+# release is already published is refused before anything is built.
 #
 # A manual run builds and tests everything, leaves the assets as a workflow
-# artifact, and pushes no image and publishes nothing.
+# artifact, and pushes no image and publishes nothing, whichever ref it is
+# started on, a tag included: only the push of a tag publishes
+# (.github/scripts/release-plan.mjs decides).
 #
 # Every package.json must carry the tagged version; the plan job checks this
 # before anything is built. docs/RELEASING.md has the steps.
@@ -39,30 +43,12 @@ jobs:
       tag: ${{ steps.plan.outputs.tag }}
       version: ${{ steps.plan.outputs.version }}
       prerelease: ${{ steps.plan.outputs.prerelease }}
+      image-tags: ${{ steps.plan.outputs.image-tags }}
+      latest: ${{ steps.plan.outputs.latest }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
     steps:
-      - name: Read the tag
-        id: plan
-        env:
-          REF: ${{ github.ref }}
-        run: |
-          if [[ "$REF" != refs/tags/* ]]; then
-            echo "A manual run: build only."
-            echo "publish=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          tag="${REF#refs/tags/}"
-          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-            echo "::error::The tag $tag is not v<major>.<minor>.<patch> or v<major>.<minor>.<patch>-<pre-release>."
-            exit 1
-          fi
-          prerelease=false
-          if [[ "$tag" == *-* ]]; then prerelease=true; fi
-          {
-            echo "publish=true"
-            echo "tag=$tag"
-            echo "version=${tag#v}"
-            echo "prerelease=$prerelease"
-          } >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -70,6 +56,40 @@ jobs:
         with:
           node-version-file: .nvmrc
           package-manager-cache: false
+      # Publish or build only, the image tags, "Latest" or not. The event
+      # decides, not the ref alone: a manual run on a tag is a dry run.
+      - name: Read the tag
+        id: plan
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+        run: |
+          # Every tag there is: a release moves `latest` only when none is higher.
+          EXISTING_TAGS="$(gh api --paginate "repos/$GH_REPO/tags" --jq '.[].name')"
+          export EXISTING_TAGS
+          node .github/scripts/release-plan.mjs
+      # Here, before anything is built or pushed: running the workflow again
+      # for a published release would otherwise rebuild the image and move
+      # its tags to a digest the published notes do not name. A draft (which
+      # this read-only token cannot even see) is not a published release.
+      - name: Refuse a tag that is already released
+        if: ${{ steps.plan.outputs.publish == 'true' }}
+        env:
+          TAG: ${{ steps.plan.outputs.tag }}
+        run: |
+          if answer="$(gh api "repos/$GH_REPO/releases/tags/$TAG" 2>&1)"; then
+            if [[ "$(jq -r .draft <<< "$answer")" != "true" ]]; then
+              echo "::error::The release $TAG is already published. A published release is never rebuilt: tag a new version."
+              exit 1
+            fi
+            echo "A draft of $TAG exists; it will be replaced."
+          elif grep -q 'HTTP 404' <<< "$answer"; then
+            echo "No release $TAG yet."
+          else
+            echo "::error::Could not ask whether $TAG is already released."
+            echo "$answer"
+            exit 1
+          fi
       # Before anything is built: a tag that does not match the packages
       # fails here and names the files that differ.
       - name: Check the package versions against the tag
@@ -153,9 +173,9 @@ jobs:
           overwrite: true
 
   # Built and tested on an amd64 and an arm64 runner. Pushed to GHCR only for
-  # a tag, and only once the tests passed and every other asset was built, so
-  # an image is never tagged for a release that cannot be published. A manual
-  # run builds and tests it and pushes nothing.
+  # a pushed tag, and only once the tests passed and every other asset was
+  # built, so an image is never tagged for a release that cannot be
+  # published. A manual run builds and tests it and pushes nothing.
   container:
     name: Container
     needs: [plan, verify, assets]
@@ -166,6 +186,7 @@ jobs:
     with:
       push: ${{ needs.plan.outputs.publish == 'true' }}
       tag: ${{ needs.plan.outputs.tag }}
+      image-tags: ${{ needs.plan.outputs.image-tags }}
 
   publish:
     name: Publish
@@ -180,6 +201,7 @@ jobs:
       GH_REPO: ${{ github.repository }}
       TAG: ${{ needs.plan.outputs.tag }}
       PRERELEASE: ${{ needs.plan.outputs.prerelease }}
+      LATEST: ${{ needs.plan.outputs.latest }}
       IMAGE: ${{ needs.container.outputs.image }}
       IMAGE_DIGEST: ${{ needs.container.outputs.digest }}
       IMAGE_TAGS: ${{ needs.container.outputs.tags }}
@@ -192,8 +214,9 @@ jobs:
         working-directory: assets
         run: sha256sum --check --strict SHA256SUMS
 
-      # A draft left by a failed earlier run is reused; a published release is
-      # never touched.
+      # A draft left by a failed earlier run is replaced, so that its notes
+      # name the image this run pushed and not an earlier one (the tag stays).
+      # A published release is never touched; the plan job refused it already.
       - name: Create the draft release
         run: |
           if state="$(gh release view "$TAG" --json isDraft --jq .isDraft 2>/dev/null)"; then
@@ -201,12 +224,12 @@ jobs:
               echo "::error::The release $TAG is already published."
               exit 1
             fi
-            echo "Reusing the existing draft of $TAG."
-          else
-            notes="Container image: \`$IMAGE:${TAG#v}\` (tags: $IMAGE_TAGS; digest \`$IMAGE_DIGEST\`)."
-            gh release create "$TAG" --draft --verify-tag --title "$TAG" --generate-notes \
-              --notes "$notes" --prerelease="$PRERELEASE"
+            echo "Replacing the draft of $TAG that an earlier run left."
+            gh release delete "$TAG" --yes
           fi
+          notes="Container image: \`$IMAGE:${TAG#v}\` (tags: $IMAGE_TAGS; digest \`$IMAGE_DIGEST\`)."
+          gh release create "$TAG" --draft --verify-tag --title "$TAG" --generate-notes \
+            --notes "$notes" --prerelease="$PRERELEASE"
       - name: Upload the assets
         run: gh release upload "$TAG" assets/* --clobber
       - name: Check that every asset arrived
@@ -214,4 +237,6 @@ jobs:
           diff <(cd assets && printf '%s\n' * | sort) \
                <(gh release view "$TAG" --json assets --jq '.assets[] | select(.state == "uploaded") | .name' | sort)
       - name: Publish the release
-        run: gh release edit "$TAG" --draft=false --prerelease="$PRERELEASE"
+        # "Latest" is stated, not left to GitHub: a fix for an older version
+        # line must not become the latest release.
+        run: gh release edit "$TAG" --draft=false --prerelease="$PRERELEASE" --latest="$LATEST"

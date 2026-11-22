@@ -56,6 +56,14 @@ pre-release: it does not become the latest release, its image gets only the
 full version tag (never `<major>.<minor>` or `latest`), and the installed
 desktop app does not offer it as an update.
 
+Which floating tags a release moves depends on the tags that exist
+(`.github/scripts/release-plan.mjs`, tested in
+`tools/mock-clis/src/release-workflow.test.ts`): `latest`, and GitHub's
+"Latest" mark, only when no higher release exists; `<major>.<minor>` only
+when no higher patch of that line exists. Tagging `v0.1.1` after `v0.2.0`
+therefore sets `0.1.1` and `0.1` and leaves `latest` on `0.2.0`, so
+`docker compose pull` never goes back to an older image.
+
 ## What a tag produces
 
 For version `X` (for example `0.1.0` or `0.1.0-rc.1`), the GitHub Release
@@ -72,7 +80,8 @@ holds exactly these assets:
 
 and GHCR holds the image `ghcr.io/onlyfly34/answerwall` for `linux/amd64`
 and `linux/arm64` under the tags `X`, `<major>.<minor>` and `latest` (a
-pre-release: only `X`). The release notes start with the image reference and
+pre-release: only `X`; a release of an older line: without `latest`, see
+above). The release notes start with the image reference and
 its digest, followed by GitHub's generated notes.
 
 ## Structure of the release workflow
@@ -86,9 +95,14 @@ plan ──┬─► verify (ci.yml, no artifact jobs) ────────�
                                                       (docker.yml)
 ```
 
-- `plan` reads the tag (version, pre-release or not, publish or build only),
-  checks out the repository and runs `scripts/check-versions.mjs --expect`.
-  A manual run only checks that the packages agree.
+- `plan` checks out the repository and runs
+  `.github/scripts/release-plan.mjs`: publish or build only, the version,
+  pre-release or not, the image tags, "Latest" or not. Only the push of a
+  tag publishes; a manual run is build only whichever ref it was started
+  on, a tag included. For a release it then asks GitHub whether the tag
+  already has a published release and fails if so, before any job builds or
+  pushes anything, and runs `scripts/check-versions.mjs --expect`. A manual
+  run only checks that the packages agree.
 - `verify` is `ci.yml` with `skip-artifacts`: the bundle, desktop and image
   jobs are left out because the jobs below build and test them themselves.
 - `build` is `build.yml`; its artifact `release-server-bundle` holds the two
@@ -106,14 +120,17 @@ plan ──┬─► verify (ci.yml, no artifact jobs) ────────�
   image is never pushed for a release whose tests or assets failed. For a tag
   it builds and tests each architecture, pushes by digest (artifacts named
   `digest-<arch>`, which deliberately do not start with `release-`), creates
-  the manifest with the tags and checks that both platforms are in it. For a
-  manual run it builds and tests only.
+  the manifest with the tags `plan` chose and checks that both platforms are
+  in it. For a manual run it builds and tests only.
 - `publish` runs for tags only, after all of the above. It creates the
   release as a draft with generated notes, uploads every asset, compares the
-  uploaded names with the built ones, and only then publishes. If a run
-  fails half-way, the draft stays invisible to visitors; running the failed
-  jobs again reuses it and replaces its assets. A release that is already
-  published is never modified: fix the problem and tag a new version.
+  uploaded names with the built ones, and only then publishes, stating
+  whether the release is "Latest". If a run fails half-way, the draft stays
+  invisible to visitors; running the jobs again replaces the draft (the tag
+  stays), so its notes name the image digest of the run that publishes it.
+  A release that is already published is never modified, and its image is
+  never rebuilt: `plan` refuses the tag, also when the workflow is run again
+  or the tag is pushed again. Fix the problem and tag a new version.
 
 To add a build job: depend on `plan`, upload the files to release as an
 artifact named `release-<something>`, and list the job in `needs` of
@@ -144,7 +161,8 @@ Before the first release, once:
    `Desktop / Windows installer` and both `Container / Build` legs).
 3. Optional dry run: Actions > Release > Run workflow on `main`. It builds and
    tests everything and pushes nothing; the artifact `assets` holds exactly
-   the files the tag will release.
+   the files the tag will release. (A manual run pushes nothing on any ref,
+   also on an existing tag.)
 4. Tag that commit and push the tag:
 
    ```

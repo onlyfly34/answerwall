@@ -11,9 +11,13 @@ name: Container image
 #   push: true   additionally push each architecture to GHCR by digest and
 #                join the two digests under the tags of the release.
 #
-# Tags come from `tag` (v<major>.<minor>.<patch>[-<pre-release>]):
-#   v1.2.3       -> 1.2.3, 1.2, latest
-#   v1.2.3-rc.1  -> 1.2.3-rc.1          (a pre-release never moves 1.2 or latest)
+# The version tag comes from `tag` (v<major>.<minor>.<patch>[-<pre-release>]),
+# the tags to set from `image-tags`, which the caller computes from the
+# releases that exist (.github/scripts/release-plan.mjs):
+#   v1.2.3, the newest release      -> 1.2.3 1.2 latest
+#   v1.2.3 while v1.3.0 exists      -> 1.2.3 1.2       (latest does not move back)
+#   v1.2.3-rc.1                     -> 1.2.3-rc.1      (a pre-release moves nothing)
+# Without `image-tags` only the version tag is set.
 #
 # Permissions: the build-only job asks for `contents: read` and nothing else.
 # The two publishing jobs declare none and inherit the calling job's, so a
@@ -32,6 +36,12 @@ on:
         default: false
       tag:
         description: The release tag (v1.2.3 or v1.2.3-rc.1). Required with push.
+        type: string
+        default: ''
+      image-tags:
+        description: >-
+          The tags to set, separated by spaces, the version first
+          (1.2.3 1.2 latest). Default is the version alone.
         type: string
         default: ''
       image:
@@ -244,12 +254,26 @@ jobs:
         id: tags
         env:
           TAG: ${{ inputs.tag }}
+          IMAGE_TAGS: ${{ inputs.image-tags }}
         run: |
           version="${TAG#v}"
-          tags=("$version")
+          # Which of `<major>.<minor>` and `latest` may move depends on the
+          # releases that exist; the caller knows them, this job does not.
+          read -r -a tags <<< "${IMAGE_TAGS:-$version}"
+          if [[ "${tags[0]}" != "$version" ]]; then
+            echo "::error::image-tags must start with the version $version, got \"$IMAGE_TAGS\"."
+            exit 1
+          fi
+          for tag in "${tags[@]}"; do
+            if [[ ! "$tag" =~ ^[0-9A-Za-z][0-9A-Za-z._-]*$ ]]; then
+              echo "::error::\"$tag\" is not an image tag."
+              exit 1
+            fi
+          done
           # A pre-release (anything after a hyphen) gets its own tag only.
-          if [[ "$version" != *-* ]]; then
-            tags+=("${version%.*}" latest)
+          if [[ "$version" == *-* ]] && (( ${#tags[@]} != 1 )); then
+            echo "::error::A pre-release sets no other tag than its own, got \"$IMAGE_TAGS\"."
+            exit 1
           fi
           echo "tags=${tags[*]}" >> "$GITHUB_OUTPUT"
           echo "Tags: ${tags[*]}"

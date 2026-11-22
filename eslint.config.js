@@ -66,6 +66,7 @@ export default tseslint.config(
           allowDefaultProject: [
             '*.js',
             'scripts/*.mjs',
+            '.github/scripts/*.d.mts',
             'vitest.config.ts',
             'packages/web/vite.config.ts',
             'packages/web/vitest.config.ts',
