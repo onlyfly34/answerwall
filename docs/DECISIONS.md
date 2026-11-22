@@ -416,6 +416,21 @@ credential is ever stored.
 | P3 | Hardening, docs (EN + zh-TW), `docs/verify-on-windows.md`, GHCR publishing |
 | later | Multi-turn conversations, desktop + remote sharing |
 
+Planned additions, not yet scheduled into a phase's contract:
+
+- **Web search switch (P1).** With all tools off, answers to questions about
+  recent events are worse than the vendors' web apps. P1 checks, per CLI,
+  whether its built-in web search can be enabled alone while every other tool
+  stays off. Where that is confirmed, each CLI provider instance gets an
+  "allow web search" switch; where it is not, the provider page says so.
+- **Web cells (not planned for v1).** Embedding the vendors' web apps next to
+  CLI cells is only possible in the desktop app, breaks whenever a site
+  changes, and Google refuses sign-in inside embedded browsers. Browser
+  extensions that run inside the user's real browser already do this well.
+  If it is ever built: desktop only, the app types the prompt into the page
+  and never reads the answer back, and it never disguises its browser
+  identity.
+
 ## 12. Testing
 
 - `tools/mock-clis`: one fake executable per CLI kind that replays fixtures
