@@ -4,11 +4,6 @@
  * utility process ends when the app's main process is killed or crashes:
  * no exit handler runs, so nothing in the host could kill its children.
  *
- * POSIX only. On Windows the host's children are ended by the system: Node
- * puts every child it starts into a job object that is closed, and its
- * processes with it, when the parent ends in whatever way. A helper there
- * would be in the same job and die first.
- *
  * The host writes one line per event to this process's stdin: `+<pid>` when
  * a CLI process tree starts, `-<pid>` when it has finished. When stdin ends
  * (the host is gone, however it went), every tree still registered is
@@ -17,6 +12,8 @@
  * Runs with plain Node semantics (the app's executable started with
  * ELECTRON_RUN_AS_NODE), as one self-contained CommonJS file.
  */
+import { spawnSync } from 'node:child_process';
+import path from 'node:path';
 
 const live = new Set<number>();
 const LINE = /^([+-])(\d{1,10})$/;
@@ -32,6 +29,16 @@ function apply(line: string): void {
 }
 
 function killTree(pid: number): void {
+  if (process.platform === 'win32') {
+    const root = process.env['SystemRoot'] ?? process.env['SYSTEMROOT'];
+    const taskkill = root ? path.win32.join(root, 'System32', 'taskkill.exe') : 'taskkill';
+    spawnSync(taskkill, ['/T', '/F', '/PID', String(pid)], {
+      stdio: 'ignore',
+      windowsHide: true,
+      timeout: 5_000,
+    });
+    return;
+  }
   try {
     // Each CLI leads its own process group.
     process.kill(-pid, 'SIGKILL');

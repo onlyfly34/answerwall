@@ -110,9 +110,6 @@ export interface HostConfig {
   webRoot: string;
   token: string;
   logLevel: 'debug' | 'info' | 'warn' | 'error';
-  /**
-   * The helper script that ends the CLI children when the host dies without
-   * warning. Absent on Windows, where the system ends them (see `reaper.ts`).
-   */
-  reaper: string | undefined;
+  /** The helper script that ends the CLI children when the host dies without warning. */
+  reaper: string;
 }

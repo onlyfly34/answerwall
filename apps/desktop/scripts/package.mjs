@@ -34,9 +34,6 @@ if (!existsSync(path.join(root, 'dist', 'main.cjs'))) {
   process.exit(1);
 }
 
-/** What is being packaged: the Windows installer anywhere, or this platform's unpacked application. */
-const targetPlatform = dirOnly ? process.platform : 'win32';
-
 /** The file names the release workflow publishes; `latest.yml` names the installer. */
 const installerName = `${APP.slug}-desktop-\${version}-windows-x64-setup.\${ext}`;
 
@@ -65,9 +62,8 @@ const config = {
   removePackageKeywords: true,
 
   electronFuses: {
-    // The reaper runs this executable as plain Node (ELECTRON_RUN_AS_NODE).
-    // Windows has no reaper, so the shipped build does not offer that mode.
-    runAsNode: targetPlatform !== 'win32',
+    // On: the reaper runs this executable as plain Node (ELECTRON_RUN_AS_NODE).
+    runAsNode: true,
     // On: the end-to-end tests drive the packaged app through the inspector.
     enableNodeCliInspectArguments: true,
     enableNodeOptionsEnvironmentVariable: false,

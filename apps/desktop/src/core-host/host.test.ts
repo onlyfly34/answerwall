@@ -360,23 +360,6 @@ describe('runHost', () => {
     expect(host.logger.entries.some((entry) => entry.level === 'warn')).toBe(true);
   });
 
-  test('where the system ends the children, no reaper is started and nothing is amiss', async () => {
-    let started = 0;
-    const host = setup({
-      startReaper: () => {
-        started += 1;
-        return undefined;
-      },
-      createServer: async () => fakeServer(),
-    });
-
-    host.send({ type: 'start', config: config({ reaper: undefined }) });
-    await host.next('listening');
-
-    expect(started).toBe(0);
-    expect(host.logger.entries.filter((entry) => entry.level === 'warn')).toEqual([]);
-  });
-
   test('messages of no known shape are ignored', () => {
     const host = setup();
 

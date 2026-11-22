@@ -129,11 +129,9 @@ export function runHost(deps: HostDeps): void {
   let stopping = false;
 
   async function start(config: HostConfig): Promise<void> {
-    if (config.reaper !== undefined) {
-      const reaper = deps.startReaper(config.reaper);
-      if (reaper) deps.watchChildren(reaper.report);
-      else logger.warn('the child process reaper could not be started');
-    }
+    const reaper = deps.startReaper(config.reaper);
+    if (reaper) deps.watchChildren(reaper.report);
+    else logger.warn('the child process reaper could not be started');
 
     try {
       server = await deps.createServer(desktopConfig(config), {

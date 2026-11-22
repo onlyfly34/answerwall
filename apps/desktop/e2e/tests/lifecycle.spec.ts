@@ -39,10 +39,7 @@ test.describe('the end of the app', () => {
     const pids = await startStubbornRuns(app, page);
     expect(pids.length).toBeGreaterThanOrEqual(5);
     expect((await app.processes()).length).toBeGreaterThan(1);
-    // The helper that would end the CLI children if the app died without warning (not on Windows).
-    expect((await processesMentioning('reaper.cjs')).length).toBe(
-      process.platform === 'win32' ? 0 : 1,
-    );
+    expect(await processesMentioning('reaper.cjs')).not.toEqual([]);
 
     await app.quit();
 
