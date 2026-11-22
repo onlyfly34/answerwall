@@ -388,7 +388,8 @@ describe('first-device bootstrap', () => {
     await auth.bootstrap();
 
     const [entry] = announcements();
-    expect(entry?.level).toBe('info');
+    // Not `info`: a server running with the log level `warn` must still show it.
+    expect(entry?.level).toBe('warn');
     const shown = /code: (\d{4} \d{4})$/.exec(entry?.message ?? '')?.[1] ?? '';
     await expect(
       auth.pair({ code: shown.replace(' ', ''), deviceName: 'First device' }),

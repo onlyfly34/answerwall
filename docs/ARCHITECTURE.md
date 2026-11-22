@@ -125,7 +125,11 @@ throwing an `AppError`.
 
    `bodyLimit` judges a declared `Content-Length` by its value; a chunked
    body, or a request without one, is read through a byte counter and handed
-   to the route through hono's body cache.
+   to the route through hono's body cache. `requireAuth` wraps the
+   `text/event-stream` body of a device's request and ends it when that
+   device is revoked or logs out (the auth unit announces removals through a
+   side channel of its own); the route sees a lost client and the ask keeps
+   running.
 
 7. The route modules, then a JSON 404 for any other `/api/*` path
 8. `staticUi` — the built UI with an `index.html` fallback

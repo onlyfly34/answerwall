@@ -13,6 +13,7 @@ import type {
 } from '../contracts/index.ts';
 import { MAX_DEVICES, PAIRING_CODE_TTL_MS, PAIRING_MAX_ATTEMPTS } from '../protocol/index.ts';
 import type { DeploymentMode, Device } from '../protocol/index.ts';
+import { createRevocations, registerRevocations } from './revocations.ts';
 import {
   constantTimeEqual,
   formatPairingCode,
@@ -112,9 +113,14 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
     await storage.devices.touch(device.id, now);
   };
 
+  const revocations = createRevocations();
+
   const forget = async (deviceId: string): Promise<boolean> => {
     touched.delete(deviceId);
-    return storage.devices.delete(deviceId);
+    const removed = await storage.devices.delete(deviceId);
+    // Ends what the device still holds open, such as an event stream.
+    if (removed) revocations.announce(deviceId);
+    return removed;
   };
 
   const createPairingCode = async () => {
@@ -136,7 +142,7 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
     return { code, expiresAt };
   };
 
-  return {
+  const service: AuthService = {
     async authenticate(token) {
       if (token.length > STATIC_TOKEN_MAX_LENGTH) return null;
       if (staticToken !== undefined && constantTimeEqual(token, staticToken)) {
@@ -204,7 +210,8 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
       const { code } = await createPairingCode();
       // The one secret that is meant to be logged. It is written in two
       // groups, which is easier to read and is not what the log masks.
-      logger.info(
+      // A warning, so that a quieter log level still shows the way to sign in.
+      logger.warn(
         `No device is paired yet. Pair the first device with this one-time code: ${formatPairingCode(code)}`,
         {
           validForMinutes: PAIRING_CODE_TTL_MS / 60_000,
@@ -233,4 +240,6 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
       if (caller.kind === 'device') await forget(caller.deviceId);
     },
   };
+  registerRevocations(service, revocations);
+  return service;
 }

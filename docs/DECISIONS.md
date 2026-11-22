@@ -301,12 +301,15 @@ leaked token cannot fan out into thousands of processes.
   instance accepts: it has no paired devices, refuses to create pairing
   codes, and its settings page shows no devices section.
 - Server mode first device: when no device is paired the server prints a
-  one-time 8-digit pairing code (valid 5 minutes) to its log;
+  one-time 8-digit pairing code (valid 5 minutes) to its log at level `warn`,
+  so it is hidden only by `--log-level error`;
   `answerwall pair` prints a new one. Further devices: a signed-in device
   creates a pairing code in settings (5 minutes, single use, void after 5
   wrong attempts, constant-time comparison). Each device gets its own 256-bit
   token; the database stores only its SHA-256, a device name and last-used
-  time. Devices are listed and revocable. Max 8 devices. The session cookie
+  time. Devices are listed and revocable; revoking a device or logging out
+  also ends that device's open event streams at once (the ask keeps
+  running). Max 8 devices. The session cookie
   lives 400 days and its lifetime is renewed at most once a day on use; the
   token itself is not rotated (revoking the device is how it ends).
 - An optional static token from `ANSWERWALL_TOKEN` exists for automation and

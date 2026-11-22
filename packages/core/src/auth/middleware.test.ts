@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { stream } from 'hono/streaming';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { beforeEach, describe, expect, test } from 'vitest';
 import { BRAND } from '../brand.ts';
@@ -24,6 +25,8 @@ let app: Hono<AppEnv>;
 /** What the route saw, and what the request ended with. */
 let seen: { auth?: AuthContext; authFailure?: boolean | undefined };
 let secure: boolean;
+/** The event stream route: what it is told, and how the test makes it write. */
+let events: { aborted: boolean; write: (text: string) => Promise<unknown>; close: () => void };
 
 beforeEach(() => {
   storage = createFakeStorage();
@@ -53,6 +56,19 @@ beforeEach(() => {
     seen.authFailure = c.var.authFailure;
   });
   app.use(requireAuth(auth, PUBLIC_ROUTES, { clock }));
+  events = { aborted: false, write: async () => undefined, close: () => undefined };
+  app.get('/events', (c) => {
+    c.header('Content-Type', 'text/event-stream; charset=utf-8');
+    return stream(c, async (out) => {
+      out.onAbort(() => {
+        events.aborted = true;
+      });
+      events.write = (text) => out.write(text);
+      await new Promise<void>((resolve) => {
+        events.close = resolve;
+      });
+    });
+  });
   app.all('*', (c) => {
     seen.auth = c.var.auth;
     return c.json({ ok: true });
@@ -224,5 +240,79 @@ describe('session cookie renewal', () => {
     ).toBe('');
     // The write did not use up the renewal.
     expect(setCookie(await app.request('/private', { headers: cookieHeader(token) }))).not.toBe('');
+  });
+});
+
+describe('an open event stream', () => {
+  const decoder = new TextDecoder();
+  async function open(headers: Record<string, string>) {
+    const response = await app.request('/events', { headers });
+    expect(response.status).toBe(200);
+    const reader = (response.body as ReadableStream<Uint8Array>).getReader();
+    const next = async (): Promise<string | null> => {
+      const { done, value } = await reader.read();
+      return done ? null : decoder.decode(value);
+    };
+    return { response, next };
+  }
+
+  test('ends when its device is revoked, and the route is told like for a lost client', async () => {
+    const { token, device } = await pairDevice();
+    const { next } = await open(cookieHeader(token));
+    await events.write('first');
+    expect(await next()).toBe('first');
+
+    await auth.revokeDevice(device.id);
+
+    expect(await next()).toBeNull();
+    await expect.poll(() => events.aborted).toBe(true);
+    expect((await app.request('/events', { headers: cookieHeader(token) })).status).toBe(401);
+  });
+
+  test('ends when its device signs out, also while a read is waiting', async () => {
+    const { token, device } = await pairDevice();
+    const { next } = await open(bearer(token));
+    const waiting = next();
+
+    await auth.logout({ kind: 'device', deviceId: device.id });
+
+    expect(await waiting).toBeNull();
+  });
+
+  test.each(['another device', 'the static token'])('of %s stays open', async (holder) => {
+    const revoked = await pairDevice();
+    const other = await pairDevice();
+    const { next } = await open(
+      holder === 'the static token' ? bearer(STATIC_TOKEN) : cookieHeader(other.token),
+    );
+
+    await auth.revokeDevice(revoked.device.id);
+    await events.write('still here');
+
+    expect(await next()).toBe('still here');
+    expect(events.aborted).toBe(false);
+  });
+
+  test('that ends by itself is passed through unchanged, with the renewed cookie', async () => {
+    const { token } = await pairDevice();
+    const { response, next } = await open(cookieHeader(token));
+    expect(response.headers.get('Content-Type')).toBe('text/event-stream; charset=utf-8');
+    expect(setCookie(response)).toContain(`Max-Age=${SESSION_MAX_AGE_SECONDS}`);
+
+    await events.write('only');
+    events.close();
+
+    expect(await next()).toBe('only');
+    expect(await next()).toBeNull();
+    expect(events.aborted).toBe(false);
+  });
+
+  test('a response that is not an event stream is not touched', async () => {
+    const { token, device } = await pairDevice();
+    const response = await app.request('/private', { headers: cookieHeader(token) });
+
+    await auth.revokeDevice(device.id);
+
+    expect(await response.json()).toEqual({ ok: true });
   });
 });

@@ -4,6 +4,7 @@ import { BRAND } from '../brand.ts';
 import { AppError } from '../contracts/index.ts';
 import type { AppEnv, AppMiddleware, AuthContext, AuthService, Clock } from '../contracts/index.ts';
 import { systemClock } from '../system.ts';
+import { revocationsOf } from './revocations.ts';
 
 /**
  * Lifetime of the session cookie. Browsers cap cookies at about 400 days;
@@ -30,6 +31,52 @@ function readCredential(c: Context<AppEnv>): Credential | undefined {
   return cookie === undefined ? undefined : { token: cookie, source: 'cookie' };
 }
 
+/**
+ * The same response, except that its body ends when `subscribe`'s callback
+ * is called. Whatever produces the body is told like it is told about a
+ * client that went away.
+ */
+function endBodyOn(response: Response, subscribe: (end: () => void) => () => void): Response {
+  if (!response.body) return response;
+  const reader = (response.body as ReadableStream<Uint8Array>).getReader();
+  let ended = false;
+  let unsubscribe: () => void = () => undefined;
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      unsubscribe = subscribe(() => {
+        if (ended) return;
+        ended = true;
+        controller.close();
+        void reader.cancel().catch(() => undefined);
+      });
+    },
+    async pull(controller) {
+      try {
+        const { done, value } = await reader.read();
+        if (ended) return;
+        if (!done) return controller.enqueue(value);
+        ended = true;
+        unsubscribe();
+        controller.close();
+      } catch (error) {
+        if (ended) return;
+        ended = true;
+        unsubscribe();
+        controller.error(error);
+      }
+    },
+    cancel(reason) {
+      ended = true;
+      unsubscribe();
+      return reader.cancel(reason);
+    },
+  });
+  return new Response(body, response);
+}
+
+const isEventStream = (response: Response): boolean =>
+  response.headers.get('Content-Type')?.startsWith('text/event-stream') === true;
+
 const renewalKey = (caller: AuthContext): string =>
   caller.kind === 'device' ? `device:${caller.deviceId}` : 'static-token';
 
@@ -43,6 +90,10 @@ const MAX_RENEWAL_ENTRIES = 64;
  *
  * A session that authenticated by cookie gets the cookie issued again with a
  * fresh lifetime, at most once a day per device (and once after a restart).
+ *
+ * An event stream a device has open ends when that device is revoked or
+ * signs out, without a terminal event; the client's attempt to resume is
+ * then refused like any other request of a revoked device.
  */
 export function requireAuth(
   auth: AuthService,
@@ -79,6 +130,12 @@ export function requireAuth(
     // Only on reads: sign-out and revocation clear the cookie themselves.
     const renew = credential.source === 'cookie' && c.req.method === 'GET' && renewalDue(caller);
     await next();
+    // An event stream outlives the check above by minutes: revoking the device ends it.
+    const revocations = caller.kind === 'device' ? revocationsOf(auth) : undefined;
+    if (revocations && caller.kind === 'device' && isEventStream(c.res)) {
+      const { deviceId } = caller;
+      c.res = endBodyOn(c.res, (end) => revocations.onRevoked(deviceId, end));
+    }
     if (renew) {
       setCookie(c, BRAND.sessionCookie, credential.token, {
         httpOnly: true,
