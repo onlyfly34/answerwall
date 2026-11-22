@@ -20,8 +20,37 @@ export interface TreeKillerOptions {
   runSync?: (file: string, args: string[]) => void;
 }
 
-/** The forced kill of every tree whose slot has not finished yet. */
-const liveTrees = new Set<() => void>();
+/** The forced kill of every tree whose slot has not finished yet, by the tree's root. */
+const liveTrees = new Map<() => void, number>();
+
+/** `started`: a tree was registered. `finished`: nothing of it is left to kill from here. */
+export type ChildProcessTreeListener = (pid: number, state: 'started' | 'finished') => void;
+const treeListeners = new Set<ChildProcessTreeListener>();
+
+/**
+ * Reports every child process tree as it is registered and when it leaves the
+ * registry (its slot finished, or it was killed here). For a supervisor that
+ * must end the trees when this process dies without running any code: the
+ * desktop shell hands the roots to a helper process that outlives it.
+ * @returns the function that stops the reports
+ */
+export function watchChildProcessTrees(listener: ChildProcessTreeListener): () => void {
+  treeListeners.add(listener);
+  for (const pid of liveTrees.values()) listener(pid, 'started');
+  return () => {
+    treeListeners.delete(listener);
+  };
+}
+
+function announce(pid: number, state: 'started' | 'finished'): void {
+  for (const listener of treeListeners) {
+    try {
+      listener(pid, state);
+    } catch {
+      // A failing observer must not disturb the kill it observes.
+    }
+  }
+}
 
 /**
  * Kills every child process tree that is still registered, at once and
@@ -32,12 +61,13 @@ const liveTrees = new Set<() => void>();
 export function killChildProcessTrees(): void {
   const kills = [...liveTrees];
   liveTrees.clear();
-  for (const kill of kills) {
+  for (const [kill, pid] of kills) {
     try {
       kill();
     } catch {
       // One tree that cannot be killed must not spare the others.
     }
+    announce(pid, 'finished');
   }
 }
 
@@ -103,7 +133,11 @@ export function createTreeKiller(pid: number, options: TreeKillerOptions): TreeK
       (options.runSync ?? runAndWait)(taskkillPath(options.env), ['/T', '/F', '/PID', String(pid)]);
     } else killGroup(pid, 'SIGKILL');
   };
-  liveTrees.add(forceNow);
+  liveTrees.set(forceNow, pid);
+  announce(pid, 'started');
+  const unregister = (): void => {
+    if (liveTrees.delete(forceNow)) announce(pid, 'finished');
+  };
 
   return {
     terminate() {
@@ -119,14 +153,14 @@ export function createTreeKiller(pid: number, options: TreeKillerOptions): TreeK
     sweep() {
       cancelEscalation?.();
       cancelEscalation = undefined;
-      liveTrees.delete(forceNow);
+      unregister();
       // On Windows the tree cannot be addressed once its root has exited.
       if (platform !== 'win32') killGroup(pid, 'SIGKILL');
     },
     rootExited() {
       if (platform !== 'win32') return;
       terminated = true;
-      liveTrees.delete(forceNow);
+      unregister();
     },
   };
 }

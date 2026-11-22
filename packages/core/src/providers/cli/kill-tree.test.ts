@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, test } from 'vitest';
 import { FakeClock } from '../../testing/index.ts';
-import { createTreeKiller, KILL_GRACE_MS, killChildProcessTrees } from './kill-tree.ts';
+import {
+  createTreeKiller,
+  KILL_GRACE_MS,
+  killChildProcessTrees,
+  watchChildProcessTrees,
+} from './kill-tree.ts';
 
 function setup(platform: NodeJS.Platform, env: NodeJS.ProcessEnv = {}, graceMs?: number) {
   const clock = new FakeClock();
@@ -209,5 +214,82 @@ describe('killChildProcessTrees', () => {
     killChildProcessTrees();
 
     expect(signals).toEqual([2]);
+  });
+});
+
+describe('watchChildProcessTrees', () => {
+  function watch() {
+    const seen: [number, string][] = [];
+    const stop = watchChildProcessTrees((pid, state) => seen.push([pid, state]));
+    return { seen, stop };
+  }
+
+  test('reports a tree when it is registered and when its slot has finished', () => {
+    const { seen, stop } = watch();
+    const { killer } = setup('linux');
+    expect(seen).toEqual([[4321, 'started']]);
+
+    killer.terminate();
+    killer.rootExited();
+    expect(seen).toHaveLength(1);
+
+    killer.sweep();
+    killer.sweep();
+    expect(seen).toEqual([
+      [4321, 'started'],
+      [4321, 'finished'],
+    ]);
+    stop();
+  });
+
+  test('on Windows the tree is finished as soon as its root has exited', () => {
+    const { seen, stop } = watch();
+    const { killer } = setup('win32');
+
+    killer.rootExited();
+    killer.sweep();
+
+    expect(seen).toEqual([
+      [4321, 'started'],
+      [4321, 'finished'],
+    ]);
+    stop();
+  });
+
+  test('reports the trees killed at once as finished', () => {
+    const { seen, stop } = watch();
+    const { killer } = setup('linux');
+
+    killChildProcessTrees();
+    killer.sweep();
+
+    expect(seen).toEqual([
+      [4321, 'started'],
+      [4321, 'finished'],
+    ]);
+    stop();
+  });
+
+  test('a new watcher first hears of the trees that are already running', () => {
+    setup('linux');
+    const { seen, stop } = watch();
+
+    expect(seen).toEqual([[4321, 'started']]);
+    stop();
+  });
+
+  test('reports nothing after it was stopped, and a watcher that throws is ignored', () => {
+    const { seen, stop } = watch();
+    stop();
+    const stopFailing = watchChildProcessTrees(() => {
+      throw new Error('boom');
+    });
+
+    const { signals, killer } = setup('linux');
+    killer.sweep();
+
+    expect(seen).toEqual([]);
+    expect(signals).toEqual([[4321, 'SIGKILL']]);
+    stopFailing();
   });
 });
