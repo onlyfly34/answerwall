@@ -635,7 +635,7 @@ async function main() {
       { slotId: 'c3', providerId: 'claude', model: 'mock-reasoning' },
       { slotId: 'c4', providerId: 'claude', model: 'mock-block' },
       { slotId: 'x1', providerId: 'codex', model: 'mock-slow' },
-      { slotId: 'x2', providerId: 'codex', model: 'mock-incremental' },
+      { slotId: 'x2', providerId: 'codex', model: 'mock-block' },
       { slotId: 'x3', providerId: 'codex', model: 'mock-quota' },
       { slotId: 'g1', providerId: 'grok', model: 'mock-slow' },
       { slotId: 'g2', providerId: 'grok', model: 'mock-echo' },
@@ -935,6 +935,90 @@ async function main() {
         `the database file ${name} holds no plaintext key`,
       );
     }
+
+    // --------------------------------------------------------- web search
+    const beforeSearch = (await api.get(API_PATHS.settings)).json.settings.providers;
+    const searchStatus = (await api.get(API_PATHS.providers)).json.providers.map((p) => [
+      p.instance.id,
+      p.webSearch,
+    ]);
+    check(
+      isDeepStrictEqual(searchStatus, [
+        ['claude', 'available'],
+        ['codex', 'available'],
+        ['grok', 'unconfirmed'],
+        ['agy', 'unconfirmed'],
+        ['stub', 'none'],
+      ]),
+      'the provider list says which providers have a web search switch',
+      searchStatus,
+    );
+    check(
+      beforeSearch.every((p) => p.kind === 'openai-compat' || p.webSearch === false),
+      'web search is off for every CLI until it is switched on',
+    );
+    const withSearch = (on) =>
+      beforeSearch.map(({ hasApiKey: _hasApiKey, ...p }) =>
+        on.includes(p.id) ? { ...p, webSearch: true } : p,
+      );
+    const refusedSearch = await api.put(API_PATHS.settings, { providers: withSearch(['grok']) });
+    check(
+      refusedSearch.status === 400,
+      'web search cannot be switched on for a CLI where it was not confirmed',
+      refusedSearch.json,
+    );
+    const searchOn = await api.put(API_PATHS.settings, {
+      providers: withSearch(['claude', 'codex']),
+    });
+    check(searchOn.status === 200, 'web search is switched on for claude and codex', searchOn.json);
+    const invocationsBefore = readFileSync(mockLog, 'utf8').split('\n').length;
+    const searchAsk = await api.post(API_PATHS.ask, {
+      prompt: 'Smoke test: which release is current?',
+      targets: [
+        { slotId: 's1', providerId: 'claude' },
+        { slotId: 's2', providerId: 'codex' },
+      ],
+    });
+    check(searchAsk.status === 200, 'an ask with web search allowed is accepted', searchAsk.json);
+    const searchStream = await readStream(
+      server.base,
+      API_PATHS.askStream(searchAsk.json.askId),
+      api.cookie,
+    );
+    for (const slotId of ['s1', 's2']) {
+      const events = searchStream.events.filter((e) => e.slotId === slotId);
+      check(
+        events.some((e) => e.type === 'notice' && /search/i.test(e.message)) &&
+          events.some((e) => e.type === 'delta') &&
+          events.at(-1).type === 'done',
+        `slot ${slotId} reports the search as a notice next to its answer`,
+        events.filter((e) => e.type !== 'delta'),
+      );
+    }
+    const searchCalls = readFileSync(mockLog, 'utf8')
+      .split('\n')
+      .slice(invocationsBefore - 1)
+      .filter((line) => line.trim() !== '')
+      .map((line) => JSON.parse(line));
+    const argvOf = (kind) => searchCalls.find((call) => call.kind === kind)?.argv ?? [];
+    check(
+      argvOf('claude').join(' ').includes('--tools WebSearch --allowedTools WebSearch') &&
+        !argvOf('claude').join(' ').includes('WebFetch'),
+      'claude was started with the web search as its only tool',
+      argvOf('claude'),
+    );
+    check(
+      argvOf('codex').includes('web_search="live"') &&
+        !argvOf('codex').includes('web_search="disabled"'),
+      'codex was started with the hosted web search switched on',
+      argvOf('codex'),
+    );
+    const searchOff = await api.put(API_PATHS.settings, { providers: withSearch([]) });
+    check(searchOff.status === 200, 'web search is switched off again', searchOff.json);
+    check(
+      (await api.del(API_PATHS.historyEntry(searchAsk.json.askId))).status < 300,
+      'the web search ask is removed from history',
+    );
 
     // ------------------------------------------------------------- web UI
     const shell = await fetch(new URL('/', server.base));

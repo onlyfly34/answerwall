@@ -135,6 +135,11 @@ export const en = {
   'app.providers.envKey.label': 'Use the API key from the server environment',
   'app.providers.envKey.help':
     'Off: API-key variables are removed before the tool starts, so it uses its subscription login. On: they are kept and usage is billed to that API key.',
+  'app.providers.webSearch.label': 'Allow web search',
+  'app.providers.webSearch.help':
+    "Off: the model answers from what it knows. On: the model may use the tool's built-in web search, which runs on the vendor's servers; every other tool stays as restricted as before. A cell shows a note when a search happens.",
+  'app.providers.webSearch.unconfirmed':
+    'Web search: not available. It has not been confirmed that this tool can search the web while its other tools stay switched off.',
   'app.providers.models.title': 'Your models',
   'app.providers.models.empty': 'None added. The models the provider lists are still offered.',
   'app.providers.models.add': 'Add a model',

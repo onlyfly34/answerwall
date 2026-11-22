@@ -1,7 +1,17 @@
 import type { Locator, Page } from '@playwright/test';
 import { expect, test } from '../support/fixtures.ts';
 import { STUB_API_KEY } from '../support/stub.ts';
-import { cells, nav, send, sendButton } from '../support/wall.ts';
+import {
+  answer,
+  arrange,
+  cell,
+  cells,
+  expectPhases,
+  nav,
+  send,
+  sendButton,
+  showCell,
+} from '../support/wall.ts';
 
 const card = (page: Page, label: string): Locator =>
   page.getByRole('region', { name: label, exact: true });
@@ -133,6 +143,52 @@ test.describe('providers page', () => {
     await expect(codexCell.locator('.wall-cell-issue')).toContainText(
       'This provider is disabled, so this cell is skipped.',
     );
+  });
+
+  test('web search is allowed per provider, and a search shows as a note in the cell', async ({
+    wallPage: page,
+    server,
+    device,
+  }) => {
+    await openProviders(page);
+
+    // Only the tools whose search was confirmed to work alone have the switch.
+    for (const label of ['Claude', 'Codex']) {
+      await expect(card(page, label).getByLabel('Allow web search')).not.toBeChecked();
+    }
+    for (const label of ['Grok', 'Gemini (agy)']) {
+      await expect(card(page, label).getByLabel('Allow web search')).toHaveCount(0);
+      await expect(card(page, label)).toContainText('Web search: not available.');
+    }
+
+    await card(page, 'Codex').getByLabel('Allow web search').click();
+    await expect(card(page, 'Codex').getByLabel('Allow web search')).toBeChecked();
+    await card(page, 'Claude').getByLabel('Allow web search').click();
+    await expect(card(page, 'Claude').getByLabel('Allow web search')).toBeChecked();
+    await expect
+      .poll(async () =>
+        (await server.providers()).map((status) =>
+          'webSearch' in status.instance ? status.instance.webSearch : null,
+        ),
+      )
+      .toEqual([true, true, false, false]);
+
+    await nav(page, 'Wall').click();
+    await arrange(page, server, [
+      { slotId: 'c1', providerId: 'claude' },
+      { slotId: 'x1', providerId: 'codex' },
+    ]);
+    await send(page, 'Which release is current?');
+    await expectPhases(page, { c1: 'done', x1: 'done' });
+
+    await showCell(page, device, 'c1');
+    await expect(cell(page, 'c1').locator('.wall-cell-notice')).toContainText('Searching the web:');
+    await expect(answer(page, 'c1')).not.toBeEmpty();
+    await showCell(page, device, 'x1');
+    await expect(cell(page, 'x1').locator('.wall-cell-notice')).toHaveText(
+      'The model searched the web.',
+    );
+    await expect(answer(page, 'x1')).not.toBeEmpty();
   });
 
   test('enabling Gemini (agy) needs the risk notice to be accepted first', async ({

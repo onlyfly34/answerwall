@@ -130,6 +130,11 @@ export const zhTW: Record<keyof typeof en, string> = {
   'app.providers.envKey.label': '使用伺服器環境變數中的 API 金鑰',
   'app.providers.envKey.help':
     '關閉：啟動工具前會移除 API 金鑰相關的環境變數，因此使用訂閱登入。開啟：保留這些變數，用量會計入該 API 金鑰。',
+  'app.providers.webSearch.label': '允許網路搜尋',
+  'app.providers.webSearch.help':
+    '關閉：模型只依據自己已知的內容回答。開啟：模型可以使用這個工具內建的網路搜尋，搜尋在廠商的伺服器上執行；其他工具仍維持原本的限制。發生搜尋時，格子會顯示一則說明。',
+  'app.providers.webSearch.unconfirmed':
+    '網路搜尋：無法使用。尚未確認這個工具能在其他工具保持關閉的情況下單獨搜尋網路。',
   'app.providers.models.title': '你的模型',
   'app.providers.models.empty': '尚未新增。供應商自己列出的模型仍可選用。',
   'app.providers.models.add': '新增模型',

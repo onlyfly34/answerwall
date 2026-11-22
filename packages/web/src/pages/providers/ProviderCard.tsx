@@ -69,6 +69,7 @@ export const ProviderCard: Component<ProviderCardProps> = (props) => {
     enabled: createUniqueId(),
     concurrency: createUniqueId(),
     envKey: createUniqueId(),
+    webSearch: createUniqueId(),
   };
   const [acknowledging, setAcknowledging] = createSignal(false);
   const [concurrencyInvalid, setConcurrencyInvalid] = createSignal(false);
@@ -257,7 +258,42 @@ export const ProviderCard: Component<ProviderCardProps> = (props) => {
             </div>
           )}
         </Show>
+
+        <Show
+          when={
+            props.status?.webSearch === 'available' &&
+            props.instance.kind !== 'openai-compat' &&
+            props.instance
+          }
+        >
+          {(cli) => (
+            <div class="app-field">
+              <div class="app-check">
+                <input
+                  id={ids.webSearch}
+                  type="checkbox"
+                  checked={cli().webSearch}
+                  disabled={props.disabled}
+                  aria-describedby={`${ids.webSearch}-help`}
+                  onChange={(event) =>
+                    requestToggle(event.currentTarget, cli().webSearch, (webSearch) => {
+                      void props.onChange({ ...cli(), webSearch });
+                    })
+                  }
+                />
+                <label for={ids.webSearch}>{t('app.providers.webSearch.label')}</label>
+              </div>
+              <span id={`${ids.webSearch}-help`} class="app-muted">
+                {t('app.providers.webSearch.help')}
+              </span>
+            </div>
+          )}
+        </Show>
       </div>
+
+      <Show when={props.status?.webSearch === 'unconfirmed'}>
+        <p class="app-muted">{t('app.providers.webSearch.unconfirmed')}</p>
+      </Show>
 
       <ModelsEditor
         instance={input()}

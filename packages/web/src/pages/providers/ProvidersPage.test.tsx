@@ -362,6 +362,35 @@ describe('provider settings', () => {
     expect(saved(services, 'claude')).toMatchObject({ useEnvApiKey: false });
   });
 
+  test('web search is a per-provider switch on the tools where it was confirmed', async () => {
+    const services = setup();
+    for (const label of ['Claude', 'Codex']) {
+      expect(
+        card(label).getByRole<HTMLInputElement>('checkbox', { name: 'Allow web search' }).checked,
+      ).toBe(false);
+    }
+    expect(
+      card('Codex').getByText('every other tool stays as restricted as before', { exact: false }),
+    ).toBeDefined();
+
+    fireEvent.click(card('Codex').getByRole('checkbox', { name: 'Allow web search' }));
+
+    await waitFor(() => expect(saved(services, 'codex')).toMatchObject({ webSearch: true }));
+    expect(saved(services, 'claude')).toMatchObject({ webSearch: false });
+  });
+
+  test('a tool whose web search was not confirmed has no switch and says so', () => {
+    setup({ settings: settingsWith(endpoint) });
+
+    for (const label of ['Gemini (agy)', 'Grok']) {
+      expect(card(label).queryByRole('checkbox', { name: 'Allow web search' })).toBeNull();
+      expect(card(label).getByText('Web search: not available.', { exact: false })).toBeDefined();
+    }
+    expect(card('Home LLM').queryByRole('checkbox', { name: 'Allow web search' })).toBeNull();
+    expect(card('Home LLM').queryByText('Web search', { exact: false })).toBeNull();
+    expect(card('Claude').queryByText('Web search: not available.', { exact: false })).toBeNull();
+  });
+
   test('models can be added, removed and chosen as the default', async () => {
     const services = setup();
     const claude = card('Claude');
