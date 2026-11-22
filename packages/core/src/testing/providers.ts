@@ -144,6 +144,7 @@ export function createFakeProviderRegistry(deps: {
         instance,
         detection: cached?.detection ?? null,
         detectedAt: cached?.detectedAt ?? null,
+        detecting: false,
         models: [...own, ...listed],
         toolAccess: adapter.toolAccess,
         ...(adapter.loginCommand === undefined ? {} : { loginCommand: adapter.loginCommand }),

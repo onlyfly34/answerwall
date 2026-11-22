@@ -122,6 +122,7 @@ export function readyProviderStatus(instance: ProviderInstance): ProviderStatus 
     instance,
     detection: { installed: true, loggedIn: 'yes', billing: 'subscription', streaming: 'token' },
     detectedAt: 0,
+    detecting: false,
     models: instance.models.map((id) => ({ id })),
     toolAccess: 'disabled',
   };

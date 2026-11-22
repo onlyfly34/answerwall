@@ -117,6 +117,18 @@ describe('what was detected', () => {
     expect(card('Grok').getByText('Not checked yet. Press Refresh.')).toBeDefined();
   });
 
+  test('a provider the server is detecting right now says so instead of asking for a refresh', () => {
+    const settings = createDefaultSettings();
+    const [claude, ...others] = settings.providers.map(readyProviderStatus);
+    setup({
+      settings,
+      providers: [{ ...claude!, detection: null, detectedAt: null, detecting: true }, ...others],
+    });
+
+    expect(card('Claude').getByText('Checking…')).toBeDefined();
+    expect(card('Claude').queryByText('Not checked yet. Press Refresh.')).toBeNull();
+  });
+
   test.each([
     ['none', 'this provider has no tools.'],
     ['disabled', 'tools are switched off for every question.'],

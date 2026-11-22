@@ -207,6 +207,12 @@ export const ProviderStatusSchema = z.object({
   /** `null` until the first detection has finished. */
   detection: ProviderDetectionSchema.nullable(),
   detectedAt: TimestampSchema.nullable(),
+  /**
+   * A detection of this provider is running on the server (at its start, or
+   * a refresh another device asked for), so the rest of the status is about
+   * to change. A client reads the list again until this is `false`.
+   */
+  detecting: z.boolean(),
   /** The instance's own list merged with the adapter's listing. */
   models: z.array(ModelInfoSchema),
   toolAccess: ToolAccessSchema,

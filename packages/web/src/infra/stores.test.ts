@@ -1,5 +1,5 @@
 import { createSignal } from 'solid-js';
-import { describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { createDefaultSettings, initialAskSnapshot, LimitsSchema } from '@answerwall/core/protocol';
 import type {
   AskSnapshot,
@@ -13,7 +13,7 @@ import type { AskStream, StreamConnection } from '../contracts/services.ts';
 import { readyProviderStatus } from '../contracts/testing.ts';
 import { createAskStreamStore } from './ask-store.ts';
 import { createDevicesStore } from './devices-store.ts';
-import { createProvidersStore } from './providers-store.ts';
+import { createProvidersStore, FOLLOW_UP_MS } from './providers-store.ts';
 import { createSettingsStore } from './settings-store.ts';
 import { testSettingsResponse } from './test-support.ts';
 
@@ -317,6 +317,70 @@ describe('providers store', () => {
 
     expect(store.providers()).toEqual(all);
     expect(store.busy()).toBe(false);
+  });
+});
+
+describe('providers store while the server is detecting', () => {
+  const statuses = (detecting: boolean): ProviderStatus[] =>
+    createDefaultSettings().providers.map((instance) => ({
+      ...readyProviderStatus(instance),
+      ...(detecting ? { detection: null, detectedAt: null } : {}),
+      detecting,
+    }));
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  test('the statuses are read again until the detection has finished, without looking busy', async () => {
+    const answers = [statuses(true), statuses(true), statuses(false)];
+    const api = {
+      listProviders: vi.fn(async () => answers.shift() ?? statuses(false)),
+      refreshProviders: vi.fn(async () => statuses(false)),
+    };
+    const store = createProvidersStore(api);
+
+    await store.load();
+    expect(store.providers().every((status) => status.detection === null)).toBe(true);
+    expect(store.busy()).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(FOLLOW_UP_MS);
+    expect(api.listProviders).toHaveBeenCalledTimes(2);
+    expect(store.busy()).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(FOLLOW_UP_MS);
+    expect(api.listProviders).toHaveBeenCalledTimes(3);
+    expect(store.providers().every((status) => status.detection !== null)).toBe(true);
+
+    // Nothing is being detected any more, so nothing is read any more.
+    await vi.advanceTimersByTimeAsync(10 * FOLLOW_UP_MS);
+    expect(api.listProviders).toHaveBeenCalledTimes(3);
+    expect(api.refreshProviders).not.toHaveBeenCalled();
+  });
+
+  test('a refresh replaces the pending read, and a failed read ends it quietly', async () => {
+    const api = {
+      listProviders: vi
+        .fn<() => Promise<ProviderStatus[]>>()
+        .mockResolvedValueOnce(statuses(true))
+        .mockResolvedValueOnce(statuses(true))
+        .mockRejectedValueOnce(new ApiError('internal', 500, 'oops')),
+      refreshProviders: vi.fn(async () => statuses(false)),
+    };
+    const store = createProvidersStore(api);
+
+    await store.load();
+    await store.refresh();
+    await vi.advanceTimersByTimeAsync(10 * FOLLOW_UP_MS);
+    expect(api.listProviders).toHaveBeenCalledTimes(1);
+
+    await store.load();
+    await vi.advanceTimersByTimeAsync(10 * FOLLOW_UP_MS);
+    expect(api.listProviders).toHaveBeenCalledTimes(3);
+    expect(store.providers()).toEqual(statuses(true));
   });
 });
 
