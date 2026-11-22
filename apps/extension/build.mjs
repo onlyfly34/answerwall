@@ -153,7 +153,10 @@ export async function buildExtension(options = {}) {
   return { outDir, version, files };
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+// Run as a script, not imported. Windows may spell the drive letter either way.
+const invoked = resolve(process.argv[1] ?? '');
+const self = fileURLToPath(import.meta.url);
+if (invoked === self || invoked.toLowerCase() === self.toLowerCase()) {
   const { values } = parseArgs({
     options: { out: { type: 'string' }, test: { type: 'boolean', default: false } },
   });
