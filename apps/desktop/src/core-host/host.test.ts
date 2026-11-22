@@ -29,6 +29,7 @@ function setup(overrides: Partial<HostDeps> = {}) {
   const reported: [number, string][] = [];
   const logger = createMemoryLogger();
   let deliver: (message: unknown) => void = () => undefined;
+  let parentGone: () => void = () => undefined;
   let killed = 0;
   let waiters: (() => void)[] = [];
 
@@ -53,6 +54,9 @@ function setup(overrides: Partial<HostDeps> = {}) {
     },
     killChildren: () => void (killed += 1),
     startReaper: () => ({ report: (pid, state) => void reported.push([pid, state]) }),
+    watchParent: (gone) => {
+      parentGone = gone;
+    },
     exit: (code) => {
       exits.push(code);
       for (const wake of waiters) wake();
@@ -86,6 +90,8 @@ function setup(overrides: Partial<HostDeps> = {}) {
 
   return {
     send: (message: unknown) => deliver(message),
+    /** The main process has disappeared. */
+    loseParent: () => parentGone(),
     posted,
     exits,
     timers,
@@ -358,6 +364,18 @@ describe('runHost', () => {
     await host.next('listening');
 
     expect(host.logger.entries.some((entry) => entry.level === 'warn')).toBe(true);
+  });
+
+  test('when the main process is gone, the host kills the children and exits by itself', async () => {
+    const host = setup({ createServer: async () => fakeServer() });
+    host.send({ type: 'start', config: config() });
+    await host.next('listening');
+    expect(host.exits).toEqual([]);
+
+    host.loseParent();
+
+    expect(host.killed()).toBe(1);
+    expect(host.exits).toEqual([1]);
   });
 
   test('messages of no known shape are ignored', () => {

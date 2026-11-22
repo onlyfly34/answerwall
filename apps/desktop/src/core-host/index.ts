@@ -54,6 +54,31 @@ function startReaper(script: string): Reaper | undefined {
   }
 }
 
+/** How often the host looks whether the main process still exists. */
+const PARENT_CHECK_MS = 2_000;
+
+function watchParent(gone: () => void): void {
+  const parent = process.ppid;
+  const alive = (): boolean => {
+    // Adopted by another process: the one that started this one has ended.
+    if (process.ppid !== parent) return false;
+    try {
+      process.kill(parent, 0);
+      return true;
+    } catch (error) {
+      // Not allowed to signal it: it exists.
+      return (error as NodeJS.ErrnoException).code === 'EPERM';
+    }
+  };
+  const timer = setInterval(() => {
+    if (alive()) return;
+    clearInterval(timer);
+    gone();
+  }, PARENT_CHECK_MS);
+  // The check alone must not keep the process running.
+  timer.unref();
+}
+
 // No exit, however it comes about, may leave a CLI child behind.
 process.on('exit', killChildProcessTrees);
 for (const event of ['uncaughtException', 'unhandledRejection'] as const) {
@@ -77,6 +102,7 @@ runHost({
   watchChildren: watchChildProcessTrees,
   killChildren: killChildProcessTrees,
   startReaper,
+  watchParent,
   exit: (code) => process.exit(code),
   schedule(ms, task) {
     const timer = setTimeout(task, ms);

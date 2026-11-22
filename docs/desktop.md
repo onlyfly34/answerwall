@@ -166,6 +166,10 @@ kills the trees that were still registered (`SIGKILL` to the process group,
 left to do. The helper is started detached: on POSIX in a session of its
 own, on Windows outside the job object in which Node keeps the children it
 starts, which would otherwise end the helper together with the core host.
+The core host also looks every two seconds whether the process that started
+it still exists, and otherwise kills its children and exits: on Windows a
+core host with running children was seen to stay behind when the main
+process was killed, where it would keep the port and the data directory.
 An end-to-end test kills the main process while three stubborn mock CLIs
 run and expects every process to be gone, on Windows and on Linux.
 

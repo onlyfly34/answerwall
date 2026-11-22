@@ -44,6 +44,13 @@ export interface HostDeps {
   /** Kills every CLI tree at once; for exits that do not complete a shutdown. */
   killChildren(): void;
   startReaper(script: string): Reaper | undefined;
+  /**
+   * Calls `gone` once when the process that started this one no longer
+   * exists. A utility process normally ends with the main process by itself;
+   * where it does not (seen on Windows while children were running), it must
+   * not stay behind holding the port and the data directory.
+   */
+  watchParent(gone: () => void): void;
   exit(code: number): void;
   schedule(ms: number, task: () => void): () => void;
 }
@@ -175,6 +182,12 @@ export function runHost(deps: HostDeps): void {
       },
     );
   }
+
+  deps.watchParent(() => {
+    logger.error('the main process is gone; exiting');
+    deps.killChildren();
+    deps.exit(1);
+  });
 
   port.onMessage((message) => {
     if (!isRecord(message)) return;
