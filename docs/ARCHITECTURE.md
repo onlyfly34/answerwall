@@ -7,14 +7,15 @@ and are not repeated here.
 
 ## Packages
 
-| Package           | Role                                                                                                                                 |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `packages/core`   | Server library. Entry points: `.` (server), `./protocol` (browser-safe wire protocol), `./testing` (in-memory fakes), `./brand`.     |
-| `packages/web`    | SolidJS UI. Imports only `@answerwall/core/protocol` from core.                                                                      |
-| `apps/server`     | Process entry: environment → `AppConfig` → `createServer`; the `pair` command calls `createPairingCode`.                             |
-| `apps/desktop`    | Electron shell: main process, the core host (core's server in a utility process), the connection page; see [desktop.md](desktop.md). |
-| `tools/mock-clis` | Fake CLIs for tests; put `tools/mock-clis/bin` and a directory holding only `node` on the `env.PATH` given to `createServer`.        |
-| `e2e`             | Playwright suite against the compiled server and the mock CLIs, three viewports; see its README.                                     |
+| Package           | Role                                                                                                                                                                 |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/core`   | Server library. Entry points: `.` (server), `./protocol` (browser-safe wire protocol), `./testing` (in-memory fakes), `./brand`.                                     |
+| `packages/web`    | SolidJS UI. Imports only `@answerwall/core/protocol` from core.                                                                                                      |
+| `apps/server`     | Process entry: environment → `AppConfig` → `createServer`; the `pair` command calls `createPairingCode`.                                                             |
+| `apps/desktop`    | Electron shell: main process, the core host (core's server in a utility process), the connection page; see [desktop.md](desktop.md).                                 |
+| `tools/mock-clis` | Fake CLIs for tests; put `tools/mock-clis/bin` and a directory holding only `node` on the `env.PATH` given to `createServer`.                                        |
+| `e2e`             | Playwright suite against the compiled server and the mock CLIs, three viewports; see its README.                                                                     |
+| `docker/`         | Not a package: compose files, entry point, health check and CLI install helper of the image built by `apps/server/Dockerfile`; [deploy-docker.md](deploy-docker.md). |
 
 Workspace packages resolve to each other's TypeScript sources through the
 `answerwall-source` export condition (set in `tsconfig.base.json`, the Vite
@@ -96,6 +97,11 @@ recorders for API calls, settings updates, toasts and reported errors.
 
 Shared test files (`app.test.ts`, `server.test.ts`, the protocol tests) pin
 contracts only. A unit's own tests live in its directory.
+
+`pnpm smoke:docker` (`docker/test/smoke.mjs`, Linux with Docker) builds the
+image and drives it, started from `docker/compose.yaml` as shipped, with the
+mock CLIs mounted in. `scripts/check-versions.mjs` (run by `pnpm lint`) keeps
+every package on the root version.
 
 `pnpm smoke:mock` (`scripts/smoke-mock.mjs`) builds everything and drives
 the compiled server over real sockets: no fake inside the server, the mock

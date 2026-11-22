@@ -29,15 +29,17 @@ contradicts it.
    this app does not capture.
 3. Never restrict, disable or bypass any authentication method built into a
    CLI. Never inject credentials to "repair" a CLI.
-4. A CLI runs only because the user pressed Send (or pressed Refresh on the
-   provider page). No schedules, no polling, no background automation, no
-   automatic retries, no account rotation.
+4. A CLI answers a prompt only because the user pressed Send. Its version
+   and status commands (never a prompt) run only at server start (§5) and
+   when the user presses Refresh on the provider page. No schedules, no
+   polling, no background automation, no automatic retries, no account
+   rotation.
 5. Single user. No multi-user accounts. Server mode refuses to start without
    authentication. Device pairing is capped and revocable.
 6. No telemetry, no analytics, no third-party network calls. Allowed network
    peers: the CLIs the user enabled, the OpenAI-compatible endpoints the user
-   configured, and (optional, off-switch in settings) the GitHub release check.
-   No Web Push (it needs a vendor push service).
+   configured, and (optional, off-switch in settings, desktop app only) the
+   GitHub release check. No Web Push (it needs a vendor push service).
 7. The README must **not** claim that using a subscription through this tool
    is "compliant" or "allowed". It quotes the vendors' own wording, links the
    source, and states the residual risk. Product name, icon and UI never use a
@@ -288,8 +290,9 @@ lists the evidence item by item.
   `--disable-slash-commands` and the environment variable come from research
   notes, not from `agy --help`, and are unconfirmed. Documented `--mode`
   values are `accept-edits`, `auto`, `plan`. Since v1.5.7 an unset
-  `agentMode` makes `agy -p` run in `auto` where available; P1 tries
-  `--mode default` and confirms with `agy --help` after install. No documented flag disables tools; `--sandbox`
+  `agentMode` makes `agy -p` run in `auto` where available; the adapter
+  passes no `--mode` (none of the documented values restricts the agent,
+  and `default` is not documented). No documented flag disables tools; `--sandbox`
   silently does nothing where unavailable. Credentials live in the OS keyring,
   not in a dot-directory, so containers need extra work. Disabled by default;
   first enable shows the vendor's FAQ wording about third-party wrappers and
@@ -551,7 +554,9 @@ ends with the process, even on `SIGKILL`, so it never goes stale.
   running that command (the page names the provider kind; the command comes
   from the one table `LOGIN_COMMANDS`), never captured, and followed by no
   automatic detection.
-- Settings: providers, limits, layout, TLS/CA download, devices, language.
+- Settings: providers, limits, layout, TLS/CA download, devices, language;
+  in the desktop app also the release check (§10), which a server never
+  makes and therefore does not show.
 - Pairing/sign-in page; a global 401 handler returns to it.
 - PWA: manifest, icons, service worker that caches static assets only and
   never an `/api/` response; the app shell revalidates when
@@ -563,15 +568,25 @@ ends with the process, even on `SIGKILL`, so it never goes stale.
 - CI on every push to `main`, every pull request and on demand (a branch
   is checked through its pull request, so nothing runs twice):
   `ubuntu-latest` and `windows-latest`, lint, typecheck, unit tests,
-  `smoke:mock`, e2e against mock CLIs. Every job is binding, the Windows
-  e2e leg included. No real account is ever used in CI.
+  `smoke:mock`, e2e against mock CLIs, the server bundle started with plain
+  Node, the Windows installer installed and its app tested on
+  `windows-latest`, and the container image built and tested for amd64 and
+  arm64 (not pushed). Every job is binding, the Windows e2e leg included.
+  No real account is ever used in CI.
+- One version for the whole workspace: every `package.json` carries the
+  version of the root one (`scripts/check-versions.mjs`, run by `pnpm lint`),
+  and a release tag must equal it, pre-release suffix included.
 - The server bundle is installed with `npm ci --omit=dev` from a
   `package-lock.json` generated at packaging time and checked against
   `pnpm-lock.yaml` (versions, integrity, registry, no install scripts); see
   `docs/RELEASING.md`.
-- Release on a `v*` tag: build everything, create the GitHub Release as a
-  draft, upload all assets, then publish it in the last step so the release is
-  directly downloadable. `workflow_dispatch` only builds artifacts.
+- Release on a `v*` tag: check the versions against the tag first, build
+  everything, push the image only after every asset was built and CI
+  passed, create the GitHub Release as a draft, upload all assets and
+  `SHA256SUMS`, then publish it in the last step so the release is directly
+  downloadable. A tag with a hyphen is a pre-release (no `latest` image tag,
+  ignored by the desktop updater). `workflow_dispatch` only builds and tests
+  artifacts and pushes nothing.
 - Windows: Electron + electron-builder, NSIS x64, unsigned (documented,
   including Smart App Control). Auto-update checks only this repository's
   releases, asks before installing, can be turned off.
@@ -580,15 +595,19 @@ ends with the process, even on `SIGKILL`, so it never goes stale.
   image contains **no** vendor CLI. Users install CLIs themselves into a
   volume using each vendor's official installer (documented, with an opt-in
   helper script) and log in with `docker exec -it`. The container is the
-  security boundary: only `/data` and the CLI home volume are mounted, never
-  the host home directory.
+  security boundary: only `/data` and the CLI home volume are mounted (plus,
+  in the own-certificate setup, the certificate directory read-only), never
+  the host home directory. The image defaults to TLS `auto`, because a
+  request from the Docker host to a published port arrives from the bridge
+  gateway, which plain HTTP refuses (§7); the reverse-proxy setup trusts that
+  gateway explicitly.
 
 ## 11. Phases
 
 | Phase | Deliverable |
 |---|---|
 | P0 | Monorepo, core (runner, stream protocol, storage, auth, TLS), openai-compat adapter, CLI adapter base + mock CLIs, web UI + PWA, e2e, CI, release workflow skeleton |
-| P1 | claude / codex / grok adapters confirmed against the real CLIs, agy adapter (mock-tested), `pnpm smoke:real` |
+| P1 | claude / codex adapters confirmed against the real CLIs; grok and agy adapters from documentation (mock-tested, §5.2), `pnpm smoke:real` |
 | P2 | Docker image + compose, deployment docs; Electron Windows app (local + remote), first downloadable release |
 | P3 | Hardening, docs (EN + zh-TW), `docs/verify-on-windows.md`, GHCR publishing |
 | later | Multi-turn conversations, desktop + remote sharing |
