@@ -11,7 +11,7 @@ const optionalText = (max: number) =>
   z.preprocess((value) => (value === '' ? undefined : value), z.string().max(max).optional());
 
 export const HistoryQuerySchema = z.object({
-  /** Case-insensitive substring of the prompt. */
+  /** Case-insensitive substring of the prompt or of an answer. */
   q: optionalText(200),
   /** Opaque; pass `nextCursor` from the previous page. */
   cursor: optionalText(200),

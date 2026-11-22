@@ -16,6 +16,7 @@ import type {
   Logger,
   SecretStore,
   Storage,
+  TlsProvider,
 } from './contracts/index.ts';
 import { createHttpLayer } from './http/index.ts';
 import { createLogger } from './logging/index.ts';
@@ -94,34 +95,35 @@ export async function createServer(
   const storage = await openStorage(config, logger);
   const secrets =
     overrides.secrets ?? createFileSecretStore({ file: join(config.dataDir, 'secrets.json'), env });
-  const settings = createSettingsService({ storage, secrets });
-  await settings.load();
-  const providers = createProviderRegistry({ settings, secrets, clock, logger, env });
-  const asks = createAskManager({
-    storage,
-    settings,
-    providers,
-    clock,
-    ids: randomIds,
-    logger,
-    workRoot: join(config.dataDir, 'work'),
-  });
-  await asks.start();
-  const auth = buildAuthService(config, storage, logger);
-  const tls = createTlsProvider({ config, secrets, logger });
-  const http = createHttpLayer({ config, settings, clock, logger });
-  const app = createApp({
-    config,
-    logger,
-    clock,
-    storage,
-    settings,
-    providers,
-    asks,
-    auth,
-    tls,
-    http,
-  });
+  let units;
+  let tlsProvider: TlsProvider | undefined;
+  try {
+    const settings = createSettingsService({ storage, secrets, logger });
+    await settings.load();
+    const providers = createProviderRegistry({ settings, secrets, clock, logger, env });
+    const asks = createAskManager({
+      storage,
+      settings,
+      providers,
+      clock,
+      ids: randomIds,
+      logger,
+      workRoot: join(config.dataDir, 'work'),
+    });
+    await asks.start();
+    const auth = buildAuthService(config, storage, logger);
+    const tls = createTlsProvider({ config, secrets, logger });
+    tlsProvider = tls;
+    const http = createHttpLayer({ config, settings, clock, logger });
+    units = { settings, providers, asks, auth, tls, http };
+  } catch (error) {
+    // Nothing is running yet: no socket, no ask, no child process.
+    await tlsProvider?.close().catch(() => undefined);
+    await storage.close().catch(() => undefined);
+    throw error;
+  }
+  const { providers, asks, auth, tls } = units;
+  const app = createApp({ config, logger, clock, storage, ...units });
 
   let server: Server | undefined;
 

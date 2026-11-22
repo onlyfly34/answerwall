@@ -8,4 +8,5 @@ export { createApp, PUBLIC_API_ROUTES } from './app.ts';
 export { createPairingCode, createServer } from './server.ts';
 export type { ServerHandle, ServerOverrides } from './server.ts';
 export { createLogger } from './logging/index.ts';
+export type { LogFormat, LoggerOptions } from './logging/index.ts';
 export { randomIds, systemClock, systemRandom } from './system.ts';

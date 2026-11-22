@@ -28,7 +28,11 @@ export interface TurnRepository {
    */
   failInterrupted(error: SlotError): Promise<number>;
   get(askId: string): Promise<AskSnapshot | null>;
-  /** Newest first; rows carry no answer bodies. */
+  /**
+   * Newest first; rows carry no answer bodies. `q` matches the prompt or an
+   * answer, case-insensitively.
+   * @throws AppError `bad_request` for a cursor this repository did not issue
+   */
   list(query: HistoryQuery): Promise<HistoryPage>;
   /** Deletes a finished turn, and its conversation when that was its last turn. */
   delete(askId: string): Promise<'deleted' | 'not_found' | 'in_progress'>;

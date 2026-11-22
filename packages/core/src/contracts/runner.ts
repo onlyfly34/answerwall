@@ -17,7 +17,8 @@ export interface AskManager {
    * slot and returns immediately.
    * @throws AppError `too_many_targets` | `prompt_too_long` | `too_many_asks` |
    *   `queue_full` | `unknown_provider` | `provider_disabled` | `not_found`
-   *   (unknown conversationId)
+   *   (unknown conversationId) | `conflict` (the server is shutting down) |
+   *   `bad_request` (duplicate `slotId`, for callers that skip the schema)
    */
   submit(request: AskRequest): Promise<AskResponse>;
 

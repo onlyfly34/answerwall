@@ -4,7 +4,7 @@ import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { BRAND, SECRET_ENV_PREFIX } from '@answerwall/core';
-import type { AppConfig, LogLevel, TlsConfig } from '@answerwall/core';
+import type { AppConfig, LogFormat, LogLevel, TlsConfig } from '@answerwall/core';
 import { SessionRequestSchema } from '@answerwall/core/protocol';
 
 /** A problem with what the operator configured. Its message is shown as is, without a stack trace. */
@@ -15,7 +15,7 @@ export class ConfigError extends Error {
   }
 }
 
-export type LogFormat = 'json' | 'text';
+export type { LogFormat };
 
 export interface OptionSpec {
   /** The environment variable is `<PREFIX><name>`. */

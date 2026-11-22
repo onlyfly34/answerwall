@@ -1,3 +1,4 @@
+import { AppError } from '../contracts/index.ts';
 import type { DeviceRecord, PairingCodeRecord, SecretStore, Storage } from '../contracts/index.ts';
 import { HISTORY_PREVIEW_CHARS, isTerminalSlotStatus } from '../protocol/index.ts';
 import type { AskSnapshot, HistoryItem, Preset } from '../protocol/index.ts';
@@ -75,11 +76,19 @@ export function createFakeStorage(): Storage {
         return turn ? copy(turn) : null;
       },
       async list({ q, cursor, limit }) {
+        // Like the real storage: the prompt or any answer matches, and a cursor
+        // this fake did not issue is refused.
         const needle = q?.toLowerCase();
         const matches = newestFirst().filter(
-          (turn) => needle === undefined || turn.prompt.toLowerCase().includes(needle),
+          (turn) =>
+            needle === undefined ||
+            turn.prompt.toLowerCase().includes(needle) ||
+            turn.slots.some((slot) => slot.text.toLowerCase().includes(needle)),
         );
         const offset = cursor === undefined ? 0 : Number(cursor);
+        if (!Number.isSafeInteger(offset) || offset < 0 || String(offset) !== (cursor ?? '0')) {
+          throw new AppError('bad_request', 'Invalid history cursor');
+        }
         const end = offset + limit;
         return {
           items: matches.slice(offset, end).map(toHistoryItem),
