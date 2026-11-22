@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "name": "AnswerWall web cells (test extension)",
+  "description": "The mechanism of web cells, against a local stand-in site. For automated tests only.",
+  "version": "0.0.0",
+  "permissions": ["declarativeNetRequestWithHostAccess", "storage"],
+  "host_permissions": ["http://vendor.localhost/*", "http://127.0.0.1/*"],
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [
+    {
+      "matches": ["http://vendor.localhost/*"],
+      "js": ["content.js"],
+      "all_frames": true,
+      "run_at": "document_idle"
+    }
+  ]
+}

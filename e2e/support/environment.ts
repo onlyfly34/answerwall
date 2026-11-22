@@ -34,6 +34,12 @@ export function runDir(): string {
   return dir;
 }
 
+/**
+ * The unpacked test extension of the web-cell tests: a copy of
+ * `web-cells/extension` with the web UI built into `app/`.
+ */
+export const webCellsExtensionDir = (): string => path.join(runDir(), 'web-cells-extension');
+
 /** Where running servers register themselves, so the teardown can prove none is left. */
 export const registryDir = (): string => path.join(runDir(), 'servers');
 

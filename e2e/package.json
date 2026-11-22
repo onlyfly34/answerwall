@@ -11,11 +11,15 @@
     "test:tablet": "playwright test --project=tablet",
     "test:phone": "playwright test --project=phone",
     "browsers": "playwright install chromium",
-    "report": "playwright show-report playwright-report"
+    "report": "playwright show-report playwright-report",
+    "test:web-cells": "playwright test --project=web-cells"
   },
   "devDependencies": {
     "@answerwall/mock-clis": "workspace:*",
     "@answerwall/server": "workspace:*",
-    "@playwright/test": "1.65.1"
+    "@answerwall/web": "workspace:*",
+    "@playwright/test": "1.65.1",
+    "vite": "8.3.8",
+    "vite-plugin-solid": "2.11.17"
   }
 }

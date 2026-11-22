@@ -5,7 +5,7 @@
  */
 import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, statSync } from 'node:fs';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { cp, mkdtemp, readFile, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {
@@ -15,6 +15,7 @@ import {
   RUN_DIR_ENV,
   SERVER_MAIN,
   WEB_INDEX,
+  webCellsExtensionDir,
 } from './environment.ts';
 
 const OUTPUTS = [SERVER_MAIN, CORE_MAIN, WEB_INDEX];
@@ -68,6 +69,33 @@ function build(): void {
   }
 }
 
+const WEB_CELLS = path.join(ROOT, 'e2e', 'web-cells');
+
+/**
+ * The test extension of the web-cell tests, assembled in the run directory:
+ * the extension's own files, and the web UI built from its `embed` entry the
+ * way an extension ships it (relative asset paths, no service worker).
+ */
+async function buildWebCellsExtension(): Promise<void> {
+  const target = webCellsExtensionDir();
+  await cp(path.join(WEB_CELLS, 'extension'), target, { recursive: true });
+  const { build, defaultClientConditions } = await import('vite');
+  const { default: solid } = await import('vite-plugin-solid');
+  const manifest = JSON.parse(
+    await readFile(path.join(ROOT, 'apps', 'server', 'package.json'), 'utf8'),
+  ) as { version: string };
+  await build({
+    configFile: false,
+    logLevel: 'warn',
+    root: path.join(WEB_CELLS, 'embedded'),
+    base: './',
+    plugins: [solid()],
+    define: { __APP_VERSION__: JSON.stringify(manifest.version) },
+    resolve: { conditions: ['answerwall-source', ...defaultClientConditions] },
+    build: { outDir: path.join(target, 'app'), emptyOutDir: true, target: 'es2023' },
+  });
+}
+
 export default async function globalSetup(): Promise<void> {
   const mode = process.env['E2E_BUILD'] ?? 'auto';
   const reason = mode === 'always' ? 'E2E_BUILD=always' : buildReason();
@@ -81,6 +109,7 @@ export default async function globalSetup(): Promise<void> {
   process.env[RUN_DIR_ENV] = dir;
   try {
     await prepareSandbox();
+    await buildWebCellsExtension();
   } catch (error) {
     // The teardown does not run after a failed setup.
     await rm(dir, { recursive: true, force: true });

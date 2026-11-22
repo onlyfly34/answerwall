@@ -59,5 +59,11 @@ export default defineConfig({
         deviceScaleFactor: 3,
       },
     },
+    {
+      // Web cells: a Chromium with its own profile and an unpacked extension,
+      // started by the tests' own fixtures (web-cells/support/fixtures.ts).
+      name: 'web-cells',
+      testDir: 'web-cells',
+    },
   ],
 });

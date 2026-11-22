@@ -253,9 +253,18 @@ importers:
       '@answerwall/server':
         specifier: workspace:*
         version: link:../apps/server
+      '@answerwall/web':
+        specifier: workspace:*
+        version: link:../packages/web
       '@playwright/test':
         specifier: 1.65.1
         version: 1.65.1
+      vite:
+        specifier: 8.3.8
+        version: 8.3.8(@types/node@24.19.2)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.4)
+      vite-plugin-solid:
+        specifier: 2.11.17
+        version: 2.11.17(solid-js@1.9.20)(supports-color@7.2.0)(vite@8.3.8(@types/node@24.19.2)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.4))
 
   packages/core:
     dependencies:
