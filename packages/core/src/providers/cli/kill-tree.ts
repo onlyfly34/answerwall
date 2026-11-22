@@ -46,6 +46,13 @@ export interface TreeKiller {
   terminate(): void;
   /** Kills whatever is left of the tree now and cancels the pending escalation. */
   sweep(): void;
+  /**
+   * The root process has ended. On Windows nothing is killed by this pid from
+   * here on: the tree can only be found through its root, and the system
+   * gives the number of an ended process to the next one that starts, so a
+   * late `taskkill` would end a stranger and everything below it.
+   */
+  rootExited(): void;
 }
 
 function signalGroup(pid: number, signal: NodeJS.Signals): void {
@@ -74,7 +81,8 @@ function taskkillPath(env: NodeJS.ProcessEnv): string {
 /**
  * Kills a child and everything it started. POSIX: the child leads its own
  * process group (spawned `detached`), which gets SIGTERM and then SIGKILL.
- * Windows: `taskkill /T /F`, which is forceful from the start.
+ * Windows: `taskkill /T /F`, which is forceful from the start, and only
+ * while the root is still running.
  */
 export function createTreeKiller(pid: number, options: TreeKillerOptions): TreeKiller {
   const { platform, clock } = options;
@@ -114,6 +122,11 @@ export function createTreeKiller(pid: number, options: TreeKillerOptions): TreeK
       liveTrees.delete(forceNow);
       // On Windows the tree cannot be addressed once its root has exited.
       if (platform !== 'win32') killGroup(pid, 'SIGKILL');
+    },
+    rootExited() {
+      if (platform !== 'win32') return;
+      terminated = true;
+      liveTrees.delete(forceNow);
     },
   };
 }

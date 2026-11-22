@@ -71,6 +71,16 @@ describe('createTreeKiller on POSIX', () => {
     expect(clock.pendingTimers).toBe(0);
   });
 
+  test('the group outlives its root, so it is still stopped after the root has ended', async () => {
+    const { clock, signals, killer } = setup('linux');
+
+    killer.rootExited();
+    killer.terminate();
+    await clock.advance(KILL_GRACE_MS);
+
+    expect(signals.map(([, signal]) => signal)).toEqual(['SIGTERM', 'SIGKILL']);
+  });
+
   test('never starts a helper process', () => {
     const { helpers, killer } = setup('darwin');
 
@@ -111,6 +121,18 @@ describe('createTreeKiller on Windows', () => {
 
     expect(helpers).toHaveLength(1);
     expect(signals).toEqual([]);
+  });
+
+  test('once the root has ended its pid is never killed: the number may belong to another process', () => {
+    const { helpers, waitedHelpers, killer } = setup('win32', { SYSTEMROOT: 'C:\\Windows' });
+
+    killer.rootExited();
+    killer.terminate();
+    killChildProcessTrees();
+    killer.sweep();
+
+    expect(helpers).toEqual([]);
+    expect(waitedHelpers).toEqual([]);
   });
 });
 
