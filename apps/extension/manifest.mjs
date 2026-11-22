@@ -30,6 +30,36 @@ export function chromeVersion(version) {
 }
 
 /**
+ * The content security policy of the extension's pages. It is the policy the
+ * server sends for the same web UI (DECISIONS section 7), with what the wall
+ * page needs on top:
+ * - `connect-src http: https:` — the server is at an address the user
+ *   enters, so it cannot be named here. Which host is reached is decided by
+ *   the host permission the user grants and by the page's own connection,
+ *   which refuses every other origin.
+ * - `frame-src https:` — the vendors' sites in the cells, and wherever their
+ *   sign-in sends the frame.
+ * Everything else stays closed: no remote script, image, style, font or
+ * media, no plugin, no `<base>`, and no form that posts anywhere.
+ *
+ * @param {{ host: string } | undefined} [test] the test build also frames the stand-in site, over http
+ */
+export function contentSecurityPolicy(test) {
+  return [
+    "default-src 'self'",
+    "script-src 'self'",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data:",
+    'connect-src http: https:',
+    `frame-src https:${test ? ` http://${test.host}:*` : ''}`,
+    "object-src 'none'",
+    "base-uri 'none'",
+    "frame-ancestors 'none'",
+    "form-action 'none'",
+  ].join('; ');
+}
+
+/**
  * @param {object} options
  * @param {string} options.name          the product name
  * @param {string} options.version       the workspace version
@@ -56,6 +86,7 @@ export function buildManifest({ name, version, hosts, test }) {
     icons: { 48: 'icon-192.png', 128: 'icon-192.png' },
     action: { default_title: `Open the ${name} wall` },
     background: { service_worker: 'worker.js' },
+    content_security_policy: { extension_pages: contentSecurityPolicy(test) },
     // declarativeNetRequestWithHostAccess: header rules only for hosts the
     // extension has host permission for. storage: the server's address and
     // the device token. Nothing else: no cookies, no webRequest, no tabs, no

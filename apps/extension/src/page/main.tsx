@@ -11,6 +11,7 @@ import { mountEmbedded } from '@answerwall/web/embed';
 import type { WebCellSite } from '@answerwall/web/embed';
 import { ruleForSite, SITE_HOSTS, TEST_SITE_ID, TEST_SITE_RULE } from '../rules/index.ts';
 import { installFrameRule, removeFrameRule } from '../shared/frame-rule.ts';
+import { restrictStorage } from '../shared/storage-access.ts';
 import { createWebCellHost } from './host.ts';
 import { LANGUAGE_KEY, pickLanguage, translator } from './messages.ts';
 import {
@@ -100,6 +101,8 @@ async function main(): Promise<void> {
   const root = document.getElementById('root');
   const strip = document.getElementById('strip');
   if (!root || !strip) return;
+  // Before anything is read or written: no content script may see the token.
+  await restrictStorage(storage);
 
   const { server } = await readConnection(storage);
   if (server === undefined) {

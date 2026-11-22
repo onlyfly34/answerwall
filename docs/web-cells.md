@@ -364,19 +364,20 @@ reloads it.
 
 ### 2.7 The extension
 
-| Path (`apps/extension/`)   | Content                                                                                                                                          |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `manifest.mjs`             | The manifest as data: permissions, hosts, the public key that fixes the ID (`nffcmlcjkacklpololkpdmhcfokannom`).                                 |
-| `build.mjs`                | Three Vite builds into one directory: the wall page, the content script and the worker (each one classic script). `--test` makes the test build. |
-| `rules/<site>.json`        | One rule per site of `WEB_SITES`, plus `standin.json` for the tests. `src/rules/schema.ts` says what a rule is and validates one.                |
-| `src/page/main.tsx`        | The wall page: first-run page or `mountEmbedded`, the header rule, the strip under the wall.                                                     |
-| `src/page/pairing.ts`      | The server's address, the optional host permission, pairing, what is kept in `chrome.storage.local` (`server`, `deviceToken`).                   |
-| `src/page/host.ts`         | `WebCellHost`: binds a content script's port to its frame, tracks the connection, one run at a time, resumes a read when the page was replaced.  |
-| `src/content/main.ts`      | The content script: returns unless `isUnderWall`, then connects and runs the rule for its host.                                                  |
-| `src/content/engine.ts`    | Applies a rule: find the message box, fill it, submit, wait for the new answer to finish, read it.                                               |
-| `src/content/markdown.ts`  | Rendered answer back to Markdown.                                                                                                                |
-| `src/shared/frame-rule.ts` | The header rule, installing, removing and sweeping it.                                                                                           |
-| `src/worker/main.ts`       | Opens the wall on a click on the toolbar button; removes the rule of a tab that no longer shows a wall.                                          |
+| Path (`apps/extension/`)       | Content                                                                                                                                              |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `manifest.mjs`                 | The manifest as data: permissions, hosts, the pages' content security policy, the public key that fixes the ID (`nffcmlcjkacklpololkpdmhcfokannom`). |
+| `build.mjs`                    | Three Vite builds into one directory: the wall page, the content script and the worker (each one classic script). `--test` makes the test build.     |
+| `rules/<site>.json`            | One rule per site of `WEB_SITES`, plus `standin.json` for the tests. `src/rules/schema.ts` says what a rule is and validates one.                    |
+| `src/page/main.tsx`            | The wall page: first-run page or `mountEmbedded`, the header rule, the strip under the wall.                                                         |
+| `src/page/pairing.ts`          | The server's address, the optional host permission, pairing, what is kept in `chrome.storage.local` (`server`, `deviceToken`).                       |
+| `src/page/host.ts`             | `WebCellHost`: binds a content script's port to its frame, tracks the connection, one run at a time, resumes a read when the page was replaced.      |
+| `src/content/main.ts`          | The content script: returns unless `isUnderWall`, then connects and runs the rule for its host.                                                      |
+| `src/content/engine.ts`        | Applies a rule: find the message box, fill it, submit, wait for the new answer to finish, read it.                                                   |
+| `src/content/markdown.ts`      | Rendered answer back to Markdown.                                                                                                                    |
+| `src/shared/frame-rule.ts`     | The header rule, installing, removing and sweeping it.                                                                                               |
+| `src/shared/storage-access.ts` | Closes `chrome.storage.local` to the content script (`TRUSTED_CONTEXTS`); called by the worker at every start and by the wall page.                  |
+| `src/worker/main.ts`           | Opens the wall on a click on the toolbar button; removes the rule of a tab that no longer shows a wall.                                              |
 
 **Frame and port.** A port from `chrome.runtime.connect` says which tab its
 content script is in, not which frame element. The content script therefore

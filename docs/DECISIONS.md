@@ -662,7 +662,9 @@ leaked token cannot fan out into thousands of processes.
   clients and tests: `Authorization: Bearer`. The wall page of the browser
   extension is on another origin and uses `Authorization: Bearer` with its
   device token, kept in the extension's own storage; it never gets or uses
-  the cookie (below).
+  the cookie (below). That storage is set to the access level
+  `TRUSTED_CONTEXTS`, so the extension's content script, which runs in the
+  renderer of a vendor's page, cannot read it.
 - Desktop local mode: random port, fresh token per launch; the Electron main
   process injects the `Authorization` header for `http://127.0.0.1:<port>`
   with `session.webRequest.onBeforeSendHeaders`. The token never reaches
@@ -752,7 +754,11 @@ leaked token cannot fan out into thousands of processes.
   script-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'none';
   base-uri 'none'; frame-ancestors 'none'; form-action 'self'`. Remote images
   in answers are never loaded; they render as links. Links get
-  `rel="noopener noreferrer"` and open externally.
+  `rel="noopener noreferrer"` and open externally. The extension's pages
+  declare the same policy in the manifest, with `connect-src http: https:`
+  (the server's address is the user's and unknown at build time; the page's
+  connection refuses every origin but that one), `frame-src https:` (the
+  web cells) and `form-action 'none'`.
 - Secrets (`SecretStore` interface: get/set/delete): OpenAI-compatible API
   keys, the Electron app's remote token, TLS private keys. Server: a `0600`
   file in the data dir, separate from the database, with environment

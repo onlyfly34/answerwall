@@ -73,6 +73,99 @@ test('first run: the server refuses an extension it does not list; once listed, 
   expect(await worker.evaluate(() => chrome.storage.local.get(['server', 'deviceToken']))).toEqual(
     {},
   );
+  // The device was signed out on the server, not only forgotten here.
+  const left = await server.api<{ devices: { name: string }[] }>('GET', '/api/auth/devices');
+  expect(left.json.devices.map((device) => device.name)).not.toContain('Browser extension');
+});
+
+test('the content script in a tab of a site cannot read the server address or the device token', async ({
+  context,
+  vendor,
+  worker,
+  useStandIn,
+  allowExtension,
+  openWallPage,
+  connect,
+}) => {
+  await useStandIn();
+  await allowExtension({ fillPrompt: false, readAnswer: false });
+  const wall = await openWallPage();
+  await connect(wall);
+  const stored = await worker.evaluate(() => chrome.storage.local.get('deviceToken'));
+  expect(stored['deviceToken']).toMatch(/^[\w-]{40,}$/);
+
+  // An ordinary tab of the site: the content script runs there, in its own world.
+  const tab = await context.newPage();
+  const cdp = await context.newCDPSession(tab);
+  const worlds: number[] = [];
+  cdp.on('Runtime.executionContextCreated', ({ context: created }) => {
+    const aux = created.auxData as { type?: string } | undefined;
+    if (aux?.type === 'isolated' && created.origin.startsWith('chrome-extension://')) {
+      worlds.push(created.id);
+    }
+  });
+  await cdp.send('Runtime.enable');
+  await tab.goto(vendor.origin);
+  await expect.poll(() => worlds.length).toBeGreaterThan(0);
+
+  // Asked from that world, as a compromised page of the site could.
+  const read = await cdp.send('Runtime.evaluate', {
+    contextId: worlds.at(-1),
+    awaitPromise: true,
+    returnByValue: true,
+    expression: `(async () => {
+      if (typeof chrome === 'undefined' || !chrome.runtime?.id) return 'not the content script';
+      try {
+        return 'read: ' + JSON.stringify(await chrome.storage.local.get(['server', 'deviceToken']));
+      } catch (error) {
+        return 'refused: ' + String(error);
+      }
+    })()`,
+  });
+  expect(read.result.value).toMatch(/^refused: /);
+  expect(String(read.result.value)).not.toContain(String(stored['deviceToken']));
+});
+
+test('the wall page of the extension loads nothing from another site: no image, no form, no base', async ({
+  vendor,
+  allowExtension,
+  openWallPage,
+  connect,
+}) => {
+  await allowExtension({ fillPrompt: false, readAnswer: false });
+  const wall = await openWallPage();
+  await connect(wall);
+
+  // What markup that got past the sanitiser would try, put into the page directly.
+  const blocked = await wall.evaluate(async (origin) => {
+    const violations: string[] = [];
+    document.addEventListener('securitypolicyviolation', (event) => {
+      violations.push(event.effectiveDirective);
+    });
+    const image = document.createElement('img');
+    const settled = new Promise<string>((resolve) => {
+      image.addEventListener('load', () => resolve('loaded'));
+      image.addEventListener('error', () => resolve('blocked'));
+    });
+    image.src = `${origin}/probe-image.png`;
+    document.body.append(image);
+    const base = document.createElement('base');
+    base.href = `${origin}/probe-base/`;
+    document.head.append(base);
+    const form = document.createElement('form');
+    form.action = `${origin}/probe-form`;
+    form.method = 'post';
+    document.body.append(form);
+    form.submit();
+    const outcome = await settled;
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    return { outcome, violations: violations.sort(), baseURI: document.baseURI };
+  }, vendor.origin);
+  expect(blocked.outcome).toBe('blocked');
+  expect(blocked.violations).toEqual(['base-uri', 'form-action', 'img-src']);
+  expect(blocked.baseURI).toMatch(/^chrome-extension:\/\//);
+  expect(wall.url()).toMatch(/^chrome-extension:\/\//);
+  expect(vendor.requests.filter((request) => request.path.startsWith('/probe-'))).toEqual([]);
 });
 
 test('a mixed ask: the prompt is typed into the site, and its answer is stored next to the CLI answer', async ({

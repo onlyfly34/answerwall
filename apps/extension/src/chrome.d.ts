@@ -47,6 +47,9 @@ declare namespace chrome {
       get(keys: string | string[]): Promise<Record<string, unknown>>;
       set(items: Record<string, unknown>): Promise<void>;
       remove(keys: string | string[]): Promise<void>;
+      setAccessLevel(options: {
+        accessLevel: 'TRUSTED_CONTEXTS' | 'TRUSTED_AND_UNTRUSTED_CONTEXTS';
+      }): Promise<void>;
     }
     const local: StorageArea;
   }

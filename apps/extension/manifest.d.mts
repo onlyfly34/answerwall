@@ -11,6 +11,8 @@ export interface ManifestOptions {
   test?: { host: string; serverPattern: string };
 }
 
+export function contentSecurityPolicy(test?: { host: string }): string;
+
 export interface Manifest {
   manifest_version: 3;
   name: string;
@@ -22,6 +24,7 @@ export interface Manifest {
   icons: Record<string, string>;
   action: { default_title: string };
   background: { service_worker: string };
+  content_security_policy: { extension_pages: string };
   permissions: string[];
   host_permissions: string[];
   optional_host_permissions: string[];

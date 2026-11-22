@@ -141,6 +141,26 @@ describe('the manifest', () => {
     ]);
   });
 
+  test('its pages get the policy of the server’s page, opened only for the server and the frames', () => {
+    const policy = manifest.content_security_policy.extension_pages;
+    expect(policy).toBe(
+      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
+        "img-src 'self' data:; connect-src http: https:; frame-src https:; " +
+        "object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'",
+    );
+    // No remote image, script, style, font or media, and nothing evaluated.
+    const directives = new Map(
+      policy.split('; ').map((directive) => {
+        const [name = '', ...sources] = directive.split(' ');
+        return [name, sources] as const;
+      }),
+    );
+    for (const name of ['default-src', 'script-src', 'img-src', 'style-src']) {
+      expect(directives.get(name)?.join(' '), name).not.toMatch(/https?:|\*|eval/);
+    }
+    expect(directives.get('script-src')).toEqual(["'self'"]);
+  });
+
   test('carries the version in the two forms Chrome wants', () => {
     expect(manifest.version).toBe('1.2.3');
     expect(manifest.version_name).toBe('1.2.3-rc.4');
@@ -158,6 +178,9 @@ describe('the manifest', () => {
     expect(test.host_permissions).toContain('http://vendor.localhost/*');
     expect(test.host_permissions).toContain('http://127.0.0.1/*');
     expect(test.name).toContain('test build');
+    expect(test.content_security_policy.extension_pages).toContain(
+      'frame-src https: http://vendor.localhost:*;',
+    );
     expect(JSON.stringify(manifest)).not.toContain('localhost');
     expect(JSON.stringify(manifest)).not.toContain('127.0.0.1');
   });

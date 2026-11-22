@@ -1,10 +1,17 @@
 /**
  * The service worker. It opens the wall page when the toolbar button is
  * pressed, and removes the header rule of a tab that stopped showing a wall
- * page. It holds no state, makes no request and never talks to a site or to
- * the AnswerWall server.
+ * page, and closes the extension's storage to content scripts. It holds no
+ * state, makes no request and never talks to a site or to the AnswerWall
+ * server.
  */
 import { removeFrameRule, sweepFrameRules } from '../shared/frame-rule.ts';
+import { restrictStorage } from '../shared/storage-access.ts';
+
+// The worker starts at installation, at an update and at every start of the
+// browser, and before any event reaches it: the storage is never left open
+// to the content script.
+void restrictStorage(chrome.storage.local);
 
 const WALL_PAGE = 'wall.html';
 const wallUrl = chrome.runtime.getURL(WALL_PAGE);

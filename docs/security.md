@@ -139,7 +139,9 @@ IDs of the extensions that may connect, and the sites.
   can read nothing from it, whether an extension is listed or not.
 - **How it signs in.** Like any device: with a pairing code. It gets its own
   token, keeps it in the extension's storage, where web pages cannot read
-  it, and sends it with each request. It never gets the cookie, and a
+  it, and sends it with each request. The storage is closed to the
+  extension's own content script too (see below), so that only the wall page
+  and the extension's worker can read the token. It never gets the cookie, and a
   request from an extension that carries the cookie is refused. It appears
   under **Settings > Devices** and is revoked there.
 - **What a listed extension can do.** Everything a paired device can. List
@@ -190,6 +192,19 @@ The extension itself:
   nested deeper, it returns at once. It types and reads only when the wall
   page tells it to, which happens only on Send and only for the switches
   you turned on.
+- **What its script cannot read.** The extension's storage, which holds
+  your server's address and the device token, is set to the access level
+  `TRUSTED_CONTEXTS`: the wall page and the worker can read it, the content
+  script that runs inside the sites' pages cannot. The worker sets the level
+  every time it starts and the wall page sets it before it reads or writes.
+- **Its own page's content security policy.** The wall page runs under the
+  policy the server sends for the same page: scripts, styles and images
+  only from the extension itself, no plugin, no `<base>`, and no form that
+  posts anywhere. Two things are wider than on the server, because they
+  have to be: connections may go to any `http:` or `https:` address (your
+  server's address is not known when the extension is built; which host can
+  actually be reached is still limited to the one you granted), and frames
+  may show any `https:` page (the sites, and wherever their sign-in leads).
 - **What it cannot reach.** Your cookies and sign-ins: the browser sends a
   site's cookies to that site and never shows them to the extension.
 - **Its ID is fixed** (`nffcmlcjkacklpololkpdmhcfokannom`), from a public
