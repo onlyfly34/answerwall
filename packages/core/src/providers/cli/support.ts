@@ -116,7 +116,7 @@ export function billingReport(
   if (!cliSwitches(instance).useEnvApiKey) {
     return {
       billing: fromLogin,
-      hint: `Not passed to the CLI: ${list}. Turn on "use API key from environment" to bill those instead of the CLI's own login.`,
+      hint: `Not passed to the CLI: ${list}. Turn on "Use the API key from the server environment" to bill those instead of the CLI's own login.`,
     };
   }
   const passed = `Passed to the CLI from the environment: ${list}.`;
