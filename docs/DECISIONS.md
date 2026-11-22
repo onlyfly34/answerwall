@@ -176,7 +176,7 @@ real runs, and updates this section.
 - **claude** — `claude -p --output-format stream-json --verbose
   --include-partial-messages --tools "" --strict-mcp-config --safe-mode
   --disable-slash-commands --no-session-persistence --permission-prompts none
-  --model <m>`, prompt on stdin; env `ENABLE_CLAUDEAI_MCP_SERVERS=false`.
+  --model <m> --effort <e>`, prompt on stdin; env `ENABLE_CLAUDEAI_MCP_SERVERS=false`.
   Never `--bare` (it ignores subscription login). Not `--permission-mode plan`.
   Consider `--system-prompt` with a short Q&A prompt. Text deltas:
   `type=="stream_event"` with `event.delta.type=="text_delta"`. Errors: the
@@ -187,28 +187,33 @@ real runs, and updates this section.
   no MCP servers, no plugins.
 - **codex** — `codex exec --json --color never --skip-git-repo-check
   --ephemeral --ignore-user-config --ignore-rules -s read-only -C <workDir>
-  -m <model> -` plus `--disable <feature>` for `shell_tool`, `unified_exec`,
-  `apps`, `plugins`, `hooks`, `multi_agent`, `image_generation`,
-  `browser_use`, `computer_use`; prompt on stdin. Use
+  -m <model> -c model_reasoning_effort="<e>"` plus `--disable <feature>` for
+  `shell_tool`, `unified_exec`, `apps`, `plugins`, `hooks`, `multi_agent`,
+  `image_generation`, `browser_use`, `computer_use`, then a final `-`; prompt
+  on stdin. Use
   `codex debug prompt-input <flags> "hi"` (renders locally, costs nothing) to
   confirm what each flag removes. Login: `codex login status` (message is on
   **stderr**). Models: `codex debug models` (JSON; keep `visibility=="list"`).
   Documented JSONL events are item-level, so codex is probably
   `streaming: 'block'`; confirm in P1.
-- **agy** (Gemini) — plain spawn, stdin `'ignore'` or closed immediately,
-  always pass `--print-timeout`, `--output-format stream-json`,
-  `--model <slug>`. Documented `--mode` values are `accept-edits`, `auto`,
-  `plan`; the safe default mode is selected by leaving `agentMode` empty in
-  settings — verify with `agy --help` after install. No documented flag
-  disables tools; `--sandbox` silently does nothing where unavailable. Long
-  prompts: `--input-format stream-json`. Credentials live in the OS keyring,
+- **agy** (Gemini) — `agy -p "" --input-format stream-json --output-format
+  stream-json --print-timeout <n>s --disable-slash-commands --model <slug>
+  --effort <e>`, the prompt as one `{"event":"user","message":{"content":…}}`
+  line on stdin, which is then closed; env `AGY_CLI_DISABLE_AUTO_UPDATE=true`.
+  `--disable-slash-commands` and the environment variable come from research
+  notes, not from `agy --help`, and are unconfirmed. Documented `--mode`
+  values are `accept-edits`, `auto`, `plan`; the safe default mode is
+  selected by leaving `agentMode` empty in settings — verify with
+  `agy --help` after install. No documented flag disables tools; `--sandbox`
+  silently does nothing where unavailable. Credentials live in the OS keyring,
   not in a dot-directory, so containers need extra work. Disabled by default;
   first enable shows the vendor's FAQ wording about third-party wrappers and
   consumer plans. Concurrency fixed at 1.
 - **grok** — `grok --prompt-file <file> --output-format streaming-json
   -m <model> --cwd <workDir> --no-auto-update --max-turns 1 --no-plan
-  --no-subagents`, env `GROK_MEMORY=0`, tools restricted with
-  `--tools`/`--disallowed-tools`, Linux adds `--sandbox read-only`. Note the
+  --no-subagents --tools ""`, env `GROK_MEMORY=0`, Linux adds
+  `--sandbox read-only`. No effort flag is documented, so effort is not
+  passed. Note the
   format name is `streaming-json`. It does not read stdin. Login:
   `grok login --device-auth`. Models: `grok models`.
 - **openai-compat** — `POST {baseUrl}/v1/chat/completions` with
@@ -292,14 +297,18 @@ leaked token cannot fan out into thousands of processes.
 - Desktop local mode: random port, fresh token per launch; the Electron main
   process injects the `Authorization` header for `http://127.0.0.1:<port>`
   with `session.webRequest.onBeforeSendHeaders`. The token never reaches
-  renderer JavaScript.
+  renderer JavaScript. The launch token is the only credential a local
+  instance accepts: it has no paired devices, refuses to create pairing
+  codes, and its settings page shows no devices section.
 - Server mode first device: when no device is paired the server prints a
   one-time 8-digit pairing code (valid 5 minutes) to its log;
   `answerwall pair` prints a new one. Further devices: a signed-in device
   creates a pairing code in settings (5 minutes, single use, void after 5
   wrong attempts, constant-time comparison). Each device gets its own 256-bit
   token; the database stores only its SHA-256, a device name and last-used
-  time. Devices are listed and revocable. Max 8 devices.
+  time. Devices are listed and revocable. Max 8 devices. The session cookie
+  lives 400 days and its lifetime is renewed at most once a day on use; the
+  token itself is not rotated (revoking the device is how it ends).
 - An optional static token from `ANSWERWALL_TOKEN` exists for automation and
   tests.
 - Every request: `Host` must be in the allowlist (loopback names plus the
@@ -352,8 +361,8 @@ leaked token cannot fan out into thousands of processes.
 
 ## 8. Storage
 
-`node:sqlite`, in the data dir (`ANSWERWALL_DATA_DIR`; Docker `/data`;
-Electron `userData`). Schema anticipates multi-turn conversations:
+`node:sqlite`, in the data dir (`ANSWERWALL_DATA_DIR`, default
+`~/.answerwall`; Docker `/data`; Electron `userData`). Schema anticipates multi-turn conversations:
 
 ```
 conversations 1—N turns 1—N slot_runs
@@ -377,8 +386,11 @@ credential is ever stored.
   never insert per-delta HTML), code-block copy, elapsed time and token
   usage, cancel, clear error states for queued / not logged in / quota /
   timeout / cancelled / block-streaming.
-- Composer: Ctrl/Cmd+Enter sends, cancel all. Presets: save, rename, delete,
-  one-click switch. History: list, search, reopen, delete.
+- Composer: Ctrl/Cmd+Enter sends, cancel all. Send is disabled while the
+  wall's current ask still has unfinished cells, so an ask is never left
+  running unseen. Presets: save, rename, delete, one-click switch; the
+  default preset is chosen per device. History: list, search (prompt and
+  answers), reopen, delete.
 - Providers page: install and login state, billing source, login instructions
   (the exact official command to run), refresh button, agy risk notice.
 - Settings: providers, limits, layout, TLS/CA download, devices, language.
@@ -436,13 +448,19 @@ Planned additions, not yet scheduled into a phase's contract:
 - `tools/mock-clis`: one fake executable per CLI kind that replays fixtures
   and can simulate slow streaming, hang with stdin open, init-then-hang,
   logged out, quota exhausted, non-zero exit, garbage output, block (non
-  token) streaming. On Windows the mocks exist both as `.exe`-style and
-  `.cmd` shim forms.
+  token) streaming. On Windows the mocks exist in the `.cmd` and `.ps1`
+  shim forms npm writes; the resolution of a native `.exe` is covered by
+  the resolver's unit tests.
 - Unit: parsers, SSE, queueing/concurrency, cancel/timeout, auth middleware,
   host/origin checks, settings, storage migrations, TLS mode selection.
 - e2e (Playwright; desktop, tablet, phone viewports): ask with 12 mock slots,
   queueing visible, cancel, reconnect mid-stream, presets, history, pairing,
   hostile Markdown (`<img src=http://…>`, `<script>`, `javascript:` links)
   causes no outbound request.
+- `pnpm smoke:mock`: builds everything and drives the compiled server end to
+  end against the mock CLIs and a local OpenAI-compatible stub (pairing, a
+  queued 14-slot ask, resume, cancel, history, presets, settings, static UI
+  headers, shutdown with no process left behind, restart). No real CLI and
+  no network beyond loopback; safe for CI.
 - `pnpm smoke:real`: manual only, never in CI; one tiny prompt per installed
   and logged-in CLI; asserts an answer and, for claude, an empty tool list.

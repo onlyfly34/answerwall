@@ -7,12 +7,13 @@ and are not repeated here.
 
 ## Packages
 
-| Package                  | Role                                                                                                                             |
-| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
-| `packages/core`          | Server library. Entry points: `.` (server), `./protocol` (browser-safe wire protocol), `./testing` (in-memory fakes), `./brand`. |
-| `packages/web`           | SolidJS UI. Imports only `@answerwall/core/protocol` from core.                                                                  |
-| `apps/server`            | Process entry: environment → `AppConfig` → `createServer`; the `pair` command calls `createPairingCode`.                         |
-| `tools/mock-clis`, `e2e` | Placeholders; see their READMEs.                                                                                                 |
+| Package           | Role                                                                                                                             |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/core`   | Server library. Entry points: `.` (server), `./protocol` (browser-safe wire protocol), `./testing` (in-memory fakes), `./brand`. |
+| `packages/web`    | SolidJS UI. Imports only `@answerwall/core/protocol` from core.                                                                  |
+| `apps/server`     | Process entry: environment → `AppConfig` → `createServer`; the `pair` command calls `createPairingCode`.                         |
+| `tools/mock-clis` | Fake CLIs for tests; put `tools/mock-clis/bin` and a directory holding only `node` on the `env.PATH` given to `createServer`.    |
+| `e2e`             | Placeholder for the Playwright suite; see its README.                                                                            |
 
 Workspace packages resolve to each other's TypeScript sources through the
 `answerwall-source` export condition (set in `tsconfig.base.json`, the Vite
@@ -45,18 +46,17 @@ a commit of their own, after agreeing with the units on both sides.
 
 ## Units
 
-Each unit replaces the bodies of the factory functions in its directory; the
-signatures are fixed. Until a unit exists its factory returns a placeholder
-whose methods throw `NotImplementedError` (HTTP 501).
+Each unit implements the factory functions in its directory; the signatures
+are fixed. Every unit is built, and `createServer` wires the real ones.
 
-| Unit      | Owns                                                                                                                                                             | Implements                                                                                                                                                                                                                           | Consumes                                                                                                                     |
-| --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
-| runner    | `packages/core/src/runner/**`, `routes/ask.ts`                                                                                                                   | `AskManager` (`createAskManager`)                                                                                                                                                                                                    | `Storage.turns`, `SettingsService`, `ProviderRegistry`, `Clock`, `IdGenerator`, `Logger`                                     |
-| storage   | `packages/core/src/storage/**`, `settings/**`, `routes/history.ts`, `routes/presets.ts`, `routes/settings.ts`                                                    | `Storage` (`createSqliteStorage`), `SecretStore` (`createFileSecretStore`), `SettingsService` (`createSettingsService`)                                                                                                              | `Logger`                                                                                                                     |
-| security  | `packages/core/src/auth/**`, `tls/**`, `http/**`, `logging/**`, `routes/auth.ts`, `routes/meta.ts`, `apps/server/**`                                             | `AuthService` (`createAuthService`), `requireAuth`, `TlsProvider` (`createTlsProvider`), `HttpLayer` (`createHttpLayer`), `Logger` (`createLogger`), `loadConfig`                                                                    | `Storage.devices`, `Storage.pairingCodes`, `SecretStore`, `SettingsService` (limits), `Clock`, `IdGenerator`, `RandomSource` |
-| providers | `packages/core/src/providers/**`, `routes/providers.ts`, `tools/mock-clis/**`                                                                                    | `ProviderRegistry` (`createProviderRegistry`), one `ProviderAdapter` per kind                                                                                                                                                        | `SettingsService`, `SecretStore`, `Clock`, `Logger`                                                                          |
-| web-infra | `packages/web` except `src/wall/**` and `src/contracts/**`: build setup, `src/main.tsx`, `src/app/**`, `src/infra/**`, `src/pages/**`, `src/pwa/**`, `public/**` | `AppServices` and everything in it (`ApiClient`, `AskStreamStore`, `SettingsStore`, `ProvidersStore`, `Notifier`, and `I18n` through the shared `createI18n`); the shell that provides `ServicesContext` and mounts the wall's pages | `@answerwall/core/protocol`; `WallPage`, `HistoryPage`                                                                       |
-| web-wall  | `packages/web/src/wall/**`                                                                                                                                       | `WallPage`, `HistoryPage` exported from `wall/index.tsx`; its strings in `wall/messages/`                                                                                                                                            | `useServices()` from `src/contracts/services.ts`; `@answerwall/core/protocol`                                                |
+| Unit      | Owns                                                                                                                                                             | Implements                                                                                                                                                                                                                                                                                                | Consumes                                                                                                                     |
+| --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| runner    | `packages/core/src/runner/**`, `routes/ask.ts`                                                                                                                   | `AskManager` (`createAskManager`)                                                                                                                                                                                                                                                                         | `Storage.turns`, `SettingsService`, `ProviderRegistry`, `Clock`, `IdGenerator`, `Logger`                                     |
+| storage   | `packages/core/src/storage/**`, `settings/**`, `routes/history.ts`, `routes/presets.ts`, `routes/settings.ts`                                                    | `Storage` (`createSqliteStorage`), `SecretStore` (`createFileSecretStore`), `SettingsService` (`createSettingsService`)                                                                                                                                                                                   | `Logger`                                                                                                                     |
+| security  | `packages/core/src/auth/**`, `tls/**`, `http/**`, `logging/**`, `routes/auth.ts`, `routes/meta.ts`, `apps/server/**`                                             | `AuthService` (`createAuthService`), `requireAuth`, `TlsProvider` (`createTlsProvider`), `HttpLayer` (`createHttpLayer`), `Logger` (`createLogger`), `loadConfig`                                                                                                                                         | `Storage.devices`, `Storage.pairingCodes`, `SecretStore`, `SettingsService` (limits), `Clock`, `IdGenerator`, `RandomSource` |
+| providers | `packages/core/src/providers/**`, `routes/providers.ts`, `tools/mock-clis/**`                                                                                    | `ProviderRegistry` (`createProviderRegistry`), one `ProviderAdapter` per kind                                                                                                                                                                                                                             | `SettingsService`, `SecretStore`, `Clock`, `Logger`                                                                          |
+| web-infra | `packages/web` except `src/wall/**` and `src/contracts/**`: build setup, `src/main.tsx`, `src/app/**`, `src/infra/**`, `src/pages/**`, `src/pwa/**`, `public/**` | `AppServices` and everything in it (`ApiClient`, `AskStreamStore`, `SettingsStore`, `ProvidersStore`, `Notifier`, and `I18n` through the shared `createI18n`); the shell that provides `ServicesContext` and mounts the wall's pages. `ShellContext`, `Shell` and `DevicesStore` are internal to the unit | `@answerwall/core/protocol`; `WallPage`, `HistoryPage`                                                                       |
+| web-wall  | `packages/web/src/wall/**`                                                                                                                                       | `WallPage`, `HistoryPage` exported from `wall/index.tsx`; its strings in `wall/messages/`                                                                                                                                                                                                                 | `useServices()` from `src/contracts/services.ts`; `@answerwall/core/protocol`                                                |
 
 Rules that keep the units independent (enforced by ESLint):
 
@@ -94,8 +94,12 @@ real translator, an ask stream the test drives with `apply(event)`, and
 recorders for API calls, settings updates, toasts and reported errors.
 
 Shared test files (`app.test.ts`, `server.test.ts`, the protocol tests) pin
-contracts only, never the behaviour of a placeholder: they stay green when a
-unit lands. A unit's own tests live in its directory.
+contracts only. A unit's own tests live in its directory.
+
+`pnpm smoke:mock` (`scripts/smoke-mock.mjs`) builds everything and drives
+the compiled server over real sockets: no fake inside the server, the mock
+CLIs on `PATH` and a local OpenAI-compatible stub. It is the one check that
+composes every unit as shipped.
 
 ## Request pipeline
 
