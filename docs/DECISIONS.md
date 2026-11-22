@@ -328,7 +328,10 @@ leaked token cannot fan out into thousands of processes.
     reload automatically when the files change (certificate renewals).
   - `auto` — generate and persist a private CA and a server certificate for
     the configured hostnames/IPs on first start; the settings page offers the
-    CA certificate for download with per-platform install steps.
+    CA certificate for download with per-platform install steps. A CA that
+    is expired, does not match its key or is not a CA is replaced; a CA that
+    is not valid yet is kept with a warning that the system clock looks
+    wrong, so a clock that runs behind never invalidates installed copies.
   - `off` — plain HTTP; allowed only on loopback unless
     `ANSWERWALL_ALLOW_INSECURE=1` is set, and then with a warning in log and UI.
 - Behind a TLS-terminating reverse proxy (a first-class setup: the proxy owns

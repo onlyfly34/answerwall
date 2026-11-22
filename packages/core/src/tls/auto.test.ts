@@ -206,6 +206,26 @@ describe('auto mode', () => {
     ).toBe(true);
   });
 
+  test('a start with the clock behind keeps the CA and warns about the clock', async () => {
+    const secrets = createFakeSecretStore();
+    const clock = new FakeClock(Date.UTC(2026, 0, 10));
+    const ca = await autoProvider([], secrets, clock).caCertificatePem();
+
+    // Before time synchronisation: a day before the CA was created.
+    const logger = createMemoryLogger();
+    const early = autoProvider([], secrets, new FakeClock(Date.UTC(2026, 0, 9)), logger);
+
+    expect(await early.caCertificatePem()).toBe(ca);
+    expect(leafOf(await early.material()).checkIssued(new X509Certificate(ca ?? ''))).toBe(true);
+    const warnings = logger.entries.filter((entry) => entry.level === 'warn');
+    expect(warnings.map((entry) => entry.message)).toEqual([
+      'the private CA is dated in the future: the system clock looks wrong; keeping the CA',
+    ]);
+
+    // With the clock corrected the same CA is still in place.
+    expect(await autoProvider([], secrets, clock).caCertificatePem()).toBe(ca);
+  });
+
   test('an invalid configured name is refused when the provider is created', () => {
     expect(() => autoProvider(['not a name'], createFakeSecretStore())).toThrow(/not a name/);
   });

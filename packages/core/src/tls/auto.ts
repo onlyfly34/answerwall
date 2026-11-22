@@ -13,6 +13,7 @@ import {
   certificateNames,
   generateCa,
   generateServerCertificate,
+  isNotYetValid,
   isUsableCa,
   isUsableServerCertificate,
 } from './certificates.ts';
@@ -92,6 +93,10 @@ export function createAutoTlsProvider(options: AutoTlsOptions): TlsProvider {
       } else {
         logger.info('generated a private CA; install its certificate on your devices');
       }
+    } else if (isNotYetValid(ca.cert, now)) {
+      logger.warn(
+        'the private CA is dated in the future: the system clock looks wrong; keeping the CA',
+      );
     }
 
     let server = await load(serverFile, SECRET_KEYS.tlsServerKey);

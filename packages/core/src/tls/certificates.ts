@@ -157,12 +157,11 @@ export async function generateServerCertificate(
 }
 
 /** Whether `pair` is a certificate with its own private key that stays valid past the renewal margin. */
-function isUsable(pair: CertificateAndKey, now: number): boolean {
+function isUnexpired(pair: CertificateAndKey, now: number): boolean {
   try {
     const cert = new X509Certificate(pair.cert);
     return (
       cert.checkPrivateKey(createPrivateKey(pair.key)) &&
-      cert.validFromDate.getTime() <= now &&
       cert.validToDate.getTime() - now > RENEW_BEFORE_MS
     );
   } catch {
@@ -170,8 +169,23 @@ function isUsable(pair: CertificateAndKey, now: number): boolean {
   }
 }
 
+/** Whether the certificate's validity starts after `now`: the local clock is behind, or the file is unreadable. */
+export function isNotYetValid(certPem: string, now: number): boolean {
+  try {
+    return new X509Certificate(certPem).validFromDate.getTime() > now;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Whether `ca` can keep signing: a self-signed CA with its own key, not
+ * close to expiry. A CA that is not valid *yet* stays usable: that means the
+ * local clock is behind, and replacing the CA would break every device that
+ * installed it.
+ */
 export function isUsableCa(ca: CertificateAndKey, now: number): boolean {
-  if (!isUsable(ca, now)) return false;
+  if (!isUnexpired(ca, now)) return false;
   const cert = new X509Certificate(ca.cert);
   return cert.ca && cert.verify(cert.publicKey);
 }
@@ -183,7 +197,7 @@ export function isUsableServerCertificate(
   names: readonly string[],
   now: number,
 ): boolean {
-  if (!isUsable(server, now)) return false;
+  if (!isUnexpired(server, now) || isNotYetValid(server.cert, now)) return false;
   const cert = new X509Certificate(server.cert);
   const issuer = new X509Certificate(ca.cert);
   return (

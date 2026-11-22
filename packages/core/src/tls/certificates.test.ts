@@ -5,6 +5,7 @@ import {
   certificateNames,
   generateCa,
   generateServerCertificate,
+  isNotYetValid,
   isUsableCa,
   isUsableServerCertificate,
   namesOf,
@@ -105,6 +106,21 @@ describe('generated certificates', () => {
     const ca = await generateCa(NOW, random);
     const server = await generateServerCertificate(ca, certificateNames([]), NOW, random);
     expect(isUsableCa(server, NOW)).toBe(false);
+  });
+
+  test('a CA that is not valid yet stays usable; an expiring one does not', async () => {
+    const random = createCountingRandom();
+    const ca = await generateCa(NOW, random);
+    const server = await generateServerCertificate(ca, certificateNames([]), NOW, random);
+    const clockBehind = NOW - 2 * 60 * 60_000;
+
+    // A clock that runs behind must not cost the devices their installed CA.
+    expect(isUsableCa(ca, clockBehind)).toBe(true);
+    expect(isNotYetValid(ca.cert, clockBehind)).toBe(true);
+    expect(isNotYetValid(ca.cert, NOW)).toBe(false);
+    expect(isUsableCa(ca, NOW + 3650 * DAY - RENEW_BEFORE_MS + DAY)).toBe(false);
+    // The server certificate is cheap to issue again.
+    expect(isUsableServerCertificate(server, ca, certificateNames([]), clockBehind)).toBe(false);
   });
 
   test('a server certificate never outlives its CA', async () => {
