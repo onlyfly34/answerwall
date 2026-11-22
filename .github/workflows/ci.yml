@@ -1,0 +1,107 @@
+name: CI
+
+# No job here uses a secret or an AI account: every provider is a mock from
+# tools/mock-clis or a stub on loopback.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  # The release workflow runs these checks before it publishes anything.
+  workflow_call:
+    inputs:
+      skip-bundle:
+        description: Leave out the bundle job; the caller builds the bundle itself.
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    # Git Bash on Windows, so that every step reads the same on both systems.
+    shell: bash
+
+jobs:
+  check:
+    name: Check (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm test
+      - run: pnpm build
+      - run: pnpm smoke:mock
+
+  e2e:
+    name: End-to-end (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    # The Windows run reports its result but does not fail the workflow until
+    # it has proven stable; then move it out of `include` and into `os`.
+    continue-on-error: ${{ matrix.experimental }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        experimental: [false]
+        include:
+          - os: windows-latest
+            experimental: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - run: pnpm build
+
+      - name: Read the Playwright version
+        id: playwright
+        run: echo "version=$(node -p "require('./e2e/node_modules/@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+      - name: Cache the Playwright browsers
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/playwright-browsers
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright.outputs.version }}
+      # Downloads only what the cache did not restore; the system packages of
+      # the runner are installed every time.
+      - name: Install the Playwright browsers
+        run: pnpm --filter ./e2e exec playwright install --with-deps chromium
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/playwright-browsers
+
+      - run: pnpm e2e
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/playwright-browsers
+
+      - name: Upload the traces
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-traces-${{ matrix.os }}
+          path: |
+            e2e/test-results/
+            e2e/playwright-report/
+          if-no-files-found: ignore
+          overwrite: true
+          retention-days: 7
+
+  bundle:
+    name: Bundle
+    if: ${{ inputs.skip-bundle != true }}
+    uses: ./.github/workflows/build.yml

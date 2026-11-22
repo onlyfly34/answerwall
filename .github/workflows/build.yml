@@ -1,0 +1,111 @@
+name: Build the server bundle
+
+# The reusable build: compiles the workspace, packages the platform-neutral
+# server bundle and proves that the packaged archives start with plain Node.
+# CI calls it on every change; the release workflow calls it to produce the
+# assets, and its other build jobs start from the artifact uploaded here.
+
+on:
+  workflow_call:
+    inputs:
+      artifact-name:
+        description: Name of the artifact that holds the .tar.gz and the .zip.
+        type: string
+        default: server-bundle
+      expected-version:
+        description: Fail unless the server has this version. Empty accepts any.
+        type: string
+        default: ''
+    outputs:
+      version:
+        description: Version of the packaged server.
+        value: ${{ jobs.package.outputs.version }}
+      bundle:
+        description: Base name of the archives and of the directory inside them.
+        value: ${{ jobs.package.outputs.bundle }}
+      artifact-name:
+        description: Name of the uploaded artifact.
+        value: ${{ inputs.artifact-name }}
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Package
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      version: ${{ steps.package.outputs.version }}
+      bundle: ${{ steps.package.outputs.bundle }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - run: pnpm build
+      - name: Package the server bundle
+        id: package
+        run: node .github/scripts/package-server.mjs --out "$RUNNER_TEMP/bundle" --expect-version "$EXPECTED_VERSION"
+        env:
+          EXPECTED_VERSION: ${{ inputs.expected-version }}
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: |
+            ${{ runner.temp }}/bundle/*.tar.gz
+            ${{ runner.temp }}/bundle/*.zip
+          if-no-files-found: error
+          # The archives are compressed already.
+          compression-level: 0
+          overwrite: true
+          retention-days: 14
+
+  # Runs the archives the way a user would: no pnpm, no workspace, only Node
+  # and npm. Linux takes the .tar.gz and Windows the .zip.
+  start:
+    name: Start the bundle (${{ matrix.os }})
+    needs: package
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    env:
+      BUNDLE: ${{ needs.package.outputs.bundle }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            .github
+            .nvmrc
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: ${{ runner.temp }}/bundle
+
+      - name: Extract the .tar.gz
+        if: ${{ runner.os != 'Windows' }}
+        shell: bash
+        working-directory: ${{ runner.temp }}/bundle
+        run: tar -xzf "$BUNDLE.tar.gz"
+      - name: Extract the .zip
+        if: ${{ runner.os == 'Windows' }}
+        shell: pwsh
+        working-directory: ${{ runner.temp }}/bundle
+        run: Expand-Archive -Path "${env:BUNDLE}.zip" -DestinationPath .
+
+      - name: Install the production dependencies
+        shell: bash
+        working-directory: ${{ runner.temp }}/bundle/${{ needs.package.outputs.bundle }}
+        run: npm ci --omit=dev --no-audit --no-fund
+      - name: Start the server and query it
+        shell: bash
+        run: node .github/scripts/verify-bundle.mjs "$RUNNER_TEMP/bundle/$BUNDLE"

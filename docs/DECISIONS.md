@@ -463,8 +463,15 @@ ends with the process, even on `SIGKILL`, so it never goes stale.
 
 ## 10. Packaging and release
 
-- CI on every push/PR: `ubuntu-latest` and `windows-latest`, lint, typecheck,
-  unit tests, e2e against mock CLIs. No real account is ever used in CI.
+- CI on every push to `main`, every pull request and on demand (a branch
+  is checked through its pull request, so nothing runs twice):
+  `ubuntu-latest` and `windows-latest`, lint, typecheck, unit tests,
+  `smoke:mock`, e2e against mock CLIs. The Windows e2e leg does not fail the
+  workflow until it has proven stable. No real account is ever used in CI.
+- The server bundle is installed with `npm ci --omit=dev` from a
+  `package-lock.json` generated at packaging time and checked against
+  `pnpm-lock.yaml` (versions, integrity, registry, no install scripts); see
+  `docs/RELEASING.md`.
 - Release on a `v*` tag: build everything, create the GitHub Release as a
   draft, upload all assets, then publish it in the last step so the release is
   directly downloadable. `workflow_dispatch` only builds artifacts.

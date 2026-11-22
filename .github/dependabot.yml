@@ -1,0 +1,16 @@
+# Only the actions are updated automatically: the workflows pin them by commit,
+# and a pinned commit never moves by itself. npm packages are pinned by hand
+# and checked one at a time (docs/ARCHITECTURE.md, Conventions).
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directories:
+      - /
+      - /.github/actions/setup
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ['*']
+    commit-message:
+      prefix: ci
