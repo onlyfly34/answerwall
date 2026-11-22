@@ -5,7 +5,13 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "playwright test",
+    "test:desktop": "playwright test --project=desktop",
+    "test:tablet": "playwright test --project=tablet",
+    "test:phone": "playwright test --project=phone",
+    "browsers": "playwright install chromium",
+    "report": "playwright show-report playwright-report"
   },
   "devDependencies": {
     "@answerwall/mock-clis": "workspace:*",

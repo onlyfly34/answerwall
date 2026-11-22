@@ -17,6 +17,7 @@
     "lint": "eslint . --max-warnings 0 && node scripts/check-dependencies.mjs && prettier --check .",
     "test": "vitest run",
     "smoke:mock": "pnpm -r run build && node scripts/smoke-mock.mjs",
+    "e2e": "pnpm --filter ./e2e test",
     "format": "prettier --write ."
   },
   "devDependencies": {

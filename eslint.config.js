@@ -44,7 +44,15 @@ const restrictImports = (...patterns) => ({
 });
 
 export default tseslint.config(
-  { ignores: ['**/dist/', '**/coverage/', '**/node_modules/'] },
+  {
+    ignores: [
+      '**/dist/',
+      '**/coverage/',
+      '**/node_modules/',
+      'e2e/playwright-report/',
+      'e2e/test-results/',
+    ],
+  },
   js.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,
   {

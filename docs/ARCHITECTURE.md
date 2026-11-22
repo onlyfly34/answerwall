@@ -13,7 +13,7 @@ and are not repeated here.
 | `packages/web`    | SolidJS UI. Imports only `@answerwall/core/protocol` from core.                                                                  |
 | `apps/server`     | Process entry: environment → `AppConfig` → `createServer`; the `pair` command calls `createPairingCode`.                         |
 | `tools/mock-clis` | Fake CLIs for tests; put `tools/mock-clis/bin` and a directory holding only `node` on the `env.PATH` given to `createServer`.    |
-| `e2e`             | Placeholder for the Playwright suite; see its README.                                                                            |
+| `e2e`             | Playwright suite against the compiled server and the mock CLIs, three viewports; see its README.                                 |
 
 Workspace packages resolve to each other's TypeScript sources through the
 `answerwall-source` export condition (set in `tsconfig.base.json`, the Vite
@@ -98,8 +98,10 @@ contracts only. A unit's own tests live in its directory.
 
 `pnpm smoke:mock` (`scripts/smoke-mock.mjs`) builds everything and drives
 the compiled server over real sockets: no fake inside the server, the mock
-CLIs on `PATH` and a local OpenAI-compatible stub. It is the one check that
-composes every unit as shipped.
+CLIs on `PATH` and a local OpenAI-compatible stub. `pnpm e2e` runs the
+Playwright suite in `e2e/` against the same compiled server, one server per
+test, in a desktop, a tablet and a phone viewport. Both compose every unit
+as shipped.
 
 ## Request pipeline
 
