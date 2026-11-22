@@ -294,8 +294,10 @@ across a restart; an unreachable server; switching modes from the menu.
 
 ## Workflows
 
-`.github/workflows/desktop.yml` runs for pull requests that touch
-`apps/desktop/**` and can be called by another workflow.
+`.github/workflows/desktop.yml` is a reusable workflow. `ci.yml` calls it
+on every push to `main` and every pull request, so a change to core or the
+web UI also exercises the app; `release.yml` calls it for the installer. It
+can also be run by hand.
 
 - `windows` (windows-latest): builds the installer, inspects the package,
   installs it silently for the current user, runs the end-to-end tests
@@ -308,27 +310,12 @@ Inputs when called: `artifact-name` (default `windows-installer`) and
 `expected-version` (fails unless the app has this version). Outputs:
 `version`, `installer`, `artifact-name`.
 
-To publish the installer with a release, the release workflow needs one job
-and one more entry in `needs` of `assets`:
-
-```yaml
-windows-installer:
-  name: Windows installer
-  needs: plan
-  uses: ./.github/workflows/desktop.yml
-  with:
-    artifact-name: release-windows-installer
-    expected-version: ${{ needs.plan.outputs.version }}
-```
-
-`latest.yml` must be published under exactly that name: it is what the
-installed app reads. A release then needs the same version in
-`apps/desktop/package.json` as in the other three manifests.
-
-To run the desktop jobs with every change rather than only for changes
-under `apps/desktop/**`, call the workflow from `ci.yml`
-(`uses: ./.github/workflows/desktop.yml`) and remove its own `pull_request`
-trigger, so that nothing runs twice.
+The release workflow's job `windows-installer` calls it with
+`artifact-name: release-windows-installer`, so the three files become
+release assets (docs/RELEASING.md). `latest.yml` is published under exactly
+that name: it is what the installed app reads. Every package of the
+workspace carries the same version (`node scripts/check-versions.mjs`, run
+by `pnpm lint`).
 
 ## Not verified without a person at a Windows machine
 

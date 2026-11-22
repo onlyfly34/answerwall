@@ -1,5 +1,5 @@
-# Only the actions are updated automatically: the workflows pin them by commit,
-# and a pinned commit never moves by itself. npm packages are pinned by hand
+# Only the actions and the container base images are updated automatically:
+# both are pinned, and a pin never moves by itself. npm packages are pinned by hand
 # and checked one at a time (docs/ARCHITECTURE.md, Conventions).
 version: 2
 updates:
@@ -14,3 +14,14 @@ updates:
         patterns: ['*']
     commit-message:
       prefix: ci
+  # The base images of apps/server/Dockerfile: the Node version and the
+  # Debian snapshot are pinned there.
+  - package-ecosystem: docker
+    directory: /apps/server
+    schedule:
+      interval: weekly
+    groups:
+      base-images:
+        patterns: ['*']
+    commit-message:
+      prefix: build

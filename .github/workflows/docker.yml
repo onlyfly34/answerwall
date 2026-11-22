@@ -15,11 +15,13 @@ name: Container image
 #   v1.2.3       -> 1.2.3, 1.2, latest
 #   v1.2.3-rc.1  -> 1.2.3-rc.1          (a pre-release never moves 1.2 or latest)
 #
-# A workflow that calls this one must grant `packages: write` to the calling
-# job, also for a build-only call: GitHub checks the permissions the jobs
-# below ask for when it loads the workflow, not when they run. What a job
-# may do is still what that job declares, so with `push: false` nothing that
-# runs holds more than `contents: read`.
+# Permissions: the build-only job asks for `contents: read` and nothing else.
+# The two publishing jobs declare none and inherit the calling job's, so a
+# caller that pushes grants `packages: write` to the job that calls this
+# workflow, and a build-only caller grants nothing beyond `contents: read`.
+# (GitHub refuses at load time a called workflow whose jobs ask for more
+# than the caller grants, also for jobs that would be skipped, which is why
+# the publishing jobs do not ask for it themselves.)
 
 on:
   workflow_call:
@@ -47,9 +49,6 @@ on:
         description: The tags that were set, separated by spaces.
         value: ${{ jobs.manifest.outputs.tags }}
 
-permissions:
-  contents: read
-
 defaults:
   run:
     shell: bash
@@ -65,6 +64,8 @@ jobs:
     if: ${{ !inputs.push }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
+    permissions:
+      contents: read
     strategy: &platforms
       fail-fast: false
       matrix:
@@ -138,15 +139,13 @@ jobs:
         run: node docker/test/smoke.mjs --no-build --image "$LOCAL_IMAGE"
 
   # ----------------------------------------------------- build and publish
-  # The same steps, then the push. Only these two jobs may write packages.
+  # The same steps, then the push. Only these two jobs may write packages,
+  # with the permissions of the calling job (contents: read, packages: write).
   publish:
     name: Publish (${{ matrix.platform }})
     if: ${{ inputs.push }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
-    permissions:
-      contents: read
-      packages: write
     strategy: *platforms
     outputs:
       image: ${{ steps.describe.outputs.image }}
@@ -222,9 +221,6 @@ jobs:
     needs: publish
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    permissions:
-      contents: read
-      packages: write
     outputs:
       image: ${{ needs.publish.outputs.image }}
       digest: ${{ steps.create.outputs.digest }}

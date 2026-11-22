@@ -11,8 +11,10 @@ on:
   # The release workflow runs these checks before it publishes anything.
   workflow_call:
     inputs:
-      skip-bundle:
-        description: Leave out the bundle job; the caller builds the bundle itself.
+      skip-artifacts:
+        description: >-
+          Leave out the jobs that build the server bundle, the desktop app and
+          the container image; the caller builds and tests them itself.
         type: boolean
         default: false
 
@@ -102,5 +104,20 @@ jobs:
 
   bundle:
     name: Bundle
-    if: ${{ inputs.skip-bundle != true }}
+    if: ${{ inputs.skip-artifacts != true }}
     uses: ./.github/workflows/build.yml
+
+  # The Windows installer, installed and tested on windows-latest, and the
+  # unpacked app tested on Linux.
+  desktop:
+    name: Desktop
+    if: ${{ inputs.skip-artifacts != true }}
+    uses: ./.github/workflows/desktop.yml
+
+  # Builds the image for amd64 and arm64 and tests it; pushes nothing.
+  container:
+    name: Container
+    if: ${{ inputs.skip-artifacts != true }}
+    uses: ./.github/workflows/docker.yml
+    with:
+      push: false

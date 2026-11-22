@@ -1,12 +1,17 @@
 name: Release
 
-# A tag v<version> builds every asset, creates the GitHub Release as a draft,
-# uploads the assets and publishes the release in the last step, so a release
-# with missing assets is never visible. A manual run stops after the build and
-# leaves the assets as a workflow artifact.
+# A tag v<version> builds every asset (the server bundle, the Windows
+# installer with its update metadata), builds, tests and pushes the
+# multi-architecture container image to GHCR, creates the GitHub Release as a
+# draft, uploads the assets and SHA256SUMS, and publishes the release in the
+# last step, so a release with missing assets is never visible. A tag with a
+# hyphen (v1.2.3-rc.1) becomes a pre-release.
 #
-# How to add a build job (the Windows installer, the container image) is
-# described in docs/RELEASING.md.
+# A manual run builds and tests everything, leaves the assets as a workflow
+# artifact, and pushes no image and publishes nothing.
+#
+# Every package.json must carry the tagged version; the plan job checks this
+# before anything is built. docs/RELEASING.md has the steps.
 
 on:
   push:
@@ -58,12 +63,36 @@ jobs:
             echo "version=${tag#v}"
             echo "prerelease=$prerelease"
           } >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      # Before anything is built: a tag that does not match the packages
+      # fails here and names the files that differ.
+      - name: Check the package versions against the tag
+        env:
+          VERSION: ${{ steps.plan.outputs.version }}
+        run: |
+          if [[ -n "$VERSION" ]]; then
+            if ! node scripts/check-versions.mjs --expect "$VERSION"; then
+              echo "::error::The package versions do not match the tag v$VERSION. Set them with 'node scripts/check-versions.mjs --set $VERSION', commit, and tag that commit."
+              exit 1
+            fi
+          else
+            node scripts/check-versions.mjs
+          fi
 
+  # The whole of ci.yml except the artifact builds, which the jobs below do
+  # (and test) themselves.
   verify:
     name: Verify
+    needs: plan
     uses: ./.github/workflows/ci.yml
     with:
-      skip-bundle: true
+      skip-artifacts: true
 
   # Fails when the version in apps/server/package.json is not the tagged one.
   build:
@@ -74,11 +103,21 @@ jobs:
       artifact-name: release-server-bundle
       expected-version: ${{ needs.plan.outputs.version }}
 
+  # The NSIS installer, its .blockmap and latest.yml, after the installed app
+  # passed its end-to-end tests on windows-latest.
+  windows-installer:
+    name: Windows installer
+    needs: plan
+    uses: ./.github/workflows/desktop.yml
+    with:
+      artifact-name: release-windows-installer
+      expected-version: ${{ needs.plan.outputs.version }}
+
   # Every build job uploads its files as an artifact named `release-*` and is
   # listed in `needs` here. This job is the only place that knows the full set.
   assets:
     name: Collect the assets
-    needs: [build]
+    needs: [build, windows-installer]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -96,6 +135,14 @@ jobs:
             echo "::error::No release asset was built."
             exit 1
           fi
+          # The server bundle, the installer, its blockmap and the update metadata.
+          for pattern in '*-server-*.tar.gz' '*-server-*.zip' '*-setup.exe' '*-setup.exe.blockmap' 'latest.yml'; do
+            count="$(compgen -G "$pattern" | wc -l)"
+            if (( count != 1 )); then
+              echo "::error::Expected exactly one asset matching $pattern, found $count."
+              exit 1
+            fi
+          done
           sha256sum -- "${files[@]}" | tee SHA256SUMS
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -105,10 +152,25 @@ jobs:
           compression-level: 0
           overwrite: true
 
+  # Built and tested on an amd64 and an arm64 runner. Pushed to GHCR only for
+  # a tag, and only once the tests passed and every other asset was built, so
+  # an image is never tagged for a release that cannot be published. A manual
+  # run builds and tests it and pushes nothing.
+  container:
+    name: Container
+    needs: [plan, verify, assets]
+    uses: ./.github/workflows/docker.yml
+    permissions:
+      contents: read
+      packages: write
+    with:
+      push: ${{ needs.plan.outputs.publish == 'true' }}
+      tag: ${{ needs.plan.outputs.tag }}
+
   publish:
     name: Publish
     if: ${{ needs.plan.outputs.publish == 'true' }}
-    needs: [plan, verify, assets]
+    needs: [plan, verify, assets, container]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -118,6 +180,9 @@ jobs:
       GH_REPO: ${{ github.repository }}
       TAG: ${{ needs.plan.outputs.tag }}
       PRERELEASE: ${{ needs.plan.outputs.prerelease }}
+      IMAGE: ${{ needs.container.outputs.image }}
+      IMAGE_DIGEST: ${{ needs.container.outputs.digest }}
+      IMAGE_TAGS: ${{ needs.container.outputs.tags }}
     steps:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -138,8 +203,9 @@ jobs:
             fi
             echo "Reusing the existing draft of $TAG."
           else
+            notes="Container image: \`$IMAGE:${TAG#v}\` (tags: $IMAGE_TAGS; digest \`$IMAGE_DIGEST\`)."
             gh release create "$TAG" --draft --verify-tag --title "$TAG" --generate-notes \
-              --prerelease="$PRERELEASE"
+              --notes "$notes" --prerelease="$PRERELEASE"
           fi
       - name: Upload the assets
         run: gh release upload "$TAG" assets/* --clobber

@@ -6,14 +6,11 @@ name: Desktop app
 # unpacked application. No job uses a secret or an AI account: every provider
 # is a mock from tools/mock-clis, and the tests reach nothing but loopback.
 #
-# Reusable: the release workflow calls it for the installer (docs/desktop.md,
-# "Workflows"). On its own it runs for pull requests that touch the app.
+# Reusable: ci.yml calls it on every change, so a change to core or the web UI
+# also exercises the app, and the release workflow calls it for the installer
+# (docs/desktop.md, "Workflows"). It can also be run by hand.
 
 on:
-  pull_request:
-    paths:
-      - apps/desktop/**
-      - .github/workflows/desktop.yml
   workflow_dispatch:
   workflow_call:
     inputs:
@@ -38,10 +35,6 @@ on:
 
 permissions:
   contents: read
-
-concurrency:
-  group: desktop-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 defaults:
   run:
