@@ -194,6 +194,11 @@ anything reaches the API, the log or the database.
   message `shutdown` (the only way to stop it gracefully on Windows), and
   when the supervisor that started it with an IPC channel disconnects. A
   closed stdout or stderr never ends the process: output to it is dropped.
+  In the desktop app the core process is a utility process, which ends
+  without running any code when the main process is killed: a helper
+  process started by the core process is told of every child tree
+  (`watchChildProcessTrees`) and kills those still running when its pipe to
+  the core process closes (`docs/desktop.md`).
 - Parse line-delimited JSON defensively: unknown event types are ignored, an
   unparsable stream falls back to showing the raw text rather than an empty
   cell. Do not assume the first line is the init event.
@@ -419,7 +424,12 @@ leaked token cannot fan out into thousands of processes.
 - Desktop local mode: random port, fresh token per launch; the Electron main
   process injects the `Authorization` header for `http://127.0.0.1:<port>`
   with `session.webRequest.onBeforeSendHeaders`. The token never reaches
-  renderer JavaScript. The launch token is the only credential a local
+  renderer JavaScript. The port is chosen by the system at the first launch
+  and tried again at later ones (another is chosen when it is taken), so
+  that the page keeps its origin and what the browser stores for it. The
+  token travels from the main process to the core process in a message of
+  the utility process's port: never in an environment, on a command line or
+  in a file. The launch token is the only credential a local
   instance accepts: it has no paired devices, refuses to create pairing
   codes, and its settings page shows no devices section.
 - Server mode first device: when no device is paired the server prints a
@@ -536,7 +546,11 @@ ends with the process, even on `SIGKILL`, so it never goes stale.
   answers), reopen, delete.
 - Providers page: install and login state, billing source, login instructions
   (the exact official command to run), refresh button, agy risk notice, the
-  "allow web search" switch where §5.3 has one.
+  "allow web search" switch where §5.3 has one. In the desktop app's local
+  window also "Open a terminal to log in": an external terminal window
+  running that command (the page names the provider kind; the command comes
+  from the one table `LOGIN_COMMANDS`), never captured, and followed by no
+  automatic detection.
 - Settings: providers, limits, layout, TLS/CA download, devices, language.
 - Pairing/sign-in page; a global 401 handler returns to it.
 - PWA: manifest, icons, service worker that caches static assets only and

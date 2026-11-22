@@ -7,13 +7,14 @@ and are not repeated here.
 
 ## Packages
 
-| Package           | Role                                                                                                                             |
-| ----------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `packages/core`   | Server library. Entry points: `.` (server), `./protocol` (browser-safe wire protocol), `./testing` (in-memory fakes), `./brand`. |
-| `packages/web`    | SolidJS UI. Imports only `@answerwall/core/protocol` from core.                                                                  |
-| `apps/server`     | Process entry: environment → `AppConfig` → `createServer`; the `pair` command calls `createPairingCode`.                         |
-| `tools/mock-clis` | Fake CLIs for tests; put `tools/mock-clis/bin` and a directory holding only `node` on the `env.PATH` given to `createServer`.    |
-| `e2e`             | Playwright suite against the compiled server and the mock CLIs, three viewports; see its README.                                 |
+| Package           | Role                                                                                                                                 |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `packages/core`   | Server library. Entry points: `.` (server), `./protocol` (browser-safe wire protocol), `./testing` (in-memory fakes), `./brand`.     |
+| `packages/web`    | SolidJS UI. Imports only `@answerwall/core/protocol` from core.                                                                      |
+| `apps/server`     | Process entry: environment → `AppConfig` → `createServer`; the `pair` command calls `createPairingCode`.                             |
+| `apps/desktop`    | Electron shell: main process, the core host (core's server in a utility process), the connection page; see [desktop.md](desktop.md). |
+| `tools/mock-clis` | Fake CLIs for tests; put `tools/mock-clis/bin` and a directory holding only `node` on the `env.PATH` given to `createServer`.        |
+| `e2e`             | Playwright suite against the compiled server and the mock CLIs, three viewports; see its README.                                     |
 
 Workspace packages resolve to each other's TypeScript sources through the
 `answerwall-source` export condition (set in `tsconfig.base.json`, the Vite
