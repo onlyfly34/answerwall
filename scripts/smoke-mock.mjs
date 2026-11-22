@@ -224,7 +224,11 @@ async function startServer({ dataDir, env }) {
      * Graceful stop: SIGTERM, or the IPC message that stands in for it (the
      * only way on Windows).
      */
+    stopping: false,
     stop(how = process.platform === 'win32' ? 'ipc' : 'signal') {
+      // A second request would cut the server's shutdown short.
+      if (this.stopping) return;
+      this.stopping = true;
       if (how === 'ipc') child.send('shutdown');
       else child.kill('SIGTERM');
     },
@@ -386,7 +390,10 @@ async function main() {
 
   const stub = await startStub();
   let server;
-  const cleanup = async () => {
+  let cleaning;
+  // Idempotent: a signal handler and the `finally` below can both call it.
+  const cleanup = () => (cleaning ??= cleanUp());
+  const cleanUp = async () => {
     if (server && server.child.exitCode === null && server.child.signalCode === null) {
       // After a failed check the server may still have children: let it end
       // them itself, and only then force it.
@@ -415,6 +422,19 @@ async function main() {
     await stub.close();
     await rm(temp, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   };
+
+  // Interrupted (Ctrl-C, a CI timeout, `kill`): stop the server and every CLI
+  // it started, remove the temporary directory, then exit. If this process is
+  // killed outright, the server sees its IPC channel close and shuts down.
+  for (const signal of process.platform === 'win32'
+    ? ['SIGINT', 'SIGBREAK', 'SIGHUP']
+    : ['SIGINT', 'SIGTERM', 'SIGHUP']) {
+    process.on(signal, () => {
+      if (cleaning) return;
+      log(`${signal} received: cleaning up`);
+      void cleanup().finally(() => process.exit(128 + (os.constants.signals[signal] ?? 1)));
+    });
+  }
 
   try {
     server = await startServer({ dataDir, env });

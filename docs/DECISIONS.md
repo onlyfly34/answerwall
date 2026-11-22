@@ -529,6 +529,9 @@ Planned additions, not yet scheduled into a phase's contract:
   end against the mock CLIs and a local OpenAI-compatible stub (pairing, a
   queued 14-slot ask, resume, cancel, history, presets, settings, static UI
   headers, shutdown with no process left behind, restart). No real CLI and
-  no network beyond loopback; safe for CI.
+  no network beyond loopback; safe for CI. Interrupted (SIGINT, SIGTERM,
+  SIGHUP), it stops the server and every mock CLI and removes its temporary
+  directory; killed outright, its server shuts down when the IPC channel
+  closes.
 - `pnpm smoke:real`: manual only, never in CI; one tiny prompt per installed
   and logged-in CLI; asserts an answer and, for claude, an empty tool list.
