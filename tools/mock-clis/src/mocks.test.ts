@@ -419,6 +419,61 @@ describe('descendants', () => {
   );
 });
 
+describe.skipIf(process.platform === 'win32')('a child in a session of its own', () => {
+  const started = async (scenario: string) => {
+    const log = path.join(workDir, 'invocations.jsonl');
+    const child = start('opencode', validArgs('opencode'), {
+      MOCK_CLI_SCENARIO: scenario,
+      MOCK_CLI_LOG: log,
+    });
+    child.stdin.end('ping');
+    await new Promise<void>((resolve) => child.stdout.once('data', () => resolve()));
+    const detached = jsonLines(await readFile(log, 'utf8')).find(
+      (entry) => typeof entry.detachedPid === 'number',
+    )?.detachedPid as number | undefined;
+    if (detached === undefined) throw new Error('the pid of the child was not recorded');
+    return { child, detached };
+  };
+  const alive = (pid: number): boolean => {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  const gone = async (pid: number): Promise<boolean> => {
+    for (let attempt = 0; attempt < 100 && alive(pid); attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    return !alive(pid);
+  };
+
+  test('own-session-child: it ends with the pipe from the CLI when the CLI is killed', async () => {
+    const { child, detached } = await started('own-session-child');
+    const done = finished(child);
+
+    child.kill('SIGKILL');
+    await done;
+
+    expect(await gone(detached)).toBe(true);
+  });
+
+  test('own-session-orphan: it stays after the CLI is gone', async () => {
+    const { child, detached } = await started('own-session-orphan');
+    const done = finished(child);
+
+    try {
+      child.kill('SIGKILL');
+      await done;
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      expect(alive(detached)).toBe(true);
+    } finally {
+      process.kill(detached, 'SIGKILL');
+    }
+  });
+});
+
 describe('status subcommands', () => {
   test('claude auth status reports the login as JSON and by exit code', async () => {
     const loggedIn = await runMock('claude', ['auth', 'status', '--json']);

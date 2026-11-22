@@ -384,6 +384,12 @@ lists the evidence item by item.
     within 0.2 s. The private server is in a session and group of its own,
     so the group kill does not reach it; it ended by itself within a second
     both times and the request to the stub was closed. Nothing was left.
+    That is the CLI's doing, not the kill's: the server ends when the pipe
+    from the CLI closes. The mock has both cases (`own-session-child`,
+    `own-session-orphan`): a child in its own session that ends with that
+    pipe is gone after a cancel, one that ignores it **stays**. Nothing
+    here finds or sweeps such a process; whatever the private server
+    starts (an MCP server during a check) is in the same position.
   - Status: `opencode --version` (`opencode v2.3.2`); `opencode auth list
     --standalone --format json` (an array of integrations with their
     `connections`; only whether one exists is read, and none means

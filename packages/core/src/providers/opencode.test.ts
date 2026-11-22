@@ -582,6 +582,44 @@ describe('the opencode adapter against the mock CLI', () => {
     },
   );
 
+  // The private server of the real CLI is such a child: the group kill does not reach it.
+  describe.skipIf(process.platform === 'win32')('a child in a session of its own', () => {
+    const cancelled = async (model: string) => {
+      const stop = new AbortController();
+      const done = collect(
+        adapter.run(instance, await harness.request({ model, signal: stop.signal })),
+      );
+      await until(async () => (await harness.invocations()).some((call) => call.detachedPid));
+      stop.abort();
+      expect((await done).at(-1)).toMatchObject({ type: 'error', code: 'cancelled' });
+      const calls = await harness.invocations();
+      const pid = calls.find((call) => call.pid !== undefined)?.pid;
+      const detached = calls.find((call) => call.detachedPid !== undefined)?.detachedPid;
+      if (pid === undefined || detached === undefined) throw new Error('pids were not recorded');
+      await until(() => !isAlive(pid));
+      return detached;
+    };
+
+    test('is gone after a cancel when it ends with the pipe from the CLI, as the real one did', async () => {
+      const detached = await cancelled('mock/mock-own-session-child');
+
+      await until(() => !isAlive(detached));
+    });
+
+    test('known limit: one that ignores the end of that pipe is not reached by the kill', async () => {
+      const detached = await cancelled('mock/mock-own-session-orphan');
+
+      try {
+        // Longer than the grace period and the sweep of the harness (150 ms and 50 ms).
+        await new Promise((resolve) => setTimeout(resolve, 400));
+        expect(isAlive(detached)).toBe(true);
+      } finally {
+        process.kill(detached, 'SIGKILL');
+      }
+      await until(() => !isAlive(detached));
+    });
+  });
+
   describe('detect and listModels', () => {
     test('reports the version and a connected provider, without its name', async () => {
       const detection = await adapter.detect(instance);

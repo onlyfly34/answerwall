@@ -38,6 +38,8 @@ export const SCENARIOS = [
   'tree',
   'stubborn-tree',
   'lingering-child',
+  'own-session-child',
+  'own-session-orphan',
 ];
 
 const MODEL_PREFIX = 'mock-';
@@ -193,6 +195,31 @@ function spawnStubbornChild() {
 }
 
 /**
+ * A descendant in a session and process group of its own, as the private
+ * server of `opencode run --standalone` is: a signal to the process group of
+ * the CLI does not reach it. Its stdin is a pipe from the CLI, and the end of
+ * that pipe is the only thing that tells it the CLI is gone. With
+ * `endsWithParent` it exits then, as the real server did; without, it stays
+ * (for a minute, so that a failed test cannot leave it for good).
+ */
+function spawnOwnSessionChild(endsWithParent) {
+  const child = spawn(
+    process.execPath,
+    [
+      '-e',
+      endsWithParent
+        ? "process.stdin.resume(); process.stdin.on('close', () => process.exit(0));"
+        : 'process.stdin.resume(); setTimeout(() => process.exit(0), 60000);',
+      process.argv[1] ?? '',
+      'own-session-child',
+    ],
+    { detached: true, stdio: ['pipe', 'ignore', 'ignore'] },
+  );
+  log({ detachedPid: child.pid });
+  return child;
+}
+
+/**
  * Plays one scenario.
  *
  * `cli.generate(text)` returns the lines of a complete successful answer
@@ -275,6 +302,11 @@ export async function play(cli, scenario, context) {
     // falls through
     case 'tree':
       spawnStubbornChild();
+      await writeLines(fixture('ok').slice(0, 1));
+      return hang();
+    case 'own-session-child':
+    case 'own-session-orphan':
+      spawnOwnSessionChild(scenario === 'own-session-child');
       await writeLines(fixture('ok').slice(0, 1));
       return hang();
     case 'lingering-child':

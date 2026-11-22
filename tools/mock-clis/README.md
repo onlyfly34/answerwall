@@ -44,29 +44,31 @@ A model named `mock-<scenario>` selects the scenario for that run. Otherwise
 the environment variable `MOCK_CLI_SCENARIO` does; the default is `ok`. The
 status subcommands only look at the environment variable.
 
-| Scenario          | Behaviour                                                                                 |
-| ----------------- | ----------------------------------------------------------------------------------------- |
-| `ok`              | A short answer, token by token where the CLI streams tokens, with usage.                  |
-| `echo`            | Answers `You said: <prompt>`, to prove how the prompt travelled.                          |
-| `slow`            | The `ok` answer with `MOCK_CLI_DELAY_MS` (default 40) between lines.                      |
-| `chunked`         | The `ok` answer with CRLF line endings, written seven bytes at a time.                    |
-| `block`           | A whole message at once, no token deltas.                                                 |
-| `reasoning`       | Reasoning before the answer.                                                              |
-| `tool-denied`     | The model asks for a tool; the call is denied; an answer follows.                         |
-| `incremental`     | codex only: one item growing through `item.updated` events.                               |
-| `hang`            | Prints nothing, does not read stdin, never exits.                                         |
-| `init-hang`       | Prints the first line of the `ok` answer, then never exits.                               |
-| `logged-out`      | The run fails as it does without a login; the status subcommand reports "not logged in".  |
-| `quota`           | The run fails with the usage limit reached.                                               |
-| `rate-limited`    | The run fails after being rate limited.                                                   |
-| `model-not-found` | The run fails because the model does not exist.                                           |
-| `exit-nonzero`    | Exit code 3 with a diagnostic on stderr that contains a path.                             |
-| `garbage`         | Plain text instead of the documented format, exit code 0.                                 |
-| `huge`            | An answer of `MOCK_CLI_HUGE_BYTES` (default 3 MiB).                                       |
-| `stderr-noise`    | The `ok` answer with tens of kilobytes of noise on stderr between the lines.              |
-| `tree`            | Starts a child that ignores SIGTERM and shares stdout, prints one line, then never exits. |
-| `stubborn-tree`   | Like `tree`, but the CLI itself ignores SIGTERM too, so only SIGKILL ends it.             |
-| `lingering-child` | Answers and exits, while a child it started keeps stdout open.                            |
+| Scenario             | Behaviour                                                                                          |
+| -------------------- | -------------------------------------------------------------------------------------------------- |
+| `ok`                 | A short answer, token by token where the CLI streams tokens, with usage.                           |
+| `echo`               | Answers `You said: <prompt>`, to prove how the prompt travelled.                                   |
+| `slow`               | The `ok` answer with `MOCK_CLI_DELAY_MS` (default 40) between lines.                               |
+| `chunked`            | The `ok` answer with CRLF line endings, written seven bytes at a time.                             |
+| `block`              | A whole message at once, no token deltas.                                                          |
+| `reasoning`          | Reasoning before the answer.                                                                       |
+| `tool-denied`        | The model asks for a tool; the call is denied; an answer follows.                                  |
+| `incremental`        | codex only: one item growing through `item.updated` events.                                        |
+| `hang`               | Prints nothing, does not read stdin, never exits.                                                  |
+| `init-hang`          | Prints the first line of the `ok` answer, then never exits.                                        |
+| `logged-out`         | The run fails as it does without a login; the status subcommand reports "not logged in".           |
+| `quota`              | The run fails with the usage limit reached.                                                        |
+| `rate-limited`       | The run fails after being rate limited. `opencode`: see below.                                     |
+| `model-not-found`    | The run fails because the model does not exist.                                                    |
+| `exit-nonzero`       | Exit code 3 with a diagnostic on stderr that contains a path.                                      |
+| `garbage`            | Plain text instead of the documented format, exit code 0.                                          |
+| `huge`               | An answer of `MOCK_CLI_HUGE_BYTES` (default 3 MiB).                                                |
+| `stderr-noise`       | The `ok` answer with tens of kilobytes of noise on stderr between the lines.                       |
+| `tree`               | Starts a child that ignores SIGTERM and shares stdout, prints one line, then never exits.          |
+| `stubborn-tree`      | Like `tree`, but the CLI itself ignores SIGTERM too, so only SIGKILL ends it.                      |
+| `lingering-child`    | Answers and exits, while a child it started keeps stdout open.                                     |
+| `own-session-child`  | Like `tree`, but the child is in a session of its own and exits when the pipe from the CLI closes. |
+| `own-session-orphan` | Like `own-session-child`, but the child ignores the end of that pipe (it exits after a minute).    |
 
 The mocks that take their prompt on stdin (`claude`, `codex`, `agy`,
 `opencode`) answer
@@ -80,6 +82,15 @@ values of a few fixed ones, the scenario and the prompt it received. The
 command line ends with the mock's script path and `stubborn-child`, so
 `pgrep -af 'src/(claude|codex|grok|agy|opencode).mjs'` lists it with the mocks when
 something has left it behind.
+
+The `own-session-*` scenarios log `detachedPid` instead. That child is what
+the private server of `opencode run --standalone` is to the real CLI: it
+leads a session and process group of its own, so a signal to the process
+group of the CLI does not reach it, and its stdin is a pipe from the CLI.
+`own-session-child` ends when that pipe closes, as the real server did.
+`own-session-orphan` does not, and nothing in the application removes it: the
+test that uses it asserts that it is still there and kills it itself. Its
+command line ends with the mock's script path and `own-session-child`.
 
 Every line also carries `at`, the time it was written. A suite that looks for
 leftover mocks needs it: Windows hands the process id of an ended process to

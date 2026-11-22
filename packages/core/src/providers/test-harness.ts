@@ -59,6 +59,8 @@ export interface MockInvocation {
   resent?: boolean;
   prompt?: string;
   grandchildPid?: number;
+  /** A descendant in a session of its own (`own-session-*` scenarios). */
+  detachedPid?: number;
 }
 
 export interface MockCliHarness {

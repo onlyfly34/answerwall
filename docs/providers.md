@@ -500,9 +500,14 @@ effort picker for opencode.
   ends there; the effect of `--archived`; behaviour while opencode's shared
   background service is running on the same machine.
 - On cancel AnswerWall ends the process group of `opencode run`. The private
-  server is in a process group of its own; in every run made here it ended
+  server is in a process group of its own, **outside what AnswerWall
+  kills**, and so is everything that server starts (during a check, the MCP
+  servers of your global configuration). They end because opencode ends
+  them when `opencode run` is gone: in every run made here the server ended
   by itself within a second, also after a hard kill, and the request to the
-  model was closed.
+  model was closed. AnswerWall does not look for such a process afterwards;
+  one that ignored the end of opencode would stay. That was not seen with
+  the real CLI and was not tried with MCP servers.
 
 ## OpenAI-compatible endpoints
 
