@@ -4,6 +4,12 @@
   "private": true,
   "license": "MIT",
   "type": "module",
+  "bin": {
+    "agy": "src/agy.mjs",
+    "claude": "src/claude.mjs",
+    "codex": "src/codex.mjs",
+    "grok": "src/grok.mjs"
+  },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"
   }

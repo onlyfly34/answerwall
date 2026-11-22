@@ -1,0 +1,5 @@
+# synthetic, from documentation (non-interactive mode: codex exec --json event list); not a recording of the real codex CLI. Replace with a recorded run.
+{"type":"thread.started","thread_id":"synthetic-thread"}
+{"type":"turn.started"}
+{"type":"error","message":"unexpected status 400 Bad Request: {\"detail\":\"The 'mock-model-not-found' model is not supported when using Codex with a ChatGPT account.\"}"}
+{"type":"turn.failed","error":{"message":"unexpected status 400 Bad Request: {\"detail\":\"The 'mock-model-not-found' model is not supported when using Codex with a ChatGPT account.\"}"}}

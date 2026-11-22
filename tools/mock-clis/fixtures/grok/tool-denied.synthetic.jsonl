@@ -1,0 +1,5 @@
+# synthetic, from documentation (headless mode: --output-format streaming-json event table; the tool_call payload is an assumption); not a recording of the real grok CLI. Replace with a recorded run.
+{"type":"tool_call","data":{"id":"call_synthetic","name":"run_terminal_cmd","status":"pending"}}
+{"type":"tool_call_update","data":{"id":"call_synthetic","status":"failed"}}
+{"type":"text","data":"I cannot run commands here."}
+{"type":"end","stopReason":"end_turn","sessionId":"synthetic-session","usage":{"inputTokens":18,"outputTokens":9,"reasoningTokens":2}}

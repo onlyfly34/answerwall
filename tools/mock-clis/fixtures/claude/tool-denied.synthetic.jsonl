@@ -1,0 +1,9 @@
+# synthetic, from documentation (headless mode: --output-format stream-json --verbose --include-partial-messages); not a recording of the real claude CLI. Replace with a recorded run.
+{"type":"system","subtype":"init","cwd":"/work","session_id":"synthetic-session","tools":[],"mcp_servers":[],"model":"mock-model","permissionMode":"default","slash_commands":[],"apiKeySource":"none","plugins":[]}
+{"type":"stream_event","event":{"type":"message_start","message":{"id":"msg_synthetic","role":"assistant","content":[]}},"session_id":"synthetic-session","parent_tool_use_id":null}
+{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}},"session_id":"synthetic-session","parent_tool_use_id":null}
+{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"I cannot run commands here."}},"session_id":"synthetic-session","parent_tool_use_id":null}
+{"type":"stream_event","event":{"type":"content_block_stop","index":0},"session_id":"synthetic-session","parent_tool_use_id":null}
+{"type":"assistant","message":{"id":"msg_synthetic","type":"message","role":"assistant","model":"mock-model","content":[{"type":"text","text":"I cannot run commands here."},{"type":"tool_use","id":"toolu_synthetic","name":"Bash","input":{"command":"ls"}}]},"parent_tool_use_id":null,"session_id":"synthetic-session"}
+{"type":"stream_event","event":{"type":"message_stop"},"session_id":"synthetic-session","parent_tool_use_id":null}
+{"type":"result","subtype":"success","is_error":false,"duration_ms":1200,"num_turns":1,"session_id":"synthetic-session","permission_denials":[{"tool_name":"Bash","tool_use_id":"toolu_synthetic","tool_input":{"command":"ls"}}],"result":"I cannot run commands here.","usage":{"input_tokens":12,"cache_creation_input_tokens":0,"cache_read_input_tokens":30,"output_tokens":7}}

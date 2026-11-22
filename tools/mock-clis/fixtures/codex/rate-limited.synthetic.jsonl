@@ -1,0 +1,5 @@
+# synthetic, from documentation (non-interactive mode: codex exec --json event list); not a recording of the real codex CLI. Replace with a recorded run.
+{"type":"thread.started","thread_id":"synthetic-thread"}
+{"type":"turn.started"}
+{"type":"error","message":"Reconnecting... 1/5 (exceeded retry limit, last status: 429 Too Many Requests)"}
+{"type":"turn.failed","error":{"message":"exceeded retry limit, last status: 429 Too Many Requests"}}

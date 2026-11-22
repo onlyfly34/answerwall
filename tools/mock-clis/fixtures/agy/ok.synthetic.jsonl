@@ -1,0 +1,6 @@
+# synthetic, from documentation (headless mode: --output-format stream-json (init, step_update, result)); not a recording of the real agy CLI. Replace with a recorded run.
+{"type":"init","session_id":"synthetic-session","model":"mock-model"}
+{"type":"step_update","step_type":"agent_response","state":"ACTIVE","text_delta":"Hello"}
+{"type":"step_update","step_type":"agent_response","state":"ACTIVE","text_delta":" from the"}
+{"type":"step_update","step_type":"agent_response","state":"ACTIVE","text_delta":" mock CLI."}
+{"type":"result","status":"SUCCESS","usage":{"input_tokens":15,"output_tokens":8,"thinking_tokens":4,"cache_read_tokens":0,"total_tokens":27}}

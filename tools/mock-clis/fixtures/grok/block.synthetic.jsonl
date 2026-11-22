@@ -1,0 +1,3 @@
+# synthetic, from documentation (headless mode: --output-format streaming-json event table); not a recording of the real grok CLI. Replace with a recorded run.
+{"type":"text","data":"Hello from the mock CLI."}
+{"type":"end","stopReason":"end_turn","sessionId":"synthetic-session","usage":{"inputTokens":18,"outputTokens":9,"reasoningTokens":2}}

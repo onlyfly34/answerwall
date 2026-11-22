@@ -1,0 +1,2 @@
+# synthetic, from documentation (headless mode: --output-format streaming-json event table); not a recording of the real grok CLI. Replace with a recorded run.
+{"type":"error","message":"Too many requests (429). Please retry later."}

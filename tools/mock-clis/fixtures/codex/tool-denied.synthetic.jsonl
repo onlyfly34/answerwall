@@ -1,0 +1,7 @@
+# synthetic, from documentation (non-interactive mode: codex exec --json event list); not a recording of the real codex CLI. Replace with a recorded run.
+{"type":"thread.started","thread_id":"synthetic-thread"}
+{"type":"turn.started"}
+{"type":"item.started","item":{"id":"item_0","type":"command_execution","command":"bash -lc ls","aggregated_output":"","exit_code":null,"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_0","type":"command_execution","command":"bash -lc ls","aggregated_output":"","exit_code":null,"status":"declined"}}
+{"type":"item.completed","item":{"id":"item_1","type":"agent_message","text":"I cannot run commands here."}}
+{"type":"turn.completed","usage":{"input_tokens":20,"cached_input_tokens":5,"output_tokens":9,"reasoning_output_tokens":3}}

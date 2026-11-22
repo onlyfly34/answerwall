@@ -1,4 +1,3 @@
-import { unimplemented } from '../contracts/index.ts';
 import type {
   Clock,
   Logger,
@@ -6,6 +5,13 @@ import type {
   SecretStore,
   SettingsService,
 } from '../contracts/index.ts';
+import { createAgyAdapter } from './agy.ts';
+import { createClaudeAdapter } from './claude.ts';
+import type { CliContext } from './cli/run-cli.ts';
+import { createCodexAdapter } from './codex.ts';
+import { createGrokAdapter } from './grok.ts';
+import { createOpenAiCompatAdapter } from './openai-compat.ts';
+import { createRegistry } from './registry.ts';
 
 export interface ProviderRegistryDeps {
   settings: SettingsService;
@@ -17,6 +23,28 @@ export interface ProviderRegistryDeps {
   env: NodeJS.ProcessEnv;
 }
 
-export function createProviderRegistry(_deps: ProviderRegistryDeps): ProviderRegistry {
-  return unimplemented<ProviderRegistry>('providers', { shutdown: async () => {} });
+export function createProviderRegistry(deps: ProviderRegistryDeps): ProviderRegistry {
+  const shutdown = new AbortController();
+  const logger = deps.logger.child({ unit: 'providers' });
+  const cli: CliContext = {
+    env: deps.env,
+    platform: process.platform,
+    clock: deps.clock,
+    logger,
+    shutdownSignal: shutdown.signal,
+  };
+  // Adding a provider kind: one adapter file and one line here.
+  const adapters = [
+    createClaudeAdapter(cli),
+    createCodexAdapter(cli),
+    createAgyAdapter(cli),
+    createGrokAdapter(cli),
+    createOpenAiCompatAdapter({
+      secrets: deps.secrets,
+      clock: deps.clock,
+      logger,
+      shutdownSignal: shutdown.signal,
+    }),
+  ];
+  return createRegistry({ settings: deps.settings, clock: deps.clock, logger, adapters, shutdown });
 }

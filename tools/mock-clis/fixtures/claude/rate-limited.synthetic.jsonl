@@ -1,0 +1,5 @@
+# synthetic, from documentation (headless mode: --output-format stream-json --verbose --include-partial-messages); not a recording of the real claude CLI. Replace with a recorded run.
+{"type":"system","subtype":"init","cwd":"/work","session_id":"synthetic-session","tools":[],"mcp_servers":[],"model":"mock-model","permissionMode":"default","slash_commands":[],"apiKeySource":"none","plugins":[]}
+{"type":"system","subtype":"api_retry","attempt":1,"max_retries":10,"retry_delay_ms":500,"error_status":429,"error":"rate_limit","session_id":"synthetic-session"}
+{"type":"system","subtype":"api_retry","attempt":2,"max_retries":10,"retry_delay_ms":1000,"error_status":429,"error":"rate_limit","session_id":"synthetic-session"}
+{"type":"result","subtype":"success","is_error":true,"duration_ms":1200,"num_turns":1,"session_id":"synthetic-session","permission_denials":[],"result":"API Error: Request rejected (429)"}

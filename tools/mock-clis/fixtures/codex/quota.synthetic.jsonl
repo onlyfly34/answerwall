@@ -1,0 +1,5 @@
+# synthetic, from documentation (non-interactive mode: codex exec --json event list); not a recording of the real codex CLI. Replace with a recorded run.
+{"type":"thread.started","thread_id":"synthetic-thread"}
+{"type":"turn.started"}
+{"type":"error","message":"You've hit your usage limit. Upgrade to Pro or try again at 3:00 AM."}
+{"type":"turn.failed","error":{"message":"You've hit your usage limit. Upgrade to Pro or try again at 3:00 AM."}}
