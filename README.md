@@ -11,7 +11,8 @@ installed yourself and any OpenAI-compatible endpoints you configure.
 
 ## Development
 
-Requires Node 24 and pnpm 12.
+Requires Node 24.15 or newer within the 24 line (see `engines` in
+`package.json`; `.nvmrc` selects the newest 24) and pnpm 12.
 
 ```
 pnpm install
