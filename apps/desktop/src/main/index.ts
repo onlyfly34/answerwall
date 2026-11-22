@@ -119,6 +119,8 @@ let connection: BrowserWindow | undefined;
 let connectionProblem: ConnectionProblem | undefined;
 let quitting = false;
 let cleanedUp = false;
+/** The quit is under way: `before-quit` let it pass. */
+let quitStarted = false;
 
 const frontWindow = (): BrowserWindow | undefined => connection ?? content?.window;
 
@@ -575,6 +577,18 @@ async function main(): Promise<void> {
     logger,
     // The quit that follows finds nothing left to stop.
     prepareToInstall: () => shutdown(),
+    // No quit followed: the app is not quitting after all, and a local
+    // window's server is gone and has to be started again.
+    async resumeAfterFailedInstall() {
+      quitting = false;
+      cleanedUp = false;
+      if (content?.mode === 'local') await openSavedChoice();
+    },
+    quitStarted: () => quitStarted,
+    schedule(ms, task) {
+      const timer = setTimeout(task, ms);
+      return () => clearTimeout(timer);
+    },
   });
 
   // Linux and macOS: the system is shutting down.
@@ -675,7 +689,10 @@ if (!app.requestSingleInstanceLock()) {
   app.on('window-all-closed', () => app.quit());
 
   app.on('before-quit', (event) => {
-    if (cleanedUp) return;
+    if (cleanedUp) {
+      quitStarted = true;
+      return;
+    }
     event.preventDefault();
     if (quitting) return;
     void shutdown().finally(() => app.quit());

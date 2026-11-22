@@ -92,6 +92,9 @@ export const en = {
     'Install it now? The app closes, answers that are still running are stopped, and the installer starts.',
   'update.install': 'Install and Restart',
   'update.failed': 'The update check failed.',
+  'update.installFailed': 'The update could not be installed.',
+  'update.installFailed.detail':
+    'The installer did not start, so the app keeps running in the version you have. Answers that were running were stopped. You can try again with File > Check for Updates.',
   'update.unsupported': 'This build does not update itself.',
   'update.unsupported.detail': 'Updates are installed by the Windows installer of a release.',
   'update.disabled.detail': 'Updates are switched off by {variable}.',

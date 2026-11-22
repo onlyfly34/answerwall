@@ -254,6 +254,12 @@ check: one dialog asks before the download, another before the
 installation, and the installer then runs visibly. `autoDownload` and
 `autoInstallOnAppQuit` are off.
 
+Before the installer starts, the shell stops the local server, as on quit.
+When the installer then does not take over (starting it threw, or the app
+has not begun to quit five seconds later: a missing or locked installer
+file), the shell leaves its quitting state, starts the local server again
+for a local window and says that the update was not installed.
+
 The setting lives in the local server's settings (the General section of
 the settings page). The shell reads it at every start of the local server
 and keeps a copy in `desktop.json` for remote mode, where no local server

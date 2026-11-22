@@ -89,6 +89,9 @@ export const zhTW: Record<keyof typeof en, string> = {
     '要現在安裝嗎？應用程式會關閉，仍在執行的回答會停止，然後啟動安裝程式。',
   'update.install': '安裝並重新啟動',
   'update.failed': '檢查更新失敗。',
+  'update.installFailed': '無法安裝更新。',
+  'update.installFailed.detail':
+    '安裝程式沒有啟動，應用程式會繼續以目前的版本執行。先前執行中的回答已停止。可以從「檔案 > 檢查更新」再試一次。',
   'update.unsupported': '這個版本無法自行更新。',
   'update.unsupported.detail': '更新由發行版本的 Windows 安裝程式安裝。',
   'update.disabled.detail': '更新已由 {variable} 關閉。',

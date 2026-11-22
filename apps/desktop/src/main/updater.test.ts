@@ -1,10 +1,11 @@
 import { describe, expect, test } from 'vitest';
 import { createMemoryLogger } from '@answerwall/core/testing';
 import { createTranslator, messagesFor } from '../shared/messages/index.ts';
-import { createUpdater } from './updater.ts';
+import { createUpdater, INSTALL_GRACE_MS } from './updater.ts';
 import type { UpdaterEngine, UpdaterOptions } from './updater.ts';
 
 const t = createTranslator(messagesFor('en'));
+const flush = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
 
 function setup(
   options: {
@@ -13,6 +14,9 @@ function setup(
     supported?: boolean;
     disabledByEnvironment?: boolean;
     checkFails?: boolean;
+    /** How the installation goes wrong, if it does. */
+    install?: 'throws' | 'returns';
+    resumeFails?: boolean;
   } = {},
 ) {
   const events: string[] = [];
@@ -20,6 +24,8 @@ function setup(
   const answers = [...(options.answers ?? [])];
   let loaded = 0;
   const feeds: unknown[] = [];
+  const timers: { ms: number; task: () => void }[] = [];
+  let quitStarted = false;
 
   const engine: UpdaterEngine = {
     autoDownload: true,
@@ -43,6 +49,9 @@ function setup(
     },
     quitAndInstall(isSilent, isForceRunAfter) {
       events.push(`install silent=${isSilent} run=${isForceRunAfter}`);
+      if (options.install === 'throws') throw new Error('spawn C:\\Users\\me\\setup.exe EBUSY');
+      // An installer that started makes the app quit on the next turn of the event loop.
+      if (options.install === undefined) quitStarted = true;
     },
   };
 
@@ -65,6 +74,15 @@ function setup(
     async prepareToInstall() {
       events.push('prepare');
     },
+    async resumeAfterFailedInstall() {
+      events.push('resume');
+      if (options.resumeFails) throw new Error('no local server');
+    },
+    quitStarted: () => quitStarted,
+    schedule(ms, task) {
+      timers.push({ ms, task });
+      return () => undefined;
+    },
   };
   return {
     updater: createUpdater(updaterOptions),
@@ -74,6 +92,7 @@ function setup(
     feeds,
     logger,
     loaded: () => loaded,
+    timers,
   };
 }
 
@@ -127,6 +146,72 @@ describe('createUpdater', () => {
     expect(questions[0]?.buttons).toEqual(['Download', 'Later']);
     expect(questions[0]?.detail).toContain('not code-signed');
     expect(questions[1]?.buttons).toEqual(['Install and Restart', 'Later']);
+  });
+
+  test('an installer that started leaves the app to quit', async () => {
+    const { updater, events, timers } = setup({ newer: '1.1.0', answers: [0, 0] });
+
+    await updater.checkQuietly();
+    expect(timers.map((timer) => timer.ms)).toEqual([INSTALL_GRACE_MS]);
+    timers[0]?.task();
+    await flush();
+
+    expect(events).not.toContain('resume');
+    expect(events.at(-1)).toBe('install silent=false run=true');
+  });
+
+  test('an installation that throws brings the app back and says so', async () => {
+    const { updater, events, questions, logger, timers } = setup({
+      newer: '1.1.0',
+      answers: [0, 0],
+      install: 'throws',
+    });
+
+    // Also at start, where a failed check says nothing: the user had just agreed to install.
+    await updater.checkQuietly();
+
+    expect(events.slice(-4)).toEqual([
+      'prepare',
+      'install silent=false run=true',
+      'resume',
+      'ask: The update could not be installed.',
+    ]);
+    expect(questions.at(-1)?.detail).toContain('keeps running');
+    expect(timers).toEqual([]);
+    expect(JSON.stringify(logger.entries)).not.toContain('Users');
+  });
+
+  test('an installer that never made the app quit brings the app back after a moment', async () => {
+    const { updater, events, timers } = setup({
+      newer: '1.1.0',
+      answers: [0, 0],
+      install: 'returns',
+    });
+
+    await updater.checkFromMenu();
+    expect(events).not.toContain('resume');
+
+    timers[0]?.task();
+    await flush();
+    expect(events.slice(-2)).toEqual(['resume', 'ask: The update could not be installed.']);
+
+    // Once is enough.
+    timers[0]?.task();
+    await flush();
+    expect(events.filter((event) => event === 'resume')).toHaveLength(1);
+  });
+
+  test('the user is told even when the app could not be brought back', async () => {
+    const { updater, events } = setup({
+      newer: '1.1.0',
+      answers: [0, 0],
+      install: 'throws',
+      resumeFails: true,
+    });
+
+    await updater.checkQuietly();
+
+    expect(events.at(-1)).toBe('ask: The update could not be installed.');
   });
 
   test('"Later" at the first question downloads nothing', async () => {

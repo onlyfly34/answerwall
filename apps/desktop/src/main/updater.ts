@@ -52,7 +52,22 @@ export interface UpdaterOptions {
   logger: Logger;
   /** Stops the local server and whatever else must end before the installer runs. */
   prepareToInstall(): Promise<void>;
+  /**
+   * Undoes {@link prepareToInstall} when the installation did not happen
+   * after all: the app is still running and must be usable again.
+   */
+  resumeAfterFailedInstall(): Promise<void>;
+  /** Whether the app has begun to quit, which a started installation makes it do. */
+  quitStarted(): boolean;
+  schedule(ms: number, task: () => void): () => void;
 }
+
+/**
+ * How long after the installation was started the app may still be running
+ * without having begun to quit. `quitAndInstall` quits on the next turn of
+ * the event loop when the installer started, and only returns when it did not.
+ */
+export const INSTALL_GRACE_MS = 5_000;
 
 export interface Updater {
   readonly available: boolean;
@@ -92,6 +107,46 @@ export function createUpdater(options: UpdaterOptions): Updater {
     return engine;
   };
 
+  /**
+   * The installation the user agreed to. From `prepareToInstall` on, the
+   * local server is stopped and the app counts as quitting; when the
+   * installer then does not take over (it threw, or it returned without
+   * making the app quit: a missing or locked file, a failed start), the app
+   * is brought back instead of being left open and unusable.
+   */
+  async function installNow(updater: UpdaterEngine): Promise<void> {
+    let resumed = false;
+    const resume = async (reason: string): Promise<void> => {
+      if (resumed) return;
+      resumed = true;
+      logger.warn('the update was not installed', { reason });
+      try {
+        await options.resumeAfterFailedInstall();
+      } catch (error) {
+        logger.error('the app could not be resumed', {
+          error: error instanceof Error ? error.name : 'unknown',
+        });
+      }
+      await ask({
+        message: t('update.installFailed'),
+        detail: t('update.installFailed.detail'),
+        buttons: [t('button.ok')],
+      });
+    };
+
+    try {
+      await options.prepareToInstall();
+      // Not silent: the installer shows itself. The app starts again afterwards.
+      updater.quitAndInstall(false, true);
+    } catch (error) {
+      await resume(error instanceof Error ? error.name : 'unknown');
+      return;
+    }
+    options.schedule(INSTALL_GRACE_MS, () => {
+      if (!options.quitStarted()) void resume('the app did not quit');
+    });
+  }
+
   async function run(quiet: boolean): Promise<void> {
     if (busy) return;
     busy = true;
@@ -122,9 +177,7 @@ export function createUpdater(options: UpdaterOptions): Updater {
         buttons: [t('update.install'), t('button.later')],
       });
       if (install !== 0) return;
-      await options.prepareToInstall();
-      // Not silent: the installer shows itself. The app starts again afterwards.
-      updater.quitAndInstall(false, true);
+      await installNow(updater);
     } catch (error) {
       logger.warn('update check failed', {
         error: error instanceof Error ? error.name : 'unknown',
