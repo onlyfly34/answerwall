@@ -428,7 +428,9 @@ test.describe('asking', () => {
     await arrange(page, server, [{ slotId: 'o1', providerId: 'stub' }]);
     await send(page, 'Show me code');
     await expectPhase(page, 'o1', 'done');
-    const clipboard = (): Promise<string> => page.evaluate(() => navigator.clipboard.readText());
+    // Text put on the Windows clipboard gets the line ends of Windows; it is the same text.
+    const clipboard = async (): Promise<string> =>
+      (await page.evaluate(() => navigator.clipboard.readText())).replaceAll('\r\n', '\n');
 
     const block = answer(page, 'o1').locator('.wall-code');
     await expect(block.locator('.wall-code-header span')).toHaveText('ts');
