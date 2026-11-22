@@ -1,5 +1,5 @@
-# synthetic, from documentation (non-interactive mode: codex exec --json event list); not a recording of the real codex CLI. Replace with a recorded run.
-{"type":"thread.started","thread_id":"synthetic-thread"}
+# synthetic, from documentation; the "Reconnecting... n/5 (...)" retry lines and the error/turn.failed pair have the shape of the recording logged-out.jsonl, the 429 wording is an assumption; not confirmed by a real run
+{"type":"thread.started","thread_id":"00000000-0000-0000-0000-000000000000"}
 {"type":"turn.started"}
 {"type":"error","message":"Reconnecting... 1/5 (exceeded retry limit, last status: 429 Too Many Requests)"}
 {"type":"turn.failed","error":{"message":"exceeded retry limit, last status: 429 Too Many Requests"}}

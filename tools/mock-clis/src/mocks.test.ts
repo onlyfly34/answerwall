@@ -24,6 +24,22 @@ const CODEX_FEATURES = [
   'view_image',
 ].flatMap((feature) => ['--disable', feature]);
 
+const CODEX_OVERRIDES = [
+  'web_search="disabled"',
+  'project_doc_max_bytes=0',
+  'skills.bundled.enabled=false',
+  'skills.include_instructions=false',
+  'include_permissions_instructions=false',
+  'include_apps_instructions=false',
+  'include_environment_context=false',
+  'include_collaboration_mode_instructions=false',
+  'tools.experimental_request_user_input.enabled=false',
+  'agents.max_depth=0',
+  'features.multi_agent_v2.disable_native_tools=true',
+  'features.multi_agent_v2.multi_agent_mode_hint_text=""',
+  'features.multi_agent_v2.root_agent_usage_hint_text=""',
+].flatMap((override) => ['-c', override]);
+
 let workDir: string;
 beforeEach(async () => {
   workDir = await mkdtemp(path.join(os.tmpdir(), 'mock-cli-test-'));
@@ -67,6 +83,7 @@ function validArgs(kind: Kind): string[] {
         'read-only',
         '-C',
         workDir,
+        ...CODEX_OVERRIDES,
         ...CODEX_FEATURES,
         '-',
       ];
@@ -432,6 +449,80 @@ describe('status subcommands', () => {
 
     expect(result.code).toBe(1);
     expect(result.stderr).toBe('Error: Unknown feature flag: no_such_feature\n');
+  });
+
+  test('claude offers the web search only in the confirmed form', async () => {
+    const args = validArgs('claude');
+    const tools = args.indexOf('--tools');
+    const withSearch = [
+      ...args.slice(0, tools),
+      '--tools',
+      'WebSearch',
+      '--allowedTools',
+      'WebSearch',
+      ...args.slice(tools + 2),
+    ];
+    const noAllowRule = withSearch.filter(
+      (arg, index) => index !== tools + 2 && index !== tools + 3,
+    );
+    const withFetch = withSearch.map((arg) => (arg === 'WebSearch' ? 'WebSearch,WebFetch' : arg));
+
+    const searched = await runMock('claude', withSearch);
+    expect(searched.code).toBe(0);
+    expect(jsonLines(searched.stdout)[0]).toMatchObject({ subtype: 'init', tools: ['WebSearch'] });
+    expect(jsonLines((await runMock('claude', args)).stdout)[0]).toMatchObject({ tools: [] });
+    for (const refused of [noAllowRule, withFetch]) {
+      const result = await runMock('claude', refused);
+      expect(result.code).toBe(64);
+      expect(result.stderr).toContain('--tools');
+    }
+  });
+
+  test('claude fails on an unknown model the way the real CLI does', async () => {
+    const result = await runMock('claude', [
+      ...validArgs('claude'),
+      '--model',
+      'mock-model-not-found',
+    ]);
+
+    expect(result.code).toBe(1);
+    expect(result.stderr).toBe(
+      '[claude-code:unrecognized_model] {"model":"mock-model-not-found","query_source":"sdk"}\n',
+    );
+    expect(jsonLines(result.stdout).at(-1)).toMatchObject({ type: 'result', is_error: true });
+  });
+
+  test('codex accepts the confirmed overrides and nothing else', async () => {
+    const args = validArgs('codex');
+    const withSearch = args.map((arg) =>
+      arg === 'web_search="disabled"' ? 'web_search="live"' : arg,
+    );
+    const without = (override: string) => {
+      const at = args.indexOf(override);
+      return [...args.slice(0, at - 1), ...args.slice(at + 1)];
+    };
+
+    const searched = await runMock('codex', withSearch);
+    expect(searched.code).toBe(0);
+    expect(jsonLines(searched.stdout).map((line) => line.type)).toEqual([
+      'thread.started',
+      'turn.started',
+      'item.started',
+      'item.completed',
+      'item.completed',
+      'turn.completed',
+    ]);
+    expect(jsonLines(searched.stdout)[3]).toMatchObject({ item: { type: 'web_search' } });
+    expect(JSON.stringify(jsonLines((await runMock('codex', args)).stdout))).not.toContain(
+      'web_search',
+    );
+    for (const dropped of ['web_search="disabled"', 'agents.max_depth=0']) {
+      const result = await runMock('codex', without(dropped));
+      expect(result.code).toBe(64);
+      expect(result.stderr).toContain(dropped.split('=')[0]);
+    }
+    const extra = [...args.slice(0, -1), '-c', 'sandbox_mode="danger-full-access"', '-'];
+    expect((await runMock('codex', extra)).stderr).toContain('unexpected configuration override');
   });
 
   test('codex reports its ChatGPT login whether or not a key variable is set', async () => {

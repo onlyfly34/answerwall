@@ -1,8 +1,8 @@
-# synthetic, from documentation (non-interactive mode: codex exec --json event list; item.updated growth is an assumption); not a recording of the real codex CLI. Replace with a recorded run.
-{"type":"thread.started","thread_id":"synthetic-thread"}
+# synthetic, from documentation (it lists item.updated): an item growing through item.updated events was never seen in a real codex-cli 0.167.0 run, which prints whole items; kept to show the parser copes if a later version does it
+{"type":"thread.started","thread_id":"00000000-0000-0000-0000-000000000000"}
 {"type":"turn.started"}
 {"type":"item.started","item":{"id":"item_0","type":"agent_message","text":""}}
 {"type":"item.updated","item":{"id":"item_0","type":"agent_message","text":"Hello"}}
 {"type":"item.updated","item":{"id":"item_0","type":"agent_message","text":"Hello from the"}}
 {"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"Hello from the mock CLI."}}
-{"type":"turn.completed","usage":{"input_tokens":20,"cached_input_tokens":5,"output_tokens":9,"reasoning_output_tokens":3}}
+{"type":"turn.completed","usage":{"input_tokens":20,"cached_input_tokens":5,"cache_write_input_tokens":0,"output_tokens":9,"reasoning_output_tokens":3}}

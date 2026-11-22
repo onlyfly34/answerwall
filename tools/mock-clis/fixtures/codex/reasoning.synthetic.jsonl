@@ -1,6 +1,0 @@
-# synthetic, from documentation (non-interactive mode: codex exec --json event list); not a recording of the real codex CLI. Replace with a recorded run.
-{"type":"thread.started","thread_id":"synthetic-thread"}
-{"type":"turn.started"}
-{"type":"item.completed","item":{"id":"item_0","type":"reasoning","text":"**Greeting the user**"}}
-{"type":"item.completed","item":{"id":"item_1","type":"agent_message","text":"Hello from the mock CLI."}}
-{"type":"turn.completed","usage":{"input_tokens":20,"cached_input_tokens":5,"output_tokens":9,"reasoning_output_tokens":3}}

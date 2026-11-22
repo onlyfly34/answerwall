@@ -3,6 +3,7 @@
 // `exec --json`.
 import {
   UsageError,
+  loadFixture,
   logInvocation,
   main,
   parseFlags,
@@ -44,10 +45,59 @@ const KNOWN_FEATURES = [
   'view_image',
 ];
 
-/** A complete successful turn; every piece is one whole agent message. */
+/**
+ * The `-c` overrides every run must carry, exactly once each: what keeps the
+ * user's setup and the CLI's agent scaffolding away from the model. Each was
+ * checked against codex-cli 0.167.0 with `codex debug prompt-input`.
+ */
+const REQUIRED_OVERRIDES = [
+  'project_doc_max_bytes=0',
+  'skills.bundled.enabled=false',
+  'skills.include_instructions=false',
+  'include_permissions_instructions=false',
+  'include_apps_instructions=false',
+  'include_environment_context=false',
+  'include_collaboration_mode_instructions=false',
+  'tools.experimental_request_user_input.enabled=false',
+  'agents.max_depth=0',
+  'features.multi_agent_v2.disable_native_tools=true',
+  'features.multi_agent_v2.multi_agent_mode_hint_text=""',
+  'features.multi_agent_v2.root_agent_usage_hint_text=""',
+];
+/** Web search is always stated: off, or the hosted search and nothing else. */
+const SEARCH_OVERRIDES = ['web_search="disabled"', 'web_search="live"'];
+const EFFORT_OVERRIDE = /^model_reasoning_effort="[A-Za-z0-9_-]+"$/;
+
+/** Refuses any override other than the confirmed set; returns whether the web search is on. */
+function checkOverrides(overrides) {
+  const count = (wanted) => overrides.filter((override) => wanted.includes(override)).length;
+  for (const required of REQUIRED_OVERRIDES) {
+    if (count([required]) !== 1) {
+      throw new UsageError(`configuration override expected exactly once: ${required}`);
+    }
+  }
+  if (count(SEARCH_OVERRIDES) !== 1) {
+    throw new UsageError(`exactly one of these is expected: ${SEARCH_OVERRIDES.join(', ')}`);
+  }
+  const efforts = overrides.filter((override) => EFFORT_OVERRIDE.test(override));
+  if (efforts.length > 1) throw new UsageError('the reasoning effort may be given once');
+  for (const override of overrides) {
+    const known =
+      REQUIRED_OVERRIDES.includes(override) ||
+      SEARCH_OVERRIDES.includes(override) ||
+      EFFORT_OVERRIDE.test(override);
+    if (!known) throw new UsageError(`unexpected configuration override: ${override}`);
+  }
+  return overrides.includes('web_search="live"');
+}
+
+/**
+ * A complete successful turn, with the lines and usage fields of a real run;
+ * every piece is one whole agent message.
+ */
 function generate(pieces) {
   return [
-    JSON.stringify({ type: 'thread.started', thread_id: 'synthetic' }),
+    JSON.stringify({ type: 'thread.started', thread_id: '00000000-0000-0000-0000-000000000000' }),
     JSON.stringify({ type: 'turn.started' }),
     JSON.stringify({
       type: 'item.completed',
@@ -58,6 +108,7 @@ function generate(pieces) {
       usage: {
         input_tokens: 10,
         cached_input_tokens: 0,
+        cache_write_input_tokens: 0,
         output_tokens: pieces.length,
         reasoning_output_tokens: 0,
       },
@@ -77,13 +128,14 @@ const cli = {
 };
 
 function loginStatus() {
-  // The real CLI prints this sentence on stderr and nothing on stdout.
+  // The real CLI prints this sentence on stderr and nothing on stdout, and exits 1.
   if (scenarioFor(undefined) === 'logged-out') {
     process.stderr.write('Not logged in\n');
     return 1;
   }
   // The mock's saved login is a ChatGPT login. The real CLI reports it the
-  // same way when OPENAI_API_KEY or CODEX_API_KEY is set (checked on 0.167.0).
+  // same way when OPENAI_API_KEY or CODEX_API_KEY is set (checked on 0.167.0),
+  // although a run then authenticates with CODEX_API_KEY.
   process.stderr.write('Logged in using ChatGPT\n');
   return 0;
 }
@@ -137,11 +189,7 @@ async function exec(argv) {
   for (const feature of KNOWN_FEATURES) {
     if (!disabled.includes(feature)) throw new UsageError(`feature not disabled: ${feature}`);
   }
-  for (const override of flags['--config'] ?? []) {
-    if (!/^model_reasoning_effort="[A-Za-z0-9_-]+"$/.test(override)) {
-      throw new UsageError(`unexpected configuration override: ${override}`);
-    }
-  }
+  const webSearch = checkOverrides(flags['--config'] ?? []);
 
   const scenario = scenarioFor(flags['--model']);
   if (scenario === 'hang') {
@@ -150,6 +198,12 @@ async function exec(argv) {
   }
   const prompt = await readStdin();
   logInvocation(KIND, { scenario, prompt });
+  // With the search switched on, the plain answer is the recorded run that used it.
+  if (webSearch && scenario === 'ok') {
+    const lines = loadFixture(KIND, 'web-search').map((line) => `${line}\n`);
+    await new Promise((resolve) => process.stdout.write(lines.join(''), resolve));
+    return 0;
+  }
   return play(cli, scenario, { prompt });
 }
 

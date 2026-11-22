@@ -1,0 +1,6 @@
+# recorded from codex-cli 0.167.0, scrubbed (asked to print a file outside the work dir and to create one; it could do neither)
+{"type":"thread.started","thread_id":"00000000-0000-0000-0000-000000000000"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"I’ll read the specified file exactly, then identify the current directory and create `made.txt` there with `hi`."}}
+{"type":"item.completed","item":{"id":"item_1","type":"agent_message","text":"1. I could not read `<path>/note.txt`; no filesystem-read tool was available.\n\n2. I could not create `made.txt`; the available file-write operation was blocked by the sandbox’s read-only policy."}}
+{"type":"turn.completed","usage":{"input_tokens":32015,"cached_input_tokens":28672,"cache_write_input_tokens":0,"output_tokens":408,"reasoning_output_tokens":187}}
