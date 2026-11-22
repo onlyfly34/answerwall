@@ -18,7 +18,9 @@ import type { RecordedCall, SseConnection } from './test-support.ts';
 
 const request = { prompt: 'hi', targets: [{ slotId: 'a', providerId: 'claude' }] };
 
-function harness(options: { settings?: Settings; stream?: () => Response } = {}) {
+function harness(
+  options: { settings?: Settings; stream?: () => Response; preferred?: string[] } = {},
+) {
   let settings = options.settings ?? createDefaultSettings();
   const streams: SseConnection[] = [];
   const http = scriptedFetch((call: RecordedCall) => {
@@ -65,7 +67,7 @@ function harness(options: { settings?: Settings; stream?: () => Response } = {})
     updater: { apply: async () => true, settled: () => undefined },
     buildVersion: TEST_VERSION,
     visibility: fakeVisibility(),
-    language: { storage, preferred: ['en'], root: { lang: '' } },
+    language: { storage, preferred: options.preferred ?? ['en'], root: { lang: '' } },
     random: () => 0,
   });
   const requests = () => http.calls.map((call) => `${call.method} ${call.url}`);
@@ -104,6 +106,49 @@ describe('the real services, wired together', () => {
 
     expect(services.i18n.language()).toBe('zh-TW');
     expect([...storage.values.values()]).toEqual(['zh-TW']);
+  });
+
+  test('a language picked before signing in is saved to the server instead of being discarded', async () => {
+    const { services, requests, http, storage } = harness();
+    // The sign-in page's selector.
+    services.i18n.setLanguage('zh-TW');
+
+    await services.shell.start();
+
+    await vi.waitFor(() => expect(services.settings.settings()?.language).toBe('zh-TW'));
+    expect(services.i18n.language()).toBe('zh-TW');
+    expect([...storage.values.values()]).toEqual(['zh-TW']);
+    const saves = http.calls.filter(
+      (call) => call.method === 'PUT' && call.url === '/api/settings',
+    );
+    expect(saves.map((call) => call.body)).toEqual([{ language: 'zh-TW' }]);
+
+    // It is pushed once: a later load follows the server again.
+    await services.settings.load();
+    expect(requests().filter((route) => route === 'PUT /api/settings')).toHaveLength(1);
+  });
+
+  test('a language that was only detected from the browser is never pushed to the server', async () => {
+    const { services, requests } = harness({ preferred: ['zh-TW'] });
+    expect(services.i18n.language()).toBe('zh-TW');
+
+    await services.shell.start();
+
+    expect(services.i18n.language()).toBe('en');
+    expect(requests()).not.toContain('PUT /api/settings');
+  });
+
+  test('a language changed in the settings is saved once, by the settings page itself', async () => {
+    const { services, requests } = harness();
+    await services.shell.start();
+
+    // What the settings page does.
+    services.i18n.setLanguage('zh-TW');
+    await services.settings.update({ language: 'zh-TW' });
+    await services.settings.load();
+
+    expect(services.i18n.language()).toBe('zh-TW');
+    expect(requests().filter((route) => route === 'PUT /api/settings')).toHaveLength(1);
   });
 
   test('provider statuses are read again after the provider settings change, and only then', async () => {

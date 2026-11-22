@@ -60,3 +60,13 @@ export function sameTargets(a: readonly AskTarget[], b: readonly AskTarget[]): b
     })
   );
 }
+
+/** The slot has not reached a final state: it is queued or running. */
+export function isUnfinished(slot: SlotSnapshot): boolean {
+  return slot.status === 'queued' || slot.status === 'running';
+}
+
+/** Whether one of these cells shows the slot: a cell shows the answer of its own slot and provider. */
+export function showsSlot(cells: readonly AskTarget[], slot: AskTarget | SlotSnapshot): boolean {
+  return cells.some((cell) => cell.slotId === slot.slotId && cell.providerId === slot.providerId);
+}

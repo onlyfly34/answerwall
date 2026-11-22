@@ -1,6 +1,6 @@
 import { createSignal } from 'solid-js';
-import type { Meta } from '@answerwall/core/protocol';
-import type { ApiClient, AppServices } from '../contracts/services.ts';
+import type { Language, Meta } from '@answerwall/core/protocol';
+import type { ApiClient, AppServices, I18n } from '../contracts/services.ts';
 import { createBrowserUpdater } from '../pwa/updater.ts';
 import type { Updater } from '../pwa/updater.ts';
 import { createApiClient, defaultFetch } from './api.ts';
@@ -59,15 +59,33 @@ export function createServices(options: ServicesOptions = {}): ShellServices {
       onInvalidResponse: () => void shell.checkVersion(),
     });
 
-  const i18n = createPersistedI18n(options.language);
+  const persisted = createPersistedI18n(options.language);
+  /** A language the user picked on this page that the server has not been told about yet. */
+  let chosenLanguage: Language | undefined;
+  const i18n: I18n = {
+    ...persisted,
+    setLanguage(language) {
+      chosenLanguage = language;
+      persisted.setLanguage(language);
+    },
+  };
   const notify = createNotifier({ t: i18n.t, onUnauthorized: signedOut });
 
   const providers = createProvidersStore(api);
   const settings = createSettingsStore({
     api,
     onChange(current, patch) {
-      // The language is shared between devices: the server's value wins once it is known.
-      if (current.language !== i18n.language()) i18n.setLanguage(current.language);
+      const chosen = chosenLanguage;
+      chosenLanguage = undefined;
+      if (patch === undefined && chosen !== undefined && chosen !== current.language) {
+        // Picked on the sign-in page, before the settings could be saved: it is
+        // saved now rather than thrown away. A language that was only detected
+        // from the browser is never pushed to the other devices.
+        settings.update({ language: chosen }).catch((error: unknown) => notify.reportError(error));
+      } else if (current.language !== persisted.language()) {
+        // The language is shared between devices: the server's value wins once it is known.
+        persisted.setLanguage(current.language);
+      }
       // Statuses embed the provider configuration, so they follow every change to it.
       if (patch?.providers) providers.load().catch((error: unknown) => notify.reportError(error));
     },

@@ -118,6 +118,48 @@ describe('images are never loaded', () => {
     expect(host.textContent).toContain('inline');
   });
 
+  test('a linked image is one link to the target, with the description as its text', () => {
+    const host = render('[![badge](http://203.0.113.9/badge.svg)](https://example.org/project)');
+    const links = Array.from(host.querySelectorAll('a'));
+    expect(links.map((link) => [link.getAttribute('href'), link.textContent])).toEqual([
+      ['https://example.org/project', 'badge'],
+    ]);
+    expectInert(host);
+  });
+
+  test('a linked image without a description shows the address of the image', () => {
+    const host = render('[*![](http://203.0.113.9/a.png)* <b>](https://example.org/)');
+    const links = Array.from(host.querySelectorAll('a'));
+    expect(links.map((link) => [link.getAttribute('href'), link.textContent])).toEqual([
+      ['https://example.org/', 'http://203.0.113.9/a.png <b>'],
+    ]);
+    expectInert(host);
+  });
+
+  test('a linked image in a list, a table or by reference is one link as well', () => {
+    const host = render(
+      [
+        '- [![in a list](http://203.0.113.9/1.png)](https://example.org/1)',
+        '',
+        '| a |',
+        '|---|',
+        '| [![in a table](http://203.0.113.9/2.png)](https://example.org/2) |',
+        '',
+        '[![by reference][image]][target]',
+        '',
+        '[image]: http://203.0.113.9/3.png',
+        '[target]: https://example.org/3',
+      ].join('\n'),
+    );
+    const links = Array.from(host.querySelectorAll('a'));
+    expect(links.map((link) => [link.getAttribute('href'), link.textContent])).toEqual([
+      ['https://example.org/1', 'in a list'],
+      ['https://example.org/2', 'in a table'],
+      ['https://example.org/3', 'by reference'],
+    ]);
+    expectInert(host);
+  });
+
   test('a reference-style image is a link too', () => {
     const host = render('![logo][l]\n\n[l]: https://tracker.example/logo.svg');
     expectInert(host);

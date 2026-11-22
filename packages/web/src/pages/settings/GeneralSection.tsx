@@ -1,4 +1,4 @@
-import { createSignal, createUniqueId, For } from 'solid-js';
+import { createMemo, createSignal, createUniqueId, For } from 'solid-js';
 import type { Component } from 'solid-js';
 import { LANGUAGES, LayoutSettingsSchema } from '@answerwall/core/protocol';
 import type { Language, LayoutSettings, SettingsPatch } from '@answerwall/core/protocol';
@@ -21,6 +21,10 @@ export const GeneralSection: Component<{ save(patch: SettingsPatch): Promise<boo
     update: createUniqueId(),
   };
   const layout = (): LayoutSettings | undefined => settings.settings()?.layout;
+  // Memos: a field is rewritten only when its own number changes, not on every
+  // settings update, which would erase what is being typed while a save is pending.
+  const minCellWidth = createMemo(() => layout()?.minCellWidth);
+  const columns = createMemo(() => layout()?.columns);
   const [invalid, setInvalid] = createSignal<'minCellWidth' | 'columns'>();
 
   function changeLanguage(language: Language): void {
@@ -94,7 +98,7 @@ export const GeneralSection: Component<{ save(patch: SettingsPatch): Promise<boo
               min={WIDTH.minValue ?? undefined}
               max={WIDTH.maxValue ?? undefined}
               step={10}
-              value={layout()?.minCellWidth}
+              value={minCellWidth()}
               aria-invalid={invalid() === 'minCellWidth'}
               aria-describedby={`${ids.width}-help`}
               onChange={(event) => changeNumber('minCellWidth', event.currentTarget.value)}
@@ -119,7 +123,7 @@ export const GeneralSection: Component<{ save(patch: SettingsPatch): Promise<boo
               min={COLUMNS.minValue ?? undefined}
               max={COLUMNS.maxValue ?? undefined}
               step={1}
-              value={layout()?.columns}
+              value={columns()}
               aria-invalid={invalid() === 'columns'}
               aria-describedby={`${ids.columns}-help`}
               onChange={(event) => changeNumber('columns', event.currentTarget.value)}

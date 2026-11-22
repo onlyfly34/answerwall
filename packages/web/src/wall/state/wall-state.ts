@@ -65,6 +65,12 @@ export interface WallState {
   setDefaultPresetId(presetId: string | null): void;
 }
 
+/** For the pages that have no wall mounted: the stored wall lets go of an ask that was deleted. */
+export function forgetStoredAsk(askId: string): void {
+  const stored = readStored('session', ARRANGEMENT_KEY, ArrangementSchema);
+  if (stored?.askId === askId) writeStored('session', ARRANGEMENT_KEY, { ...stored, askId: null });
+}
+
 /**
  * Call inside a component: the state persists itself with an effect.
  * `initialSlots` is used when the session has no arrangement yet.

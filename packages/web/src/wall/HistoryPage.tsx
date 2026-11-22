@@ -5,6 +5,7 @@ import { useServices } from '../contracts/services.ts';
 import { reaskHref, viewAskHref } from './navigation.ts';
 import { SLOT_PHASES } from './state/slot-view.ts';
 import type { SlotPhase } from './state/slot-view.ts';
+import { forgetStoredAsk } from './state/wall-state.ts';
 import './wall.css';
 
 /** Typing pauses this long before the list is searched. */
@@ -75,6 +76,7 @@ export const HistoryPage: Component = () => {
       setItems((previous) => previous.filter((item) => item.askId !== askId));
       // The wall must not keep showing an ask that no longer exists.
       if (asks.current()?.askId === askId) asks.clear();
+      forgetStoredAsk(askId);
     } catch (error) {
       notify.reportError(error);
     } finally {

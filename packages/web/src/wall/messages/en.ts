@@ -103,12 +103,14 @@ export const en = {
   'wall.composer.noneAvailable': 'No cell has an enabled provider.',
   'wall.composer.tooManyCells': '{count} cells exceed the limit of {limit} per ask.',
   'wall.composer.running': 'Answers are still coming in. Wait or cancel all to ask again.',
+  'wall.composer.loading': 'Loading the ask on the wall…',
   'wall.composer.empty': 'Type a prompt to send.',
   'wall.composer.tooLong': 'The prompt is too long.',
   'wall.composer.size': '{size} of {limit}',
 
   'wall.connection.reconnecting': 'Connection lost. Reconnecting…',
-  'wall.connection.failed': 'The answers can no longer be followed. {message}',
+  'wall.connection.failed': 'The answers can no longer be followed.',
+  'wall.connection.retry': 'Try again',
 
   'wall.presets.label': 'Presets',
   'wall.presets.saveAs': 'Save as preset',

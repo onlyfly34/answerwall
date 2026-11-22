@@ -109,6 +109,35 @@ describe('language, layout and updates', () => {
     });
   });
 
+  test('a number typed while an earlier change is still being saved is kept', async () => {
+    let land: () => void = () => undefined;
+    const fake = setup();
+    const layout = section('Wall layout');
+    const columns = layout.getByLabelText<HTMLInputElement>('Number of columns');
+    // A slow connection: the first save comes back only after the user typed on.
+    const update = fake.services.settings.update.bind(fake.services.settings);
+    fake.services.settings.update = async (patch) => {
+      await new Promise<void>((resolve) => (land = resolve));
+      await update(patch);
+    };
+
+    fireEvent.click(layout.getByRole('radio', { name: 'A fixed number' }));
+    columns.value = '4';
+    columns.dispatchEvent(new Event('input', { bubbles: true }));
+    land();
+    await waitFor(() => expect(fake.services.settings.settings()?.layout.mode).toBe('fixed'));
+
+    expect(columns.value).toBe('4');
+    columns.dispatchEvent(new Event('change', { bubbles: true }));
+    land();
+    await waitFor(() =>
+      expect(fake.services.settings.settings()?.layout).toMatchObject({
+        mode: 'fixed',
+        columns: 4,
+      }),
+    );
+  });
+
   test.each([
     ['Number of columns', '0'],
     ['Number of columns', '13'],

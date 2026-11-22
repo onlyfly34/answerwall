@@ -12,6 +12,7 @@ import { createFakeServices } from '../contracts/testing.ts';
 import type { FakeServices } from '../contracts/testing.ts';
 import { SEARCH_DEBOUNCE_MS } from './HistoryPage.tsx';
 import { reaskHref, viewAskHref } from './navigation.ts';
+import { ARRANGEMENT_KEY } from './state/wall-state.ts';
 import {
   askSnapshot,
   mountPages,
@@ -253,6 +254,40 @@ describe('history', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
     await settle();
     expect(services.asks.current()).toBeUndefined();
+  });
+
+  test('deleting the ask the stored wall remembers makes the wall forget it', async () => {
+    const stored = (askId: string) =>
+      JSON.stringify({
+        slots: [{ slotId: 's-1', providerId: 'claude' }],
+        layout: null,
+        maximised: null,
+        presetId: null,
+        prompt: 'draft',
+        askId,
+      });
+    sessionStorage.setItem(ARRANGEMENT_KEY, stored('ask-1'));
+    const services = createFakeServices({ api: historyApi([item(1), item(2)]) });
+    mountPages(ROUTES.history, services);
+    await screen.findByText('Question 1');
+
+    // Another ask: the wall keeps its own.
+    const rows = () => Array.from(document.querySelectorAll<HTMLElement>('.wall-history-item'));
+    const remove = async (prompt: string) => {
+      const row = rows().find((candidate) => candidate.textContent.includes(prompt));
+      if (!row) throw new Error(`no row for ${prompt}`);
+      fireEvent.click(within(row).getByRole('button', { name: 'Delete' }));
+      fireEvent.click(within(row).getByRole('button', { name: 'Delete' }));
+      await settle();
+    };
+    await remove('Question 2');
+    expect(sessionStorage.getItem(ARRANGEMENT_KEY)).toBe(stored('ask-1'));
+
+    await remove('Question 1');
+    expect(JSON.parse(sessionStorage.getItem(ARRANGEMENT_KEY) ?? '{}')).toMatchObject({
+      askId: null,
+      prompt: 'draft',
+    });
   });
 
   test('a failed delete is reported and keeps the row', async () => {

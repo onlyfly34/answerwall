@@ -425,11 +425,44 @@ describe('streaming', () => {
     stream.setConnection('live');
     expect(document.querySelector('.wall-notice')).toBeNull();
     stream.fail(new ApiError('invalid_response', 200, 'Unexpected answer'));
-    expect(document.querySelector('.wall-notice')?.textContent).toBe(
-      'The answers can no longer be followed. Unexpected answer',
+    // The notice is in the user's language; the server's own wording is not part of it.
+    expect(document.querySelector('.wall-notice span')?.textContent).toBe(
+      'The answers can no longer be followed.',
     );
     // What was received stays on the wall.
     expect(statuses()).toEqual(['Queued, position 1', 'Queued, position 1', 'Queued, position 1']);
+  });
+
+  test('a stream that was given up can be followed again, which loads the ask afresh', async () => {
+    const services = await mountWall();
+    const failed = await send('go', services);
+    failed.fail(new ApiError('invalid_response', 200, 'Unexpected answer'));
+    // The cells may still be running on the server, so nothing new can be sent.
+    expect(sendButton().disabled).toBe(true);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    const stream = services.asks.current();
+    expect(stream).not.toBe(failed);
+    expect(stream?.askId).toBe('ask-1');
+    expect(document.querySelector('.wall-notice')).toBeNull();
+    expect(hint()).toBe('Loading the ask on the wall…');
+
+    // Meanwhile the ask was cancelled on the server: the wall is usable again.
+    stream?.apply({
+      type: 'snapshot',
+      seq: 9,
+      snapshot: askSnapshot(
+        [
+          slotSnapshot({ status: 'cancelled' }),
+          slotSnapshot({ slotId: 's-2', providerId: 'codex', kind: 'codex', status: 'cancelled' }),
+          slotSnapshot({ slotId: 's-3', providerId: 'grok', kind: 'grok', status: 'cancelled' }),
+        ],
+        { askId: 'ask-1', status: 'done', seq: 9 },
+      ),
+    });
+    expect(statuses()).toEqual(['Cancelled', 'Cancelled', 'Cancelled']);
+    type('next');
+    expect(sendButton().disabled).toBe(false);
   });
 
   test('after a reload the wall follows its ask again', async () => {
@@ -440,6 +473,13 @@ describe('streaming', () => {
     const second = await mountWall();
     const stream = second.asks.current();
     expect(stream?.askId).toBe('ask-1');
+    // Until the ask's state has arrived it may still be running: nothing can be sent.
+    type('too early');
+    expect(sendButton().disabled).toBe(true);
+    expect(hint()).toBe('Loading the ask on the wall…');
+    fireEvent.keyDown(prompt(), { key: 'Enter', ctrlKey: true });
+    await settle();
+    expect(second.asks.submitted).toEqual([]);
     stream?.apply({
       type: 'snapshot',
       seq: 4,
@@ -453,6 +493,40 @@ describe('streaming', () => {
       ),
     });
     expect(statuses()).toEqual(['Answering', 'Queued, position 1', 'Done']);
+    expect(hint()).toBe('Answers are still coming in. Wait or cancel all to ask again.');
+  });
+
+  test('an ask whose submission outlived the wall is picked up on the way back', async () => {
+    let answer: (response: { askId: string }) => void = () => undefined;
+    const fake = createFakeServices({ api: presetApi([]) });
+    // A slow server: the ask is accepted only after the user has left the wall.
+    const submit = fake.asks.submit.bind(fake.asks);
+    fake.asks.submit = async (request) => {
+      await new Promise<{ askId: string }>((resolve) => (answer = resolve));
+      return submit(request);
+    };
+    const { history } = mountPages(ROUTES.wall, fake);
+    await screen.findByRole('heading', { name: 'Wall' });
+    await settle();
+    type('slow one');
+    fireEvent.keyDown(prompt(), { key: 'Enter', ctrlKey: true });
+    history.set({ value: ROUTES.history });
+    await screen.findByRole('heading', { name: 'History' });
+    answer({ askId: 'ask-1' });
+    await settle();
+    expect(fake.asks.current()?.askId).toBe('ask-1');
+
+    history.set({ value: ROUTES.wall });
+    await screen.findByRole('heading', { name: 'Wall' });
+    await settle();
+    // The ask is on the wall, so it cannot be sent a second time by accident.
+    expect(statuses()).toEqual(['Queued, position 1', 'Queued, position 1', 'Queued, position 1']);
+    expect(prompt().value).toBe('');
+    expect(sendButton().disabled).toBe(true);
+    expect(JSON.parse(sessionStorage.getItem(ARRANGEMENT_KEY) ?? '{}')).toMatchObject({
+      askId: 'ask-1',
+      prompt: '',
+    });
   });
 
   test('an ask that no longer exists after a reload is forgotten quietly', async () => {
@@ -968,6 +1042,79 @@ describe('presets', () => {
     expect(chip('Twins').getAttribute('aria-pressed')).toBe('false');
   });
 
+  describe('while the ask on the wall is running', () => {
+    const solo: Preset = {
+      id: 'p-1',
+      name: 'Solo',
+      slots: [{ slotId: 'c', providerId: 'codex' }],
+      createdAt: 1,
+      updatedAt: 1,
+    };
+    const cancels = (services: FakeServices) =>
+      services.apiCalls.filter((call) => call.method === 'cancelAsk').map((call) => call.args);
+    const cancelAsk = async () => ({ cancelled: [] });
+
+    test('switching to a preset cancels the cells that leave the wall', async () => {
+      const services = await mountWall({ api: { ...presetApi([solo]), cancelAsk } });
+      await send('go', services);
+
+      fireEvent.click(chip('Solo'));
+      expect(names()).toEqual(['Codex']);
+      // None of the ask's cells is left, so the ask is cancelled as a whole.
+      expect(cancels(services)).toEqual([['ask-1', undefined]]);
+    });
+
+    test('cells that stay keep running; finished ones are left alone', async () => {
+      const pair: Preset = {
+        ...solo,
+        name: 'Pair',
+        slots: [
+          { slotId: 's-1', providerId: 'claude' },
+          // The same cell with another provider does not show the running answer.
+          { slotId: 's-2', providerId: 'grok' },
+        ],
+      };
+      const services = await mountWall({ api: { ...presetApi([pair]), cancelAsk } });
+      const stream = await send('go', services);
+      stream.apply({ type: 'done', seq: 1, slotId: 's-3', providerId: 'grok', elapsedMs: 5 });
+
+      fireEvent.click(chip('Pair'));
+      expect(names()).toEqual(['Claude', 'Grok']);
+      expect(cancels(services)).toEqual([['ask-1', 's-2']]);
+      expect(statuses()).toEqual(['Queued, position 1', 'No answer yet']);
+    });
+
+    test('applying the preset the ask was sent from again cancels nothing', async () => {
+      const server: Preset[] = [];
+      const services = await mountWall({ api: { ...presetApi(server), cancelAsk } });
+      await saveAs('All three');
+      await send('go', services);
+
+      fireEvent.click(chip('All three'));
+      expect(cancels(services)).toEqual([]);
+      expect(statuses()).toEqual([
+        'Queued, position 1',
+        'Queued, position 1',
+        'Queued, position 1',
+      ]);
+    });
+
+    test('a finished ask is not cancelled, and a failed cancel is reported', async () => {
+      const failure = new ApiError('internal', 500, 'boom');
+      const services = await mountWall({
+        api: { ...presetApi([solo]), cancelAsk: async () => Promise.reject(failure) },
+      });
+      const stream = await send('go', services);
+      fireEvent.click(chip('Solo'));
+      await settle();
+      expect(services.errors).toEqual([failure]);
+
+      finish(stream);
+      fireEvent.click(chip('Solo'));
+      expect(cancels(services)).toHaveLength(1);
+    });
+  });
+
   test('a changed preset is marked and can be updated in place', async () => {
     const server: Preset[] = [];
     await mountWall({ api: presetApi(server) });
@@ -1137,6 +1284,70 @@ describe('a past ask', () => {
     ]);
   });
 
+  test('asking again while the ask on the wall runs cancels the cells it replaces', async () => {
+    const services = await mountWall({
+      api: {
+        ...presetApi([]),
+        getHistoryEntry: async () => structuredClone(past),
+        cancelAsk: async () => ({ cancelled: [] }),
+      },
+    });
+    await send('go', services);
+    const cancels = () =>
+      services.apiCalls.filter((call) => call.method === 'cancelAsk').map((call) => call.args);
+
+    // From the read-only view of a past ask.
+    cleanup();
+    mountPages(viewAskHref('ask-past'), services);
+    fireEvent.click(await screen.findByRole('button', { name: 'Ask again' }));
+    await waitFor(() => expect(screen.getByLabelText('Prompt')).toBeDefined());
+    expect(names()).toEqual(['Claude', 'Grok']);
+    // The wall's own ask, not the one that was on screen.
+    expect(cancels()).toEqual([['ask-1', undefined]]);
+    expect(services.asks.cancelled).toEqual([]);
+  });
+
+  test('the re-ask address cancels them too; an ask that is gone is not an error', async () => {
+    const gone = new ApiError('not_found', 404, 'No such ask');
+    const first = await mountWall({ api: { ...presetApi([]) } });
+    await send('go', first);
+    cleanup();
+
+    const services = createFakeServices({
+      api: {
+        ...presetApi([]),
+        getHistoryEntry: async () => structuredClone(past),
+        cancelAsk: async () => Promise.reject(gone),
+      },
+    });
+    const { history } = mountPages(reaskHref('ask-past'), services);
+    await waitFor(() => expect(history.get()).toBe(ROUTES.wall));
+    await settle();
+    expect(names()).toEqual(['Claude', 'Grok']);
+    expect(services.apiCalls).toContainEqual({ method: 'cancelAsk', args: ['ask-1', undefined] });
+    expect(services.errors).toEqual([]);
+  });
+
+  test('asking a running ask of another wall again does not take that ask over', async () => {
+    const running = askSnapshot([slotSnapshot({ slotId: 'h-1', status: 'running' })], {
+      status: 'running',
+      seq: 3,
+    });
+    const services = await mountWall(
+      { api: { ...presetApi([]), getHistoryEntry: async () => structuredClone(running) } },
+      viewAskHref('ask-past'),
+    );
+    await waitFor(() => expect(services.asks.current()?.askId).toBe('ask-past'));
+    services.asks.current()?.apply({ type: 'snapshot', seq: 3, snapshot: running });
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Ask again' }));
+    await waitFor(() => expect(screen.getByLabelText('Prompt')).toBeDefined());
+    await settle();
+    expect(prompt().value).toBe('What is a monad?');
+    expect(statuses()).toEqual(['No answer yet']);
+    expect(sendButton().disabled).toBe(false);
+  });
+
   test('the re-ask address does the same and is consumed', async () => {
     const services = createFakeServices({
       api: { ...presetApi([]), getHistoryEntry: async () => structuredClone(past) },
@@ -1200,7 +1411,7 @@ describe('language', () => {
     const services = await mountWall();
     services.i18n.setLanguage('zh-TW');
     expect(screen.getByRole('button', { name: '新增格子' })).toBeDefined();
-    expect(statuses()).toEqual(['尚無答案', '尚無答案', '尚無答案']);
+    expect(statuses()).toEqual(['尚無回答', '尚無回答', '尚無回答']);
     expect(screen.getByRole('button', { name: '送出給 3 格' })).toBeDefined();
   });
 });

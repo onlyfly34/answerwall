@@ -1,10 +1,11 @@
-import { createEffect, createMemo, createSignal, on, onMount, Show } from 'solid-js';
+import { createEffect, createMemo, createSignal, on, onMount, Show, untrack } from 'solid-js';
 import type { Component } from 'solid-js';
 import { useNavigate, useSearchParams } from '@solidjs/router';
 import { DEFAULT_LAYOUT } from '@answerwall/core/protocol';
 import type { AskSnapshot, AskTarget, ProviderStatus } from '@answerwall/core/protocol';
 import { ROUTES } from '../contracts/routes.ts';
-import { useServices } from '../contracts/services.ts';
+import { ApiError, useServices } from '../contracts/services.ts';
+import type { AskStream } from '../contracts/services.ts';
 import { Composer } from './components/Composer.tsx';
 import { Icon } from './components/Icon.tsx';
 import { LayoutControls } from './components/LayoutControls.tsx';
@@ -14,8 +15,9 @@ import { WallGrid } from './components/WallGrid.tsx';
 import { effectiveLayout } from './state/layout.ts';
 import { WALL_QUERY } from './navigation.ts';
 import { createPresets } from './state/presets.ts';
+import type { Presets } from './state/presets.ts';
 import { canSendTo, defaultSlots } from './state/providers.ts';
-import { copyTarget } from './state/slots.ts';
+import { copyTarget, isUnfinished, showsSlot } from './state/slots.ts';
 import { utf8Bytes } from './state/slot-view.ts';
 import { createTicker } from './state/ticker.ts';
 import { createViewport } from './state/viewport.ts';
@@ -38,6 +40,14 @@ export const WallPage: Component = () => {
   const viewport = createViewport();
   const state = createWallState(() => defaultSlots(providers.providers()));
   const presets = createPresets(services, state);
+  /** The presets as the bar uses them: switching the wall first stops what would go unseen. */
+  const shownPresets: Presets = {
+    ...presets,
+    apply(preset) {
+      cancelUnshown(preset.slots);
+      presets.apply(preset);
+    },
+  };
 
   const providerOf = (slot: AskTarget): ProviderStatus | undefined =>
     providers.providers().find((provider) => provider.instance.id === slot.providerId);
@@ -103,9 +113,57 @@ export const WallPage: Component = () => {
     state.setAskId(null);
     asks.clear();
   });
+  // An ask whose submission outlived the wall that sent it (the user went to
+  // another page before the server answered) belongs to this wall: it went to
+  // these cells and its prompt is still the draft.
+  createEffect(() => {
+    if (state.askId() !== null || viewedId() !== undefined) return;
+    const stream = asks.current();
+    const snapshot = stream?.snapshot();
+    if (!stream || !snapshot) return;
+    if (!snapshot.slots.some((slot) => showsSlot(state.slots, slot))) return;
+    if (untrack(state.prompt) !== snapshot.prompt) return;
+    state.setAskId(stream.askId);
+    state.setPrompt('');
+  });
+
+  /**
+   * Called before the wall's cells are replaced as a whole: cancels what the
+   * wall's own ask is still doing in cells the next arrangement does not
+   * show, so that nothing keeps running unseen.
+   */
+  function cancelUnshown(next: readonly AskTarget[]): void {
+    const askId = state.askId();
+    if (askId === null) return;
+    const stream = asks.current();
+    const snapshot = stream?.askId === askId ? stream.snapshot() : undefined;
+    let slotIds: (string | undefined)[];
+    if (snapshot) {
+      const unfinished = snapshot.slots.filter(isUnfinished);
+      const unshown = unfinished.filter((slot) => !showsSlot(next, slot));
+      slotIds =
+        unshown.length > 0 && unshown.length === unfinished.length
+          ? [undefined]
+          : unshown.map((slot) => slot.slotId);
+    } else {
+      // The ask is not being followed (a past ask is on screen), so which of
+      // its slots still run is unknown: unless every cell stays, cancel it whole.
+      slotIds = state.slots.every((cell) => showsSlot(next, cell)) ? [] : [undefined];
+    }
+    for (const slotId of slotIds) {
+      api.cancelAsk(askId, slotId).catch((error: unknown) => {
+        // An ask that is gone has nothing left to cancel.
+        if (!(error instanceof ApiError && error.code === 'not_found')) notify.reportError(error);
+      });
+    }
+  }
 
   function loadForAskingAgain(snapshot: AskSnapshot): void {
-    state.setSlots(snapshot.slots.map(copyTarget));
+    const next = snapshot.slots.map(copyTarget);
+    cancelUnshown(next);
+    // A past ask that was followed live while it was on screen is left behind.
+    if (asks.current() && asks.current()?.askId !== state.askId()) asks.clear();
+    state.setSlots(next);
     state.setPresetId(null);
     state.setPrompt(snapshot.prompt);
     notify.toast({ kind: 'info', message: t('wall.reask.loaded') });
@@ -124,9 +182,17 @@ export const WallPage: Component = () => {
     ),
   );
 
-  const anyActive = () =>
-    shownAsk()?.slots.some((slot) => slot.status === 'queued' || slot.status === 'running') ??
-    false;
+  const anyActive = () => shownAsk()?.slots.some(isUnfinished) ?? false;
+  /** The wall's ask is known by its id only (after a reload): its state is on its way. */
+  const loadingAsk = () => {
+    const stream = asks.current();
+    return (
+      stream !== undefined &&
+      stream.askId === state.askId() &&
+      stream.snapshot() === undefined &&
+      stream.connection() !== 'failed'
+    );
+  };
   const now = createTicker(anyActive);
 
   const layout = () =>
@@ -146,6 +212,8 @@ export const WallPage: Component = () => {
       return t('wall.composer.tooManyCells', { count: sendable().length, limit: maxTargets });
     }
     if (anyActive()) return t('wall.composer.running');
+    // Until the ask is known, it may well have unfinished cells.
+    if (loadingAsk()) return t('wall.composer.loading');
     if (state.prompt().trim() === '') return t('wall.composer.empty');
     if (promptBytes() > maxPromptBytes()) return t('wall.composer.tooLong');
     return undefined;
@@ -174,8 +242,8 @@ export const WallPage: Component = () => {
   }
 
   function isActiveSlot(slotId: string): boolean {
-    const status = shownAsk()?.slots.find((slot) => slot.slotId === slotId)?.status;
-    return status === 'queued' || status === 'running';
+    const slot = shownAsk()?.slots.find((candidate) => candidate.slotId === slotId);
+    return slot !== undefined && isUnfinished(slot);
   }
 
   function addCell(): void {
@@ -206,15 +274,13 @@ export const WallPage: Component = () => {
     state.removeSlot(slotId);
   }
 
-  const connectionNotice = (): string | undefined => {
+  /** The stream of the ask on screen, while its connection needs the user's attention. */
+  const troubledStream = (): AskStream | undefined => {
     const stream = asks.current();
     const shown = readOnly() ? viewed()?.askId : state.askId();
     if (!stream || stream.askId !== shown) return undefined;
-    if (stream.connection() === 'reconnecting') return t('wall.connection.reconnecting');
-    if (stream.connection() === 'failed') {
-      return t('wall.connection.failed', { message: stream.error()?.message ?? '' });
-    }
-    return undefined;
+    const connection = stream.connection();
+    return connection === 'reconnecting' || connection === 'failed' ? stream : undefined;
   };
 
   return (
@@ -225,7 +291,7 @@ export const WallPage: Component = () => {
           when={readOnly()}
           fallback={
             <PresetBar
-              presets={presets}
+              presets={shownPresets}
               defaultPresetId={state.defaultPresetId()}
               canSave={state.slots.length > 0}
             />
@@ -298,10 +364,23 @@ export const WallPage: Component = () => {
         </Show>
       </div>
 
-      <Show when={connectionNotice()}>
-        {(notice) => (
+      <Show when={troubledStream()}>
+        {(stream) => (
           <p class="wall-notice" role="status">
-            {notice()}
+            <Show
+              when={stream().connection() === 'failed'}
+              fallback={t('wall.connection.reconnecting')}
+            >
+              <span>{t('wall.connection.failed')}</span>{' '}
+              {/* A stream that gave up never resumes by itself; following again loads the ask afresh. */}
+              <button
+                type="button"
+                class="wall-button wall-button-small"
+                onClick={() => asks.follow(stream().askId)}
+              >
+                {t('wall.connection.retry')}
+              </button>
+            </Show>
           </p>
         )}
       </Show>

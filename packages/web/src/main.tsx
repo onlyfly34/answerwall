@@ -1,3 +1,5 @@
+// First: it configures the validation library before any module builds a schema.
+import './infra/zod-config.ts';
 import { render } from 'solid-js/web';
 import { App } from './app/App.tsx';
 import { ShellContext } from './app/shell-context.ts';

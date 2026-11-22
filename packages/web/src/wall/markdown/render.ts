@@ -105,8 +105,29 @@ export interface MarkdownDocument {
   definitions: string;
 }
 
+/**
+ * An image renders as a link, and a link cannot hold another link: the HTML
+ * parser would split the two and leave the outer one empty. Inside a link an
+ * image is therefore just its text, so `[![badge](image)](target)` is one link
+ * to the target.
+ */
+function withoutImages(tokens: Token[]): Token[] {
+  return tokens.map((token): Token => {
+    if (token.type === 'image') {
+      const text = String(token.text || token.href);
+      return { type: 'text', raw: token.raw, text, escaped: false };
+    }
+    return 'tokens' in token && token.tokens
+      ? { ...token, tokens: withoutImages(token.tokens) }
+      : token;
+  });
+}
+
 export function lexMarkdown(text: string): MarkdownDocument {
   const tokens: TokensList = marked.lexer(text);
+  void marked.walkTokens(tokens, (token) => {
+    if (token.type === 'link' && token.tokens) token.tokens = withoutImages(token.tokens);
+  });
   return {
     blocks: tokens
       .filter((token) => token.type !== 'space' && token.type !== 'def')

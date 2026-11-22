@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { PROVIDER_ERROR_CODES } from '@answerwall/core/protocol';
 import { createI18n } from '../../contracts/i18n.ts';
+import { MESSAGES } from '../../contracts/messages.ts';
 import { SLOT_PHASES } from '../state/slot-view.ts';
 import { en } from './en.ts';
 import { zhTW } from './zh-TW.ts';
@@ -29,6 +30,16 @@ describe('the wall dictionary', () => {
       expect(keys).toContain(`wall.phase.${phase}`);
       expect(keys).toContain(`wall.status.${phase}`);
     }
+  });
+
+  test('Traditional Chinese uses one word per concept, the same as the app shell', () => {
+    // 回答牆 (wall), 供應商 (provider), 回答 (answer); not the variants below.
+    const all = MESSAGES['zh-TW'];
+    for (const [key, message] of Object.entries(all)) {
+      expect(message, key).not.toMatch(/答案|供應者|提供者|提供商/);
+    }
+    expect(all['wall.title']).toBe(all['app.nav.wall']);
+    expect(all['wall.picker.provider']).toBe(all['app.nav.providers']);
   });
 
   test('the shared translator serves the wall in both languages', () => {

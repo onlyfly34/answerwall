@@ -205,7 +205,10 @@
   cursor: grabbing;
 }
 
-.wall-grid-single {
+.wall-grid-single,
+.wall-grid-single .wall-cell-body {
+  /* The answer scrolls by itself, so it needs the rule of its own: a
+     horizontal swipe across it changes the cell too. */
   touch-action: pan-y;
 }
 
