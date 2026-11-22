@@ -225,7 +225,12 @@ directory).
   them in a loop.
 - **Remote mode.** The window loads the server's own page in the partition
   `persist:remote`; pairing happens on that page, and the session cookie
-  stays in that partition (encrypted on disk by Chromium). `https` to any
+  stays in that partition (encrypted on disk by Chromium). The partition
+  belongs to one server, the saved one: before the window loads another
+  origin (another port of the same host included, since cookies ignore the
+  port), the previous window is closed and the partition's cookies,
+  storage, service workers and caches are cleared (`remote-session.ts`), so
+  going back to an earlier server means pairing again. `https` to any
   host; `http` only when every address of the host is loopback or private
   (RFC 1918, link-local, `100.64.0.0/10`, `fc00::/7`, `fe80::/10`), shown
   with a warning on the connection page and in the window title. Before

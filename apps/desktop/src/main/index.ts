@@ -53,6 +53,7 @@ import { allowsNavigation, isSameOrigin } from './navigation.ts';
 import type { Confinement } from './navigation.ts';
 import { classifyFetchFailure, PROBE_TIMEOUT_MS, probeRemote } from './remote-probe.ts';
 import type { MetaFetch } from './remote-probe.ts';
+import { claimRemoteStore } from './remote-session.ts';
 import { createEncryptedSecretStore } from './secrets.ts';
 import { createUpdater } from './updater.ts';
 import type { Ask, UpdaterEngine } from './updater.ts';
@@ -335,7 +336,15 @@ async function openRemote(server: RemoteServerInfo): Promise<void> {
     logger.warn('the remote server could not be loaded', { code });
     showConnection(classifyFetchFailure({ error: description, timedOut: false }));
   });
+  // The previous window goes away here, so nothing of another server writes any more.
   replaceContent(window, 'remote');
+  // In this order: the partition is emptied of another server's state, then
+  // it is recorded whose it is now, and only then is anything of it loaded.
+  const store = session.fromPartition(APP.partitions.remote);
+  if (await claimRemoteStore(store, settings.get().remoteUrl, server.origin)) {
+    logger.info('the remote window starts without the state of another server');
+  }
+  settings.update({ mode: 'remote', remoteUrl: server.origin });
   try {
     await window.loadURL(`${server.origin}/`);
   } catch {
@@ -419,7 +428,7 @@ async function applyChoice(choice: ConnectionChoice): Promise<ApplyResult> {
   } else {
     const checked = await checkRemote(choice.url);
     if (!checked.ok) return checked;
-    settings.update({ mode: 'remote', remoteUrl: checked.server.origin });
+    // Saves the choice as well, once the partition is this server's.
     await openRemote(checked.server);
     // Nothing uses the local server now; its CLI children end with it.
     await stopCore();

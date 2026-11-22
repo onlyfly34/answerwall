@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { createServer as createHttpServer } from 'node:http';
 import { createServer } from 'node:net';
 import type { AddressInfo } from 'node:net';
 import type { Page } from '@playwright/test';
@@ -136,6 +137,88 @@ test.describe('the connection page', () => {
     await expect(wall(again)).toBeVisible();
     const devices = await server.api<{ devices: { name: string }[] }>('GET', '/api/auth/devices');
     expect(devices.json.devices.map((device) => device.name)).toEqual(['Desktop app']);
+  });
+
+  test('pointing the app at another server leaves nothing of the first one behind', async ({
+    launch,
+    profile,
+    server,
+  }) => {
+    // Another service on the same host, on another port: the same site, and
+    // the same cookie jar. It answers as a server of this product would and
+    // records the cookies of every request it gets.
+    const cookies: string[] = [];
+    const other = createHttpServer((request, response) => {
+      cookies.push(request.headers.cookie ?? '');
+      if (request.url === '/api/meta') {
+        response.setHeader('content-type', 'application/json');
+        response.end(
+          JSON.stringify({
+            name: 'AnswerWall',
+            version: serverVersion,
+            apiVersion: 1,
+            mode: 'server',
+            tls: 'off',
+            authRequired: true,
+          }),
+        );
+        return;
+      }
+      response.setHeader('content-type', 'text/html');
+      response.end('<!doctype html><title>Another service</title><h1>Another service</h1>');
+    });
+    await new Promise<void>((resolve) => other.listen(0, '127.0.0.1', resolve));
+    const otherBase = `http://127.0.0.1:${(other.address() as AddressInfo).port}`;
+    try {
+      await profile.seed({ mode: 'remote', remoteUrl: server.base });
+      const app = await launch();
+      const page = await app.contentWindow();
+      await pair(page, await server.firstPairingCode());
+      await expect(wall(page)).toBeVisible();
+      await page.evaluate(() => localStorage.setItem('e2e.first', 'kept'));
+      const stored = (): Promise<string[]> =>
+        app.electron.evaluate(async ({ session }) =>
+          (await session.fromPartition('persist:remote').cookies.get({})).map(
+            (cookie) => cookie.name,
+          ),
+        );
+      expect(await stored()).not.toEqual([]);
+
+      await app.clickMenu(0, 0);
+      const connection = await app.connectionWindow();
+      await connection.getByLabel('Server address').fill(otherBase);
+      await connection.getByRole('button', { name: 'Continue' }).click();
+
+      const second = await until('the window of the second service', () =>
+        app.electron
+          .windows()
+          .find((window) => !window.isClosed() && window.url().startsWith(otherBase)),
+      );
+      await expect(second.getByRole('heading', { name: 'Another service' })).toBeVisible();
+      // The page itself asks again, as any script on it could.
+      await second.evaluate(() => fetch('/again', { credentials: 'include' }));
+      expect(await profile.settings()).toMatchObject({ mode: 'remote', remoteUrl: otherBase });
+      // The first server's session did not come along, and is not kept either.
+      expect(cookies.length).toBeGreaterThan(2);
+      expect(cookies.filter((cookie) => cookie !== '')).toEqual([]);
+      expect(await stored()).toEqual([]);
+
+      // Going back means pairing again: the first server's state is gone, not parked.
+      await app.clickMenu(0, 0);
+      const back = await app.connectionWindow();
+      await back.getByLabel('Server address').fill(server.base);
+      await back.getByRole('button', { name: 'Continue' }).click();
+      const first = await until('the window of the first server', () =>
+        app.electron
+          .windows()
+          .find((window) => !window.isClosed() && window.url().startsWith(server.base)),
+      );
+      await expect(first.getByLabel('Device name')).toBeVisible();
+      expect(await first.evaluate(() => localStorage.getItem('e2e.first'))).toBeNull();
+    } finally {
+      other.closeAllConnections();
+      await new Promise((resolve) => other.close(resolve));
+    }
   });
 
   test('a saved server that does not answer brings up the connection page; local mode is one click away', async ({
