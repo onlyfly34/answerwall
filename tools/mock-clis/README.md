@@ -64,6 +64,7 @@ status subcommands only look at the environment variable.
 | `huge`            | An answer of `MOCK_CLI_HUGE_BYTES` (default 3 MiB).                                       |
 | `stderr-noise`    | The `ok` answer with tens of kilobytes of noise on stderr between the lines.              |
 | `tree`            | Starts a child that ignores SIGTERM and shares stdout, prints one line, then never exits. |
+| `stubborn-tree`   | Like `tree`, but the CLI itself ignores SIGTERM too, so only SIGKILL ends it.             |
 | `lingering-child` | Answers and exits, while a child it started keeps stdout open.                            |
 
 The mocks that take their prompt on stdin (`claude`, `codex`, `agy`) answer
@@ -73,7 +74,7 @@ hangs here exactly as it would with the real CLI. `grok` never reads stdin.
 Set `MOCK_CLI_LOG` to a file and every invocation appends one JSON line to
 it: `kind`, `pid`, `argv`, `cwd`, the names of all environment variables, the
 values of a few fixed ones, the scenario and the prompt it received. The
-`tree` and `lingering-child` scenarios also log `grandchildPid`. That child's
+`tree`, `stubborn-tree` and `lingering-child` scenarios also log `grandchildPid`. That child's
 command line ends with the mock's script path and `stubborn-child`, so
 `pgrep -af 'src/(claude|codex|grok|agy).mjs'` lists it with the mocks when
 something has left it behind.

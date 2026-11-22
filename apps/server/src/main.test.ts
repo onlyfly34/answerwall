@@ -154,7 +154,7 @@ describe('the server process', () => {
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
           prompt: 'Start a tree.',
-          targets: [{ slotId: 't1', providerId: 'claude', model: 'mock-tree' }],
+          targets: [{ slotId: 't1', providerId: 'claude', model: 'mock-stubborn-tree' }],
         }),
       });
       expect(response.status).toBe(200);
@@ -168,7 +168,7 @@ describe('the server process', () => {
             (line) =>
               JSON.parse(line) as { pid?: number; scenario?: string; grandchildPid?: number },
           );
-        const root = entries.find((entry) => entry.scenario === 'tree')?.pid;
+        const root = entries.find((entry) => entry.scenario === 'stubborn-tree')?.pid;
         const grandchild = entries.find(
           (entry) => entry.grandchildPid !== undefined,
         )?.grandchildPid;

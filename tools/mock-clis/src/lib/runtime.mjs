@@ -36,6 +36,7 @@ export const SCENARIOS = [
   'huge',
   'stderr-noise',
   'tree',
+  'stubborn-tree',
   'lingering-child',
 ];
 
@@ -255,6 +256,10 @@ export async function play(cli, scenario, context) {
       }
       return 0;
     }
+    case 'stubborn-tree':
+      // The CLI itself ignores SIGTERM too: only SIGKILL ends this tree.
+      process.on('SIGTERM', () => undefined);
+    // falls through
     case 'tree':
       spawnStubbornChild();
       await writeLines(fixture('ok').slice(0, 1));
