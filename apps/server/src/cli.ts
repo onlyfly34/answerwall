@@ -6,8 +6,14 @@ import { startupLines } from './banner.ts';
 import { ConfigError, loadSettings, OPTIONS, serverVersion } from './config.ts';
 import type { OptionOverrides, OptionSpec, ServerSettings } from './config.ts';
 
-export type Signal = 'SIGINT' | 'SIGTERM';
-const SIGNALS: readonly Signal[] = ['SIGINT', 'SIGTERM'];
+/**
+ * Every signal that asks the process to end and can be caught. SIGHUP is a
+ * closed terminal or a lost SSH session; SIGBREAK exists on Windows only.
+ * Left to its default action, any of them would end the server without
+ * stopping its child processes.
+ */
+export type Signal = 'SIGINT' | 'SIGTERM' | 'SIGHUP' | 'SIGBREAK';
+export const SIGNALS: readonly Signal[] = ['SIGINT', 'SIGTERM', 'SIGHUP', 'SIGBREAK'];
 
 /** How long a shutdown may take before the process exits anyway. */
 export const SHUTDOWN_TIMEOUT_MS = 10_000;
@@ -25,6 +31,12 @@ export interface Runtime {
   stdoutIsTty: boolean;
   /** Registers a signal handler and returns the function that removes it. */
   onSignal(signal: Signal, handler: () => void): () => void;
+  /**
+   * Kills every child process tree now, synchronously and without a grace
+   * period. Called before an exit that does not wait for the shutdown, where
+   * a child that was only asked to stop would otherwise outlive the server.
+   */
+  killChildren?: () => void;
   /** Overrides {@link SHUTDOWN_TIMEOUT_MS}. */
   shutdownTimeoutMs?: number;
 }
@@ -138,7 +150,8 @@ export interface RunningServer {
 /**
  * Starts the server and installs the signal handlers. The first signal
  * shuts down gracefully (asks are cancelled and every child process is
- * killed); a second one, or a shutdown that takes too long, ends the wait.
+ * killed); a second one, or a shutdown that takes too long, ends the wait
+ * and kills the remaining child processes outright.
  * @throws whatever keeps the server from starting; nothing is left running then.
  */
 export async function serve(
@@ -169,6 +182,8 @@ export async function serve(
     let removers: (() => void)[] = [];
     const finish = (code: number): void => {
       for (const remove of removers) remove();
+      // Anything but a completed shutdown may have left child processes behind.
+      if (code !== EXIT_OK) runtime.killChildren?.();
       resolve(code);
     };
     const onSignal = (signal?: Signal): void => {

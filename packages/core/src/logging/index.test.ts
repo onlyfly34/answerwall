@@ -217,3 +217,29 @@ describe('masking of text', () => {
     expect(line).not.toContain('87654321');
   });
 });
+
+describe('the default sink', () => {
+  test('a closed stdout does not end the process', async () => {
+    const { spawn } = await import('node:child_process');
+    // Logs until the reader has gone, then a while longer, then exits 0.
+    const script = `
+      const { createLogger } = await import(${JSON.stringify(new URL('./index.ts', import.meta.url).href)});
+      const logger = createLogger({ level: 'info' });
+      for (let i = 0; i < 200; i++) {
+        logger.info('line ' + i);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      }
+      process.exitCode = 0;
+    `;
+    const child = spawn(process.execPath, ['--input-type=module', '-e', script], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    });
+    let stderr = '';
+    child.stderr.on('data', (chunk: Buffer) => (stderr += chunk.toString('utf8')));
+    child.stdout.once('data', () => child.stdout.destroy());
+    const code = await new Promise<number | null>((resolve) => child.once('exit', resolve));
+    expect(stderr).not.toMatch(/EPIPE|Unhandled/);
+    expect(code).toBe(0);
+  }, 20_000);
+});

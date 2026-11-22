@@ -185,6 +185,13 @@ in the background. `shutdown()` stops accepting connections, shuts the runner
 down (which kills every child and flushes), stops provider detection, closes
 remaining connections, then TLS and storage.
 
+`apps/server` connects this to the process (`process-runtime.ts`): signals,
+the IPC `shutdown` message and an IPC disconnect start the shutdown; output
+streams that fail are dropped instead of ending the process; and every exit
+that does not complete a shutdown, including `process.on('exit')`, calls
+`killChildProcessTrees()` from core, which kills every CLI tree whose slot
+has not finished.
+
 `createPairingCode(config)` is the second way into the data directory: it
 opens the database, creates a pairing code through the auth service and
 closes again, while a server may be running on the same directory. This is

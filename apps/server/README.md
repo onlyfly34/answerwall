@@ -56,7 +56,8 @@ There is no way to turn authentication off, and requests from the same
 machine sign in like any other.
 
 When no device is paired, the server writes a one-time pairing code to its
-log at start. `answerwall pair`, run with the same data directory, prints a
+log at start, as a warning, so it also shows with `ANSWERWALL_LOG_LEVEL=warn`
+(not with `error`). `answerwall pair`, run with the same data directory, prints a
 new one at any time, also while the server is running. A code is valid for
 five minutes, works once and is void after five wrong attempts. Signed-in
 devices create codes for further devices in the settings page.
@@ -110,11 +111,17 @@ connection comes from an address in `ANSWERWALL_TRUSTED_PROXIES`.
 
 ## Shutdown
 
-`SIGINT` or `SIGTERM` stops accepting requests, cancels running asks, ends
+`SIGINT`, `SIGTERM`, `SIGHUP` (a closed terminal or a lost SSH session) or,
+on Windows, `SIGBREAK` stops accepting requests, cancels running asks, ends
 their child processes and closes the database. A second signal, or a shutdown
-that takes longer than ten seconds, ends the process at once.
+that takes longer than ten seconds, ends the process at once; child processes
+that are still running are then killed without a grace period.
+
+A reader of the log that goes away (a closed pipe, a closed terminal) does
+not stop the server: it keeps running without that output.
 
 Windows cannot send `SIGTERM` to another process. A supervisor that starts
 the server as a Node child with an IPC channel (`child_process.fork`, or
 `spawn` with `'ipc'` in `stdio`) can send the message `'shutdown'` instead;
-it has the same effect.
+it has the same effect. When such a supervisor exits or closes the channel,
+the server shuts down as well.

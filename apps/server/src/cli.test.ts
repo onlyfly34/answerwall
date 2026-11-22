@@ -6,7 +6,7 @@ import { createServer as createNetServer } from 'node:net';
 import type { AddressInfo, Server } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { BRAND } from '@answerwall/core';
 import {
   API_PATHS,
@@ -546,6 +546,14 @@ describe('serve', () => {
       expect(runtime.out.join('\n')).not.toContain(cookieOf(paired).split('=')[1]);
     });
 
+    test('a quieter log level still shows the code', async () => {
+      const runtime = createRuntime();
+      await start(runtime, { [`${BRAND.envPrefix}LOG_LEVEL`]: 'warn' });
+
+      expect(announcedCode(runtime)).toMatch(/^\d{4} \d{4}$/);
+      expect(logEntries(runtime).map((entry) => entry['level'])).not.toContain('info');
+    });
+
     test('a restart with a paired device announces no code', async () => {
       const first = createRuntime();
       const { server, exit } = await start(first);
@@ -563,12 +571,19 @@ describe('serve', () => {
   });
 
   describe('shutdown', () => {
-    test.each(['SIGINT', 'SIGTERM'] as const)(
+    // SIGHUP is a closed terminal; unhandled, it would end the server and leave its children.
+    test.each(['SIGINT', 'SIGTERM', 'SIGHUP', 'SIGBREAK'] as const)(
       '%s stops the server and exits with 0',
       async (signal) => {
-        const runtime = createRuntime();
+        const killChildren = vi.fn();
+        const runtime = createRuntime({ killChildren });
         const { server, exit } = await start(runtime);
-        expect([...runtime.handlers.keys()].sort()).toEqual(['SIGINT', 'SIGTERM']);
+        expect([...runtime.handlers.keys()].sort()).toEqual([
+          'SIGBREAK',
+          'SIGHUP',
+          'SIGINT',
+          'SIGTERM',
+        ]);
 
         runtime.signal(signal);
 
@@ -578,6 +593,8 @@ describe('serve', () => {
         const messages = logEntries(runtime).map((entry) => entry.msg);
         expect(messages.slice(-2)).toEqual(['shutting down', 'stopped']);
         expect(logEntries(runtime).at(-2)).toMatchObject({ signal });
+        // A completed shutdown has ended every child itself.
+        expect(killChildren).not.toHaveBeenCalled();
       },
     );
 
@@ -596,13 +613,17 @@ describe('serve', () => {
       }
     });
 
-    test('a second signal ends the wait at once', async () => {
-      const runtime = createRuntime();
+    test('a second signal ends the wait at once and kills the child processes outright', async () => {
+      const killChildren = vi.fn();
+      const runtime = createRuntime({ killChildren });
       const { exit } = await start(runtime);
 
       runtime.signal('SIGINT');
+      expect(killChildren).not.toHaveBeenCalled();
       runtime.signal('SIGINT');
 
+      // Before the exit code is out: the process exits as soon as it is.
+      expect(killChildren).toHaveBeenCalledTimes(1);
       expect(await exit).toBe(EXIT_FAILURE);
       expect(logEntries(runtime).map((entry) => entry.msg)).toContainEqual(
         expect.stringContaining('second signal'),

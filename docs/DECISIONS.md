@@ -160,7 +160,15 @@ anything reaches the API, the log or the database.
   and README.
 - Cancellation and timeout (default 5 min, configurable): POSIX — spawn
   `detached`, `kill(-pid, SIGTERM)`, then `SIGKILL` after 3 s. Windows —
-  `taskkill /T /F /PID`. On server/Electron shutdown kill every child.
+  `taskkill /T /F /PID`. On server/Electron shutdown kill every child. An
+  exit that does not wait for the shutdown (a second signal, a shutdown that
+  timed out, a crash) first kills every child tree whose slot has not
+  finished, synchronously (`killChildProcessTrees`: `SIGKILL` to the group,
+  or `taskkill /T /F` run to completion), because no timer runs after it.
+- The server stops on SIGINT, SIGTERM, SIGHUP and SIGBREAK, on the IPC
+  message `shutdown` (the only way to stop it gracefully on Windows), and
+  when the supervisor that started it with an IPC channel disconnects. A
+  closed stdout or stderr never ends the process: output to it is dropped.
 - Parse line-delimited JSON defensively: unknown event types are ignored, an
   unparsable stream falls back to showing the raw text rather than an empty
   cell. Do not assume the first line is the init event.

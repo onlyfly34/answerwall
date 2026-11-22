@@ -17,11 +17,27 @@ export interface LoggerOptions {
   now?: () => number;
 }
 
+let stdoutOpen = true;
+let stdoutWatched = false;
+
+/**
+ * A reader that went away reports through the stream's `error` event after
+ * the write returned; without a listener that event would end the process.
+ * After the first failure, lines are dropped.
+ */
 const writeToStdout = (line: string): void => {
+  if (!stdoutWatched) {
+    stdoutWatched = true;
+    process.stdout.on('error', () => {
+      stdoutOpen = false;
+    });
+  }
+  if (!stdoutOpen) return;
   try {
     process.stdout.write(`${line}\n`);
   } catch {
     // A closed stdout must not take the server down.
+    stdoutOpen = false;
   }
 };
 

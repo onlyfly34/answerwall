@@ -1,11 +1,12 @@
-import { describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test } from 'vitest';
 import { FakeClock } from '../../testing/index.ts';
-import { createTreeKiller, KILL_GRACE_MS } from './kill-tree.ts';
+import { createTreeKiller, KILL_GRACE_MS, killChildProcessTrees } from './kill-tree.ts';
 
 function setup(platform: NodeJS.Platform, env: NodeJS.ProcessEnv = {}, graceMs?: number) {
   const clock = new FakeClock();
   const signals: [number, NodeJS.Signals][] = [];
   const helpers: [string, string[]][] = [];
+  const waitedHelpers: [string, string[]][] = [];
   const killer = createTreeKiller(4321, {
     platform,
     clock,
@@ -13,9 +14,13 @@ function setup(platform: NodeJS.Platform, env: NodeJS.ProcessEnv = {}, graceMs?:
     ...(graceMs === undefined ? {} : { graceMs }),
     killGroup: (pid, signal) => signals.push([pid, signal]),
     run: (file, args) => helpers.push([file, args]),
+    runSync: (file, args) => waitedHelpers.push([file, args]),
   });
-  return { clock, signals, helpers, killer };
+  return { clock, signals, helpers, waitedHelpers, killer };
 }
+
+// The registry is module state: leave it empty for the next test.
+afterEach(() => killChildProcessTrees());
 
 describe('createTreeKiller on POSIX', () => {
   test('sends SIGTERM to the group, then SIGKILL after the grace period', async () => {
@@ -106,5 +111,81 @@ describe('createTreeKiller on Windows', () => {
 
     expect(helpers).toHaveLength(1);
     expect(signals).toEqual([]);
+  });
+});
+
+describe('killChildProcessTrees', () => {
+  test('kills every tree whose slot is unfinished outright, without waiting for a timer', () => {
+    const { clock, signals, killer } = setup('linux');
+    killer.terminate();
+
+    killChildProcessTrees();
+
+    expect(signals).toEqual([
+      [4321, 'SIGTERM'],
+      [4321, 'SIGKILL'],
+    ]);
+    expect(clock.pendingTimers).toBe(1);
+  });
+
+  test('also kills a tree whose root was never asked to stop', () => {
+    const { signals } = setup('darwin');
+
+    killChildProcessTrees();
+
+    expect(signals).toEqual([[4321, 'SIGKILL']]);
+  });
+
+  test('leaves a tree alone once its slot has finished', () => {
+    const { signals, killer } = setup('linux');
+    killer.sweep();
+    signals.length = 0;
+
+    killChildProcessTrees();
+
+    expect(signals).toEqual([]);
+  });
+
+  test('kills each tree once', () => {
+    const { signals } = setup('linux');
+
+    killChildProcessTrees();
+    killChildProcessTrees();
+
+    expect(signals).toEqual([[4321, 'SIGKILL']]);
+  });
+
+  test('on Windows runs taskkill /T /F and waits for it', () => {
+    const { helpers, waitedHelpers } = setup('win32', { SYSTEMROOT: 'C:\\Windows' });
+
+    killChildProcessTrees();
+
+    expect(helpers).toEqual([]);
+    expect(waitedHelpers).toEqual([
+      ['C:\\Windows\\System32\\taskkill.exe', ['/T', '/F', '/PID', '4321']],
+    ]);
+  });
+
+  test('a kill that throws does not spare the other trees', () => {
+    const clock = new FakeClock();
+    const signals: number[] = [];
+    createTreeKiller(1, {
+      platform: 'linux',
+      clock,
+      env: {},
+      killGroup: () => {
+        throw new Error('boom');
+      },
+    });
+    createTreeKiller(2, {
+      platform: 'linux',
+      clock,
+      env: {},
+      killGroup: (pid) => signals.push(pid),
+    });
+
+    killChildProcessTrees();
+
+    expect(signals).toEqual([2]);
   });
 });
