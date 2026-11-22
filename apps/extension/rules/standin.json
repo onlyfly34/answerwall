@@ -1,0 +1,30 @@
+{
+  "site": "standin",
+  "host": "vendor.localhost",
+  "start": "/",
+  "verified": true,
+  "verifiedOn": "2026-11-22",
+  "notes": "The stand-in site of the automated tests (e2e/web-cells/support/vendor-site.ts). It is part of the test build only and never of a release.",
+  "signedOut": {
+    "paths": [],
+    "selectors": ["[data-testid='signed-out']"]
+  },
+  "input": {
+    "selectors": ["#prompt"]
+  },
+  "submit": {
+    "selectors": ["#send"],
+    "enterKey": false
+  },
+  "answer": {
+    "selectors": ["#answers .answer"],
+    "content": [],
+    "strip": ["button"]
+  },
+  "finished": {
+    "busy": [],
+    "done": ["[data-state='done']"],
+    "failed": ["[data-state='failed']"],
+    "quietMs": 100
+  }
+}

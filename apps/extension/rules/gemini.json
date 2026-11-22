@@ -1,0 +1,51 @@
+{
+  "site": "gemini",
+  "host": "gemini.google.com",
+  "start": "/app",
+  "verified": false,
+  "verifiedOn": null,
+  "notes": "Written from the publicly visible structure of the page without signing in; never run against the real site. Check it by hand with docs/verify-web-cells.md before relying on it. Signing in happens on another host (accounts.google.com), which a cell cannot show: sign in in a normal tab first.",
+  "signedOut": {
+    "paths": [],
+    "selectors": ["a[href*='accounts.google.com/ServiceLogin']"]
+  },
+  "input": {
+    "selectors": [
+      "rich-textarea .ql-editor[contenteditable='true']",
+      "div.ql-editor[contenteditable='true']",
+      "div[contenteditable='true'][role='textbox']"
+    ]
+  },
+  "submit": {
+    "selectors": [
+      "button.send-button",
+      "button[aria-label='Send message']",
+      "button[mattooltip='Send message']"
+    ],
+    "enterKey": true
+  },
+  "answer": {
+    "selectors": ["model-response", "message-content.model-response-text", ".model-response-text"],
+    "content": ["message-content .markdown", "message-content", ".markdown"],
+    "strip": [
+      "button",
+      "svg",
+      "[aria-hidden='true']",
+      "[role='toolbar']",
+      "style",
+      "script",
+      "sources-carousel-inline",
+      "source-footnote"
+    ]
+  },
+  "finished": {
+    "busy": [
+      "button.send-button.stop",
+      "button[aria-label='Stop response']",
+      "mat-icon[fonticon='stop']"
+    ],
+    "done": [],
+    "failed": [],
+    "quietMs": 2000
+  }
+}

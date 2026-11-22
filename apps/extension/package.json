@@ -1,0 +1,23 @@
+{
+  "name": "@answerwall/extension",
+  "version": "0.1.0-rc.1",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@answerwall/core": "workspace:*",
+    "@answerwall/web": "workspace:*",
+    "@solidjs/testing-library": "0.8.10",
+    "jsdom": "31.0.1",
+    "solid-js": "1.9.20",
+    "vite": "8.3.8",
+    "vite-plugin-solid": "2.11.17"
+  }
+}

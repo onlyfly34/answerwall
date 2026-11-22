@@ -70,6 +70,7 @@ export default tseslint.config(
             'vitest.config.ts',
             'packages/web/vite.config.ts',
             'packages/web/vitest.config.ts',
+            'apps/extension/vitest.config.ts',
           ],
         },
         tsconfigRootDir: import.meta.dirname,
@@ -128,6 +129,18 @@ export default tseslint.config(
       globals: { ...globals.browser, ...globals.serviceworker, chrome: 'readonly' },
     },
   },
+  {
+    // The browser extension: a page (the web UI's entry for another origin),
+    // a content script and a service worker. Like the web app it takes only
+    // the protocol from core.
+    files: ['apps/extension/src/**/*.{ts,tsx}'],
+    ...solid,
+    languageOptions: {
+      ...solid.languageOptions,
+      globals: { ...globals.browser, ...globals.serviceworker },
+    },
+  },
+  { files: ['apps/extension/src/**'], rules: restrictImports(coreOutsideProtocol) },
   {
     // The desktop shell uses core as a package too.
     files: ['apps/desktop/src/**'],
