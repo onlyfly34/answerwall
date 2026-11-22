@@ -72,7 +72,7 @@ const prompts = (): (string | null | undefined)[] =>
   rows().map((row) => row.querySelector('.wall-history-prompt')?.textContent);
 const state = (): string | null | undefined =>
   document.querySelector('.wall-history-state')?.textContent;
-const searchBox = (): HTMLInputElement => screen.getByLabelText<HTMLInputElement>('Search prompts');
+const searchBox = (): HTMLInputElement => screen.getByLabelText<HTMLInputElement>('Search prompts and answers');
 const listCalls = (services: FakeServices): unknown[] =>
   services.apiCalls.filter((call) => call.method === 'listHistory').map((call) => call.args[0]);
 
@@ -192,7 +192,7 @@ describe('history', () => {
     fireEvent.input(searchBox(), { target: { value: 'zzz' } });
     fireEvent.submit(screen.getByRole('search'));
     await settle();
-    expect(state()).toBe('No prompt matches.');
+    expect(state()).toBe('No prompt or answer matches.');
     expect(rows()).toEqual([]);
   });
 

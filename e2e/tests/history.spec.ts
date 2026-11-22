@@ -76,7 +76,7 @@ test.describe('history', () => {
     // …and for something nobody asked.
     await search(page).fill('no-such-thing-anywhere');
     await expect(items(page)).toHaveCount(0);
-    await expect(state(page)).toHaveText('No prompt matches.');
+    await expect(state(page)).toHaveText('No prompt or answer matches.');
     await search(page).fill('');
     await expect(items(page)).toHaveCount(3);
 
