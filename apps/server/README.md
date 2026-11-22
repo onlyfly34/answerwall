@@ -113,3 +113,8 @@ connection comes from an address in `ANSWERWALL_TRUSTED_PROXIES`.
 `SIGINT` or `SIGTERM` stops accepting requests, cancels running asks, ends
 their child processes and closes the database. A second signal, or a shutdown
 that takes longer than ten seconds, ends the process at once.
+
+Windows cannot send `SIGTERM` to another process. A supervisor that starts
+the server as a Node child with an IPC channel (`child_process.fork`, or
+`spawn` with `'ipc'` in `stdio`) can send the message `'shutdown'` instead;
+it has the same effect.
