@@ -13,6 +13,7 @@ import {
   initialAskSnapshot,
   isTerminalStreamEvent,
   SettingsSchema,
+  webSearchSupport,
 } from '@answerwall/core/protocol';
 import type {
   AskRequest,
@@ -124,6 +125,7 @@ export function readyProviderStatus(instance: ProviderInstance): ProviderStatus 
     detectedAt: 0,
     models: instance.models.map((id) => ({ id })),
     toolAccess: 'disabled',
+    webSearch: webSearchSupport(instance.kind),
   };
 }
 

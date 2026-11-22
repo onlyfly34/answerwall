@@ -140,6 +140,18 @@ describe('provider registry', () => {
     expect(t.status('local')).not.toHaveProperty('loginCommand');
   });
 
+  test('says for every provider whether it has a web search switch, and why not', () => {
+    const t = setup();
+
+    expect(t.registry.list().map((entry) => [entry.instance.id, entry.webSearch])).toEqual([
+      ['claude', 'available'],
+      ['codex', 'available'],
+      ['agy', 'unconfirmed'],
+      ['grok', 'unconfirmed'],
+      ['local', 'none'],
+    ]);
+  });
+
   test('refresh detects every enabled instance and returns the updated list', async () => {
     const t = setup();
     await t.clock.advance(5_000);

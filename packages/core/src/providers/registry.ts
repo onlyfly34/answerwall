@@ -10,6 +10,7 @@ import {
   KINDS_REQUIRING_ACKNOWLEDGEMENT,
   ModelInfoSchema,
   ProviderDetectionSchema,
+  webSearchSupport,
 } from '../protocol/index.ts';
 import type {
   ModelInfo,
@@ -102,6 +103,7 @@ export function createRegistry(parts: RegistryParts): ProviderRegistry {
         detectedAt: current?.detectedAt ?? null,
         models: mergeModels(instance, current?.models ?? []),
         toolAccess: adapter.toolAccess,
+        webSearch: webSearchSupport(instance.kind),
         ...(adapter.loginCommand === undefined ? {} : { loginCommand: adapter.loginCommand }),
       };
     });

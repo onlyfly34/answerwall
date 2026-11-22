@@ -7,7 +7,7 @@ import type {
   RunRequest,
   SettingsService,
 } from '../contracts/index.ts';
-import { PROVIDER_KINDS } from '../protocol/index.ts';
+import { PROVIDER_KINDS, webSearchSupport } from '../protocol/index.ts';
 import type {
   ModelInfo,
   ProviderDetection,
@@ -146,6 +146,7 @@ export function createFakeProviderRegistry(deps: {
         detectedAt: cached?.detectedAt ?? null,
         models: [...own, ...listed],
         toolAccess: adapter.toolAccess,
+        webSearch: webSearchSupport(instance.kind),
         ...(adapter.loginCommand === undefined ? {} : { loginCommand: adapter.loginCommand }),
       };
     });

@@ -99,6 +99,7 @@ export function createDefaultSettings(): Settings {
       models: [...CLI_DEFAULTS[kind].models],
       useEnvApiKey: false,
       riskAcknowledged: false,
+      webSearch: false,
     })),
     limits: { ...DEFAULT_LIMITS },
     layout: { ...DEFAULT_LAYOUT },

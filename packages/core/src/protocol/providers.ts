@@ -16,6 +16,24 @@ export function isCliKind(kind: ProviderKind): kind is CliProviderKind {
 /** Kinds whose first enable requires the user to acknowledge the vendor's wording. */
 export const KINDS_REQUIRING_ACKNOWLEDGEMENT: readonly ProviderKind[] = ['agy'];
 
+/**
+ * Whether a provider's built-in web search can be offered to the model while
+ * every other tool stays off. `available`: confirmed with a real run of the
+ * CLI, so the instance has an "allow web search" switch. `unconfirmed`: not
+ * confirmed for this CLI, so there is no switch. `none`: the provider has no
+ * tools at all.
+ */
+export const WebSearchSupportSchema = z.enum(['available', 'unconfirmed', 'none']);
+export type WebSearchSupport = z.infer<typeof WebSearchSupportSchema>;
+
+/** The CLI kinds whose web search was confirmed to work alone (docs/DECISIONS.md §5.3). */
+export const KINDS_WITH_WEB_SEARCH: readonly ProviderKind[] = ['claude', 'codex'];
+
+export function webSearchSupport(kind: ProviderKind): WebSearchSupport {
+  if (!isCliKind(kind)) return 'none';
+  return KINDS_WITH_WEB_SEARCH.includes(kind) ? 'available' : 'unconfirmed';
+}
+
 export interface ConcurrencyBounds {
   readonly min: number;
   readonly max: number;
@@ -60,6 +78,12 @@ const cliInstanceShape = {
   useEnvApiKey: z.boolean(),
   /** The user accepted the vendor notice; only meaningful for {@link KINDS_REQUIRING_ACKNOWLEDGEMENT}. */
   riskAcknowledged: z.boolean(),
+  /**
+   * Offer the model the CLI's built-in web search and nothing else. Only for
+   * {@link KINDS_WITH_WEB_SEARCH}; a document written before the switch
+   * existed lacks the field and reads as off.
+   */
+  webSearch: z.boolean().default(false),
 };
 
 /** Any http(s) address, before the rule on what a stored address may carry. */
@@ -97,6 +121,7 @@ interface InstanceRuleInput {
   enabled: boolean;
   concurrency: number;
   riskAcknowledged?: boolean;
+  webSearch?: boolean;
 }
 
 function checkInstanceRules(instance: InstanceRuleInput, ctx: z.RefinementCtx): void {
@@ -125,6 +150,13 @@ function checkInstanceRules(instance: InstanceRuleInput, ctx: z.RefinementCtx): 
       code: 'custom',
       path: ['riskAcknowledged'],
       message: `${instance.kind} cannot be enabled before its notice is acknowledged`,
+    });
+  }
+  if (instance.webSearch === true && webSearchSupport(instance.kind) !== 'available') {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['webSearch'],
+      message: `web search cannot be switched on for ${instance.kind}`,
     });
   }
 }
@@ -210,6 +242,8 @@ export const ProviderStatusSchema = z.object({
   /** The instance's own list merged with the adapter's listing. */
   models: z.array(ModelInfoSchema),
   toolAccess: ToolAccessSchema,
+  /** Whether this provider has an "allow web search" switch, and why not when it has none. */
+  webSearch: WebSearchSupportSchema,
   /** The exact official command the user runs in a terminal to log in. */
   loginCommand: z.string().max(200).optional(),
 });

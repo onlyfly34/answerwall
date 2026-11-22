@@ -14,6 +14,7 @@ import {
   MAX_PROVIDER_INSTANCES,
   ModelIdSchema,
   OpenAiCompatInstanceSchema,
+  webSearchSupport,
 } from '../protocol/index.ts';
 import type {
   CliProviderInstance,
@@ -123,6 +124,9 @@ function repairCliProvider(kind: CliProviderKind, fields: Fields): CliProviderIn
     ...defaultModel(fields.defaultModel),
     useEnvApiKey: valid(shape.useEnvApiKey, fields.useEnvApiKey, base.useEnvApiKey),
     riskAcknowledged,
+    // Absent in documents written before the switch existed; never on for a kind without it.
+    webSearch:
+      webSearchSupport(kind) === 'available' && valid(shape.webSearch, fields.webSearch, false),
   };
 }
 

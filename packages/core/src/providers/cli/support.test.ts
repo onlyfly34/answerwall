@@ -5,6 +5,7 @@ import type { CliContext } from './run-cli.ts';
 import {
   billingReport,
   childEnvFor,
+  cliSwitches,
   extractVersion,
   isEffortArgument,
   isModelArgument,
@@ -155,6 +156,29 @@ describe('childEnvFor', () => {
     expect(childEnvFor(base, cliInstance('codex', { useEnvApiKey: true }))).toMatchObject({
       OPENAI_API_KEY: 'x',
     });
+  });
+});
+
+describe('cliSwitches', () => {
+  test('web search is on only for an instance that asks for it and whose tool has the switch', () => {
+    expect(cliSwitches(cliInstance('claude')).webSearch).toBe(false);
+    expect(cliSwitches(cliInstance('claude', { webSearch: true })).webSearch).toBe(true);
+    expect(cliSwitches(cliInstance('codex', { webSearch: true })).webSearch).toBe(true);
+    // Not a state the settings accept; an adapter must still never act on it.
+    expect(cliSwitches(cliInstance('grok', { webSearch: true })).webSearch).toBe(false);
+    expect(cliSwitches(cliInstance('agy', { webSearch: true })).webSearch).toBe(false);
+    expect(
+      cliSwitches({
+        id: 'local',
+        kind: 'openai-compat',
+        label: 'Local',
+        enabled: true,
+        concurrency: 1,
+        models: [],
+        baseUrl: 'http://127.0.0.1:4000',
+        hasApiKey: false,
+      }),
+    ).toEqual({ useEnvApiKey: false, riskAcknowledged: false, webSearch: false });
   });
 });
 

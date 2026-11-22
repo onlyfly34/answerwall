@@ -153,6 +153,37 @@ describe('repairSettings', () => {
       },
     );
 
+    test('a document written before the web search switch existed reads as off', () => {
+      const old = defaults().providers.map((stored) => {
+        const fields: Record<string, unknown> = { ...stored };
+        delete fields.webSearch;
+        return fields;
+      });
+
+      const repaired = repairSettings({ ...defaults(), providers: old });
+
+      expect(repaired.providers).toEqual(defaults().providers);
+      expect(repaired.providers.every((p) => 'webSearch' in p && p.webSearch === false)).toBe(true);
+      expectValid(repaired);
+    });
+
+    test('a stored web search switch is kept where the tool has one and dropped elsewhere', () => {
+      const stored = defaults().providers.map((p) => ({ ...p, webSearch: true }));
+
+      const repaired = repairSettings({ ...defaults(), providers: stored });
+
+      expect(repaired.providers.map((p) => [p.id, 'webSearch' in p && p.webSearch])).toEqual([
+        ['claude', true],
+        ['codex', true],
+        ['agy', false],
+        ['grok', false],
+      ]);
+      expect(
+        provider(repairSettings({ providers: [{ id: 'claude', webSearch: 'yes' }] }), 'claude'),
+      ).toMatchObject({ webSearch: false });
+      expectValid(repaired);
+    });
+
     test('providers that are not a list give every CLI provider its defaults', () => {
       expect(repairSettings({ providers: { claude: {} } }).providers).toEqual(defaults().providers);
     });
@@ -202,6 +233,7 @@ describe('repairSettings', () => {
         defaultModel: 'gpt-x',
         useEnvApiKey: true,
         riskAcknowledged: false,
+        webSearch: false,
       });
     });
 

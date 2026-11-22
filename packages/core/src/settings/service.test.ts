@@ -441,6 +441,40 @@ describe('update', () => {
       });
     });
 
+    test('web search can be switched on for the tools that have the switch, and only for those', async () => {
+      const { service, storage } = await setup();
+      const withSearch = (id: string): SettingsPatch => ({
+        providers: cliInputs().map((provider) =>
+          provider.id === id ? { ...provider, webSearch: true } : provider,
+        ),
+      });
+
+      const updated = await service.update(withSearch('codex'));
+
+      expect(
+        updated.providers.map((provider) => 'webSearch' in provider && provider.webSearch),
+      ).toEqual([false, true, false, false]);
+      expect(JSON.stringify(await storage.settings.load())).toContain('"webSearch":true');
+      for (const id of ['agy', 'grok']) {
+        expect(await rejection(service.update(withSearch(id)))).toMatchObject({
+          code: 'bad_request',
+        });
+      }
+      expect(service.get()).toEqual(updated);
+    });
+
+    test('settings stored before the web search switch existed load with it off', async () => {
+      const old = createDefaultSettings().providers.map((provider) => {
+        const fields: Record<string, unknown> = { ...provider };
+        delete fields.webSearch;
+        return fields;
+      });
+
+      const { service } = await setup({ document: { ...createDefaultSettings(), providers: old } });
+
+      expect(service.get().providers).toEqual(createDefaultSettings().providers);
+    });
+
     test('the list replaces the old one: an endpoint left out is removed', async () => {
       const { service } = await setup();
       await service.update(withEndpoints(endpoint('one'), endpoint('two')));

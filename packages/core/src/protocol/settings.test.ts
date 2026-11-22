@@ -4,10 +4,12 @@ import {
   DEFAULT_LIMITS,
   LIMIT_SPECS,
   LimitsSchema,
+  PROVIDER_KINDS,
   ProviderInstanceInputSchema,
   ProviderInstanceSchema,
   SettingsPatchSchema,
   SettingsSchema,
+  webSearchSupport,
 } from './index.ts';
 import type { CliProviderInstance, OpenAiCompatInstance } from './index.ts';
 
@@ -20,6 +22,7 @@ const agy: CliProviderInstance = {
   models: [],
   useEnvApiKey: false,
   riskAcknowledged: true,
+  webSearch: false,
 };
 
 const endpoint: OpenAiCompatInstance = {
@@ -106,6 +109,29 @@ describe('provider instances', () => {
     ]);
     expect(issues({ ...endpoint, concurrency: 32 })).toEqual([]);
     expect(issues({ ...endpoint, concurrency: 33 })).toEqual(['concurrency']);
+  });
+
+  test('web search is off unless stated, and exists only where it was confirmed', () => {
+    const { webSearch: _absent, ...written } = agy;
+    const claude = { ...written, id: 'claude', kind: 'claude' };
+
+    expect(ProviderInstanceSchema.parse(claude)).toMatchObject({ webSearch: false });
+    expect(ProviderInstanceInputSchema.parse(claude)).toMatchObject({ webSearch: false });
+    expect(issues({ ...claude, webSearch: true })).toEqual([]);
+    expect(issues({ ...claude, id: 'codex', kind: 'codex', webSearch: true })).toEqual([]);
+    expect(issues({ ...agy, webSearch: true })).toEqual(['webSearch']);
+    expect(issues({ ...agy, id: 'grok', kind: 'grok', webSearch: true })).toEqual(['webSearch']);
+    expect(issues({ ...claude, webSearch: 'yes' })).toEqual(['webSearch']);
+    expect(ProviderInstanceSchema.parse({ ...endpoint, webSearch: true })).not.toHaveProperty(
+      'webSearch',
+    );
+    expect(PROVIDER_KINDS.map(webSearchSupport)).toEqual([
+      'available',
+      'available',
+      'unconfirmed',
+      'unconfirmed',
+      'none',
+    ]);
   });
 
   test('CLI kinds own their id', () => {

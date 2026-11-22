@@ -1,4 +1,5 @@
 import type { ProviderEvent, RunRequest } from '../../contracts/index.ts';
+import { webSearchSupport } from '../../protocol/index.ts';
 import type {
   BillingSource,
   ProviderDetection,
@@ -14,10 +15,16 @@ import type { CliContext } from './run-cli.ts';
 export function cliSwitches(instance: ProviderInstance): {
   useEnvApiKey: boolean;
   riskAcknowledged: boolean;
+  webSearch: boolean;
 } {
   return instance.kind === 'openai-compat'
-    ? { useEnvApiKey: false, riskAcknowledged: false }
-    : { useEnvApiKey: instance.useEnvApiKey, riskAcknowledged: instance.riskAcknowledged };
+    ? { useEnvApiKey: false, riskAcknowledged: false, webSearch: false }
+    : {
+        useEnvApiKey: instance.useEnvApiKey,
+        riskAcknowledged: instance.riskAcknowledged,
+        // The schema refuses the switch for a kind without it; this holds even for a hand-built instance.
+        webSearch: instance.webSearch && webSearchSupport(instance.kind) === 'available',
+      };
 }
 
 /** The scrubbed environment for this instance's CLI, for detection and for runs alike. */

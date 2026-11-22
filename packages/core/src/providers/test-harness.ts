@@ -167,6 +167,7 @@ export function cliInstance(
     models: [],
     useEnvApiKey: false,
     riskAcknowledged: kind === 'agy',
+    webSearch: false,
     ...overrides,
   };
 }
