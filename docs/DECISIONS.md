@@ -170,7 +170,7 @@ anything reaches the API, the log or the database.
     `ANTHROPIC_IDENTITY_TOKEN`, `ANTHROPIC_IDENTITY_TOKEN_FILE`,
     `CLAUDE_CODE_USE_*` together with `CLAUDE_CODE_SKIP_{BEDROCK,VERTEX,FOUNDRY}_AUTH`,
     `CODEX_API_KEY`, `OPENAI_API_KEY`, `XAI_API_KEY`, `GEMINI_API_KEY`,
-    `GOOGLE_API_KEY`).
+    `GOOGLE_API_KEY`, `GOOGLE_GENERATIVE_AI_API_KEY`, `OPENCODE_API_KEY`).
 
   A per-provider setting "use API key from environment" keeps the billing
   group; the provider page shows which billing source is in effect. When the
@@ -402,7 +402,16 @@ lists the evidence item by item.
     the user's global configuration and start the MCP servers named in it
     for their duration (3.6 s instead of 0.6 s with a test server that
     takes 3 s); nothing documented prevents that outside a project file.
-    Billing is reported as unknown.
+    Billing is reported as unknown. Of the billing group (§5.1) the CLI
+    reads `OPENCODE_API_KEY` (its vendor's hosted provider),
+    `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `XAI_API_KEY`, `GEMINI_API_KEY`,
+    `GOOGLE_API_KEY` and `GOOGLE_GENERATIVE_AI_API_KEY`; the card names
+    those that are set and not passed. Its catalogue has a variable for
+    each of many more providers (`OPENROUTER_API_KEY`, `GROQ_API_KEY`,
+    `AZURE_API_KEY`, …). Those are not in the group: the list cannot be
+    complete (the catalogue is fetched), and such a key is one the user set
+    for that provider, also for another CLI's custom provider. They are
+    passed on, and the user docs say so.
   - What cannot be removed: the working directory, the date and the platform
     in the system prompt; the global `AGENTS.md` and any between the work dir
     and the home directory (`CLAUDE.md` is removed by the variable above);

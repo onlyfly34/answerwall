@@ -25,6 +25,8 @@ const base = {
   XAI_API_KEY: 'e',
   GEMINI_API_KEY: 'f',
   GOOGLE_API_KEY: 'g',
+  GOOGLE_GENERATIVE_AI_API_KEY: 'h',
+  OPENCODE_API_KEY: 'i',
   CODEX_HOME: '/home/someone/.codex',
   NO_COLOR: '0',
   TERM: 'xterm-256color',
@@ -63,6 +65,8 @@ describe('buildChildEnv', () => {
         'XAI_API_KEY',
         'GEMINI_API_KEY',
         'GOOGLE_API_KEY',
+        'GOOGLE_GENERATIVE_AI_API_KEY',
+        'OPENCODE_API_KEY',
         'NO_COLOR',
         'TERM',
       ].sort(),
@@ -200,6 +204,8 @@ describe('isBillingVariable', () => {
     'XAI_API_KEY',
     'GEMINI_API_KEY',
     'GOOGLE_API_KEY',
+    'GOOGLE_GENERATIVE_AI_API_KEY',
+    'OPENCODE_API_KEY',
   ])('%s switches billing', (name) => {
     expect(isBillingVariable(name)).toBe(true);
   });

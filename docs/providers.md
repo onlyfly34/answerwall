@@ -66,7 +66,8 @@ them before it starts a CLI:
 `CLAUDE_CODE_USE_*` together with
 `CLAUDE_CODE_SKIP_BEDROCK_AUTH`, `CLAUDE_CODE_SKIP_VERTEX_AUTH` and
 `CLAUDE_CODE_SKIP_FOUNDRY_AUTH`, `CODEX_API_KEY`, `OPENAI_API_KEY`,
-`XAI_API_KEY`, `GEMINI_API_KEY`, `GOOGLE_API_KEY`.
+`XAI_API_KEY`, `GEMINI_API_KEY`, `GOOGLE_API_KEY`,
+`GOOGLE_GENERATIVE_AI_API_KEY`, `OPENCODE_API_KEY`.
 
 Each CLI has a switch **Use the API key from the server environment**. Off
 (the default): the variables are removed and the CLI uses its own login. On:
@@ -476,9 +477,15 @@ question does not start them.
 provider behind the model you picked, and opencode does not report it. With
 the switch off, the API-key variables listed under
 [Billing](#billing-subscription-login-or-api-key) are removed, among them
-`OPENAI_API_KEY` and `ANTHROPIC_API_KEY`, which opencode would otherwise
-read; a key under a name of your own, such as `GATEWAY_API_KEY` above, is
-passed on. opencode documents that a saved account wins over a key from the
+`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_GENERATIVE_AI_API_KEY` and
+`OPENCODE_API_KEY` (the key of opencode's own hosted models), which opencode
+would otherwise read; the card names the ones that are set. **Every other
+key variable is passed on**: a key under a name of your own, such as
+`GATEWAY_API_KEY` above, and also the variables opencode's catalogue knows
+for other providers, for example `OPENROUTER_API_KEY`, `GROQ_API_KEY` or
+`AZURE_API_KEY`. If one of those is set in the environment of the
+AnswerWall process, opencode can use and bill it with the switch off, and
+the card does not mention it. opencode documents that a saved account wins over a key from the
 environment.
 
 **Models and effort.** The list comes from `opencode models`, as

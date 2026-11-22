@@ -59,11 +59,13 @@ const PROBE_ENV = { ...RUN_ENV, OPENCODE_DISABLE_PROJECT_CONFIG: '1' };
 
 /** The variables through which the CLI's catalogue providers take a key from the environment. */
 const KEY_VARIABLES: readonly string[] = [
+  'OPENCODE_API_KEY',
   'ANTHROPIC_API_KEY',
   'OPENAI_API_KEY',
   'XAI_API_KEY',
   'GEMINI_API_KEY',
   'GOOGLE_API_KEY',
+  'GOOGLE_GENERATIVE_AI_API_KEY',
 ];
 const isBillingVariable = (name: string): boolean => KEY_VARIABLES.includes(name);
 

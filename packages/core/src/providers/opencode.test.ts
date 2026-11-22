@@ -433,7 +433,13 @@ describe('the opencode adapter against the mock CLI', () => {
       OPENCODE_DISABLE_CLAUDE_CODE: '1',
       OPENCODE_DISABLE_PROJECT_CONFIG: null,
     });
-    for (const name of ['OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'CLAUDECODE']) {
+    for (const name of [
+      'OPENAI_API_KEY',
+      'ANTHROPIC_API_KEY',
+      'OPENCODE_API_KEY',
+      'GOOGLE_GENERATIVE_AI_API_KEY',
+      'CLAUDECODE',
+    ]) {
       expect(call?.envNames).not.toContain(name);
     }
     // A key under a name of the user's own choosing is how a gateway is usually configured.
@@ -655,12 +661,24 @@ describe('the opencode adapter against the mock CLI', () => {
 
     test('names the API key variables it does not pass on, never their values', async () => {
       await harness.cleanup();
-      await setup({ OPENAI_API_KEY: 'sk-test-value', GOOGLE_API_KEY: 'g-test-value' });
+      await setup({
+        OPENAI_API_KEY: 'sk-test-value',
+        GOOGLE_API_KEY: 'g-test-value',
+        // The key of the CLI vendor's own hosted provider, and the name its Google provider reads.
+        OPENCODE_API_KEY: 'oc-test-value',
+        GOOGLE_GENERATIVE_AI_API_KEY: 'gg-test-value',
+      });
 
       const detection = await adapter.detect(instance);
 
       expect(detection.billing).toBe('unknown');
-      expect(detection.hint).toContain('Not passed to the CLI: GOOGLE_API_KEY, OPENAI_API_KEY.');
+      expect(detection.hint).toContain(
+        'Not passed to the CLI: GOOGLE_API_KEY, GOOGLE_GENERATIVE_AI_API_KEY, OPENAI_API_KEY, OPENCODE_API_KEY.',
+      );
+      for (const call of await harness.invocations()) {
+        expect(call.envNames).not.toContain('OPENCODE_API_KEY');
+        expect(call.envNames).not.toContain('GOOGLE_GENERATIVE_AI_API_KEY');
+      }
       expect(detection.hint).not.toContain('test-value');
     });
 

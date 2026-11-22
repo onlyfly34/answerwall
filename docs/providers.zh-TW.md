@@ -22,7 +22,7 @@
 
 有些環境變數會讓 CLI 不聲不響地改用 API 金鑰計費，而不是你在終端機裡完成的登入。AnswerWall 預設會在啟動 CLI 之前移除它們：
 
-`ANTHROPIC_API_KEY`、`ANTHROPIC_AUTH_TOKEN`、`ANTHROPIC_BASE_URL`、`ANTHROPIC_PROFILE`、`ANTHROPIC_FEDERATION_RULE_ID`、`ANTHROPIC_IDENTITY_TOKEN`、`ANTHROPIC_IDENTITY_TOKEN_FILE`、所有 `CLAUDE_CODE_USE_*`（連同 `CLAUDE_CODE_SKIP_BEDROCK_AUTH`、`CLAUDE_CODE_SKIP_VERTEX_AUTH`、`CLAUDE_CODE_SKIP_FOUNDRY_AUTH`）、`CODEX_API_KEY`、`OPENAI_API_KEY`、`XAI_API_KEY`、`GEMINI_API_KEY`、`GOOGLE_API_KEY`。
+`ANTHROPIC_API_KEY`、`ANTHROPIC_AUTH_TOKEN`、`ANTHROPIC_BASE_URL`、`ANTHROPIC_PROFILE`、`ANTHROPIC_FEDERATION_RULE_ID`、`ANTHROPIC_IDENTITY_TOKEN`、`ANTHROPIC_IDENTITY_TOKEN_FILE`、所有 `CLAUDE_CODE_USE_*`（連同 `CLAUDE_CODE_SKIP_BEDROCK_AUTH`、`CLAUDE_CODE_SKIP_VERTEX_AUTH`、`CLAUDE_CODE_SKIP_FOUNDRY_AUTH`）、`CODEX_API_KEY`、`OPENAI_API_KEY`、`XAI_API_KEY`、`GEMINI_API_KEY`、`GOOGLE_API_KEY`、`GOOGLE_GENERATIVE_AI_API_KEY`、`OPENCODE_API_KEY`。
 
 每個 CLI 都有一個**使用伺服器環境變數中的 API 金鑰**開關。關閉（預設）：移除這些變數，CLI 使用自己的登入。開啟：保留這些變數，對該 CLI 的執行與檢查都適用。「伺服器環境」是指 AnswerWall 程序本身的環境：容器的、服務的，或在本機模式下 Windows 交給應用程式的環境。
 
@@ -237,7 +237,7 @@ opencode 也可以登入其他廠商的訂閱方案。某個廠商是否允許�
 
 **檢查。** `opencode --version`、`opencode auth list` 與 `opencode models` 會在系統暫存目錄裡執行，別人留在那裡的檔案原本可能被當成專案設定讀取。所以這些指令會帶著 `OPENCODE_DISABLE_PROJECT_CONFIG=1` 啟動。提問則不會：它需要自己的檔案。如果 AnswerWall 程序的環境裡設定了這個變數，提問會失敗，訊息會說明原因。版本指令之後的那兩個指令會載入你的 opencode 全域設定，而 opencode 會在指令執行期間啟動那裡設定的 MCP 伺服器（以一個測試伺服器觀察到；檢查所花的時間就是那個伺服器啟動所需的時間）。提問不會啟動它們。
 
-**計費。** **計費來源**一律顯示**未知**：它取決於你所選模型背後的供應商，而 opencode 不會回報。開關關閉時，[計費](#計費訂閱登入或-api-金鑰)一節列出的 API 金鑰變數會被移除，其中包括 opencode 原本會讀取的 `OPENAI_API_KEY` 與 `ANTHROPIC_API_KEY`；用你自己取的名稱的金鑰（例如上面的 `GATEWAY_API_KEY`）則會傳入。opencode 的文件說明，已儲存的帳號優先於環境裡的金鑰。
+**計費。** **計費來源**一律顯示**未知**：它取決於你所選模型背後的供應商，而 opencode 不會回報。開關關閉時，[計費](#計費訂閱登入或-api-金鑰)一節列出的 API 金鑰變數會被移除，其中包括 opencode 原本會讀取的 `OPENAI_API_KEY`、`ANTHROPIC_API_KEY`、`GOOGLE_GENERATIVE_AI_API_KEY` 與 `OPENCODE_API_KEY`（opencode 自家代管模型的金鑰）；卡片會列出其中有設定的。**其他所有金鑰變數都會傳入**：用你自己取的名稱的金鑰（例如上面的 `GATEWAY_API_KEY`），以及 opencode 的目錄為其他供應商所認得的變數，例如 `OPENROUTER_API_KEY`、`GROQ_API_KEY` 或 `AZURE_API_KEY`。如果 AnswerWall 程序的環境裡設定了其中之一，即使開關關閉，opencode 也可能使用它並由它計費，而卡片不會提到。opencode 的文件說明，已儲存的帳號優先於環境裡的金鑰。
 
 **模型與推理強度。** 清單來自 `opencode models`，格式是 `provider/model`。沒有指定模型的格子會使用 opencode 設定裡的 `model`，沒有設定時則由 opencode 自己選擇。opencode 把推理強度稱為 _variant_，以 `provider/model#variant` 選擇；要使用的話，請在**你的模型**底下手動新增這樣的名稱。回答牆不會為 opencode 顯示推理強度選單。
 
