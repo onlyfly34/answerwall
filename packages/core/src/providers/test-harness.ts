@@ -1,4 +1,4 @@
-import { chmod, mkdtemp, readFile, rm, stat } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, symlink } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -72,6 +72,21 @@ export interface MockCliHarness {
 }
 
 /**
+ * A directory that holds Node and nothing else. The directory Node is
+ * installed in often also holds real CLIs (`npm install -g` puts them there),
+ * and a test must never be able to reach one of those, not even when a mock
+ * is missing. Windows keeps Node's own directory: creating a link there needs
+ * privileges a test cannot assume.
+ */
+async function isolatedNodeDir(root: string): Promise<string> {
+  if (process.platform === 'win32') return path.dirname(process.execPath);
+  const dir = path.join(root, 'node-bin');
+  await mkdir(dir);
+  await symlink(process.execPath, path.join(dir, 'node'));
+  return dir;
+}
+
+/**
  * A `CliContext` whose PATH holds only the mock CLIs and Node itself, on the
  * real clock with short kill and drain delays.
  */
@@ -87,6 +102,7 @@ export async function createMockCliHarness(
       if (((await stat(launcher)).mode & 0o111) === 0) await chmod(launcher, 0o755);
     }
   }
+  const nodeDir = await isolatedNodeDir(root);
   const inherited = Object.fromEntries(
     ['SystemRoot', 'SYSTEMROOT', 'PATHEXT', 'ComSpec', 'TEMP', 'TMP'].flatMap((name) =>
       process.env[name] === undefined ? [] : [[name, process.env[name]]],
@@ -102,7 +118,7 @@ export async function createMockCliHarness(
     context: {
       env: {
         ...inherited,
-        PATH: [MOCK_BIN_DIR, path.dirname(process.execPath)].join(path.delimiter),
+        PATH: [MOCK_BIN_DIR, nodeDir].join(path.delimiter),
         MOCK_CLI_LOG: logFile,
         ...options.env,
       },
