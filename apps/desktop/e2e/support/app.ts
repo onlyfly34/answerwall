@@ -149,8 +149,9 @@ export async function launchDesktop(
     cwd: profile.dir,
     timeout: 60_000,
   });
-  const pid = app.process().pid;
-  if (pid === undefined) throw new Error('The app has no process id');
+  // Asked of the main process itself: on Windows the process the test driver
+  // started is a shell around it.
+  const pid = await app.evaluate(() => process.pid);
 
   let closed = false;
   app.on('close', () => {
@@ -208,7 +209,8 @@ export async function sweep(profile: Profile): Promise<string[]> {
     ...(await processesMentioning('reaper.cjs')),
   ];
   for (const survivor of survivors) {
-    left.push(`app process ${survivor.pid}`);
+    const kind = /--type=([\w-]+)/.exec(survivor.commandLine)?.[1] ?? 'main or helper';
+    left.push(`app process ${survivor.pid} (${kind})`);
     await killTree(survivor.pid);
   }
   for (const pid of await runningProcesses(recordedProcesses(profile.mockLog))) {

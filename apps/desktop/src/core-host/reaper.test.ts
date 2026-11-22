@@ -1,6 +1,9 @@
 import { spawn } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, test } from 'vitest';
 
@@ -8,10 +11,12 @@ const REAPER = fileURLToPath(new URL('./reaper.ts', import.meta.url));
 const IDLE = 'setInterval(() => {}, 1000)';
 
 const started: ChildProcess[] = [];
-afterEach(() => {
+const temporary: string[] = [];
+afterEach(async () => {
   for (const child of started.splice(0)) {
     if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
   }
+  for (const dir of temporary.splice(0)) await rm(dir, { recursive: true, force: true });
 });
 
 /** A stand-in for a CLI: like the real ones, it leads its own process group on POSIX. */
@@ -116,26 +121,44 @@ describe('the reaper', () => {
 
   test('dies with the process that feeds it, however that one ends', async () => {
     const victim = await startVictim();
-    // A feeder that starts the reaper, registers the victim and is then killed outright.
-    const feeder = spawn(
-      process.execPath,
+    // A feeder that starts the reaper, registers the victim and is then killed outright:
+    // what the core host is to the reaper when the app's main process is killed.
+    const dir = await mkdtemp(path.join(tmpdir(), 'reaper-feeder-'));
+    temporary.push(dir);
+    const script = path.join(dir, 'feeder.cjs');
+    await writeFile(
+      script,
       [
-        '-e',
-        `const { spawn } = require('node:child_process');
-         const reaper = spawn(process.execPath, [${JSON.stringify(REAPER)}], {
-           stdio: ['pipe', 'ignore', 'ignore'],
-           detached: process.platform !== 'win32',
-         });
-         reaper.stdin.write('+${victim.pid}\\n', () => process.stdout.write('ready\\n'));
-         ${IDLE};`,
-      ],
-      { stdio: ['ignore', 'pipe', 'ignore'] },
+        "const { spawn } = require('node:child_process');",
+        'const [reaperScript, pid] = process.argv.slice(2);',
+        'const reaper = spawn(process.execPath, [reaperScript], {',
+        "  stdio: ['pipe', 'ignore', 'ignore'],",
+        "  detached: process.platform !== 'win32',",
+        '  windowsHide: true,',
+        '});',
+        "reaper.on('spawn', () => {",
+        "  reaper.stdin.write('+' + pid + '\\n', () => process.stdout.write('ready\\n'));",
+        '});',
+        `${IDLE};`,
+      ].join('\n'),
     );
+    const feeder = spawn(process.execPath, [script, REAPER, String(victim.pid)], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
     started.push(feeder);
-    await once(feeder.stdout, 'data');
+    let errors = '';
+    feeder.stderr.setEncoding('utf8').on('data', (text: string) => (errors += text));
+    await Promise.race([
+      once(feeder.stdout, 'data'),
+      once(feeder, 'exit').then(() => {
+        throw new Error(`The feeder ended early: ${errors}`);
+      }),
+    ]);
+    // Time for the reaper to have read its line: a pipe that is cut may drop what is unread.
+    await sleep(500);
 
     feeder.kill('SIGKILL');
 
     await exitOf(victim);
-  }, 20_000);
+  }, 30_000);
 });
