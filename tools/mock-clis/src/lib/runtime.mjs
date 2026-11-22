@@ -137,7 +137,8 @@ const writeLines = (lines) => write(process.stdout, lines.map((line) => `${line}
 
 function log(entry) {
   const file = process.env[LOG_ENV];
-  if (file) appendFileSync(file, `${JSON.stringify(entry)}\n`);
+  // `at` tells a reader whether a process id it finds later is still this process.
+  if (file) appendFileSync(file, `${JSON.stringify({ ...entry, at: Date.now() })}\n`);
 }
 
 /** Records what the mock was started with, for assertions on argv, stdin and environment. */

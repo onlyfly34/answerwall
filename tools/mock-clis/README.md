@@ -79,6 +79,14 @@ command line ends with the mock's script path and `stubborn-child`, so
 `pgrep -af 'src/(claude|codex|grok|agy).mjs'` lists it with the mocks when
 something has left it behind.
 
+Every line also carries `at`, the time it was written. A suite that looks for
+leftover mocks needs it: Windows hands the process id of an ended process to
+one of the next that start, so a recorded id that is "alive" may be another
+program by then. `src/lib/leftovers.mjs` reads the log and returns only the
+recorded processes that are really still running (on Windows, those whose
+process was created before the line was written). The e2e suite and
+`pnpm smoke:mock` use it, and only what it returns is ever killed.
+
 Set `MOCK_CLI_REMOVED_FEATURE` to a feature name and the mock `codex` treats
 that name as one it does not know: it prints `Error: Unknown feature flag:
 <name>` and exits 1, as the real CLI does for any unknown `--disable` name.
