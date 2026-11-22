@@ -19,10 +19,35 @@ import {
 import { ApiError } from '../contracts/services.ts';
 import type { ApiClient } from '../contracts/services.ts';
 
-type Fetch = typeof globalThis.fetch;
+export type Fetch = typeof globalThis.fetch;
+
+export interface ApiClientOptions {
+  fetch?: Fetch;
+  /** The server rejected the session (`unauthorized`): the shell returns to sign-in. */
+  onUnauthorized?: () => void;
+  /**
+   * A response did not match the protocol this bundle was built with, which
+   * is what a server upgraded behind an open page looks like: the shell
+   * checks the server's version again.
+   */
+  onInvalidResponse?: () => void;
+}
+
+export const defaultFetch: Fetch = (input, init) => globalThis.fetch(input, init);
+
+/** The error a failed response stands for: the server's own code when it sent one. */
+export async function readApiError(response: Response): Promise<ApiError> {
+  const payload: unknown = await response.json().catch(() => undefined);
+  const failure = ApiErrorBodySchema.safeParse(payload);
+  return failure.success
+    ? new ApiError(failure.data.error.code, response.status, failure.data.error.message)
+    : new ApiError('invalid_response', response.status, `HTTP ${response.status}`);
+}
 
 /** The API is same-origin; the session cookie travels on its own. */
-export function createApiClient(fetch: Fetch = globalThis.fetch.bind(globalThis)): ApiClient {
+export function createApiClient(options: ApiClientOptions = {}): ApiClient {
+  const fetch = options.fetch ?? defaultFetch;
+
   async function call<S extends z.ZodType>(
     schema: S,
     method: string,
@@ -33,23 +58,27 @@ export function createApiClient(fetch: Fetch = globalThis.fetch.bind(globalThis)
     try {
       response = await fetch(path, {
         method,
-        // Every non-GET request must be JSON, even without a payload.
-        ...(method === 'GET'
-          ? {}
-          : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body ?? {}) }),
+        credentials: 'same-origin',
+        cache: 'no-store',
+        headers: {
+          Accept: 'application/json',
+          // Every non-GET request must be JSON, even without a payload.
+          ...(method === 'GET' ? {} : { 'Content-Type': 'application/json' }),
+        },
+        ...(method === 'GET' ? {} : { body: JSON.stringify(body ?? {}) }),
       });
     } catch {
       throw new ApiError('network', 0, 'The server cannot be reached');
     }
-    const payload: unknown = await response.json().catch(() => undefined);
     if (!response.ok) {
-      const failure = ApiErrorBodySchema.safeParse(payload);
-      throw failure.success
-        ? new ApiError(failure.data.error.code, response.status, failure.data.error.message)
-        : new ApiError('invalid_response', response.status, `HTTP ${response.status}`);
+      const error = await readApiError(response);
+      if (error.code === 'unauthorized') options.onUnauthorized?.();
+      throw error;
     }
+    const payload: unknown = await response.json().catch(() => undefined);
     const parsed = schema.safeParse(payload);
     if (!parsed.success) {
+      options.onInvalidResponse?.();
       throw new ApiError(
         'invalid_response',
         response.status,
@@ -85,7 +114,7 @@ export function createApiClient(fetch: Fetch = globalThis.fetch.bind(globalThis)
     listHistory: (query = {}) => {
       const search = new URLSearchParams();
       for (const [name, value] of Object.entries(query)) {
-        if (value !== undefined) search.set(name, String(value));
+        if (value !== undefined && value !== '') search.set(name, String(value));
       }
       const suffix = search.size > 0 ? `?${search.toString()}` : '';
       return call(HistoryPageSchema, 'GET', `${API_PATHS.history}${suffix}`);
