@@ -195,10 +195,12 @@ anything reaches the API, the log or the database.
   when the supervisor that started it with an IPC channel disconnects. A
   closed stdout or stderr never ends the process: output to it is dropped.
   In the desktop app the core process is a utility process, which ends
-  without running any code when the main process is killed: a helper
-  process started by the core process is told of every child tree
+  without running any code when the main process is killed. On POSIX a
+  helper process started by the core process is told of every child tree
   (`watchChildProcessTrees`) and kills those still running when its pipe to
-  the core process closes (`docs/desktop.md`).
+  the core process closes. On Windows the system ends the core process's own
+  children with it (the job object Node puts them in); what such a child
+  started itself is not reached (`docs/desktop.md`).
 - Parse line-delimited JSON defensively: unknown event types are ignored, an
   unparsable stream falls back to showing the raw text rather than an empty
   cell. Do not assume the first line is the init event.

@@ -14,21 +14,15 @@ import type { Reaper } from './host.ts';
 
 const logger = createLogger({ level: 'info', format: 'json' });
 
-/** Starts the helper with this executable in plain Node mode and a pipe to its stdin. */
+/** Starts the helper with this executable in plain Node mode and a pipe to its stdin (POSIX). */
 function startReaper(script: string): Reaper | undefined {
   try {
     const child = spawn(process.execPath, [script], {
       // Nothing of this process's environment is of use to it.
-      env: {
-        ELECTRON_RUN_AS_NODE: '1',
-        ...(process.env['SystemRoot'] === undefined
-          ? {}
-          : { SystemRoot: process.env['SystemRoot'] }),
-      },
+      env: { ELECTRON_RUN_AS_NODE: '1' },
       stdio: ['pipe', 'ignore', 'ignore'],
-      // POSIX: a session of its own, so no signal aimed at the app reaches it.
-      detached: process.platform !== 'win32',
-      windowsHide: true,
+      // A session of its own, so no signal aimed at the app reaches it.
+      detached: true,
       shell: false,
     });
     const stdin = child.stdin;

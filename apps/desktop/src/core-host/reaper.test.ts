@@ -19,11 +19,11 @@ afterEach(async () => {
   for (const dir of temporary.splice(0)) await rm(dir, { recursive: true, force: true });
 });
 
-/** A stand-in for a CLI: like the real ones, it leads its own process group on POSIX. */
+/** A stand-in for a CLI: like the real ones, it leads its own process group. */
 async function startVictim(): Promise<ChildProcess & { pid: number }> {
   const child = spawn(process.execPath, ['-e', IDLE], {
     stdio: 'ignore',
-    detached: process.platform !== 'win32',
+    detached: true,
   });
   started.push(child);
   await once(child, 'spawn');
@@ -47,7 +47,8 @@ const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout
 const isRunning = (child: ChildProcess): boolean =>
   child.exitCode === null && child.signalCode === null;
 
-describe('the reaper', () => {
+// Windows has no reaper: the system ends the children there (see `reaper.ts`).
+describe.skipIf(process.platform === 'win32')('the reaper', () => {
   test('kills the registered trees when its stdin ends, then exits', async () => {
     const [first, second] = [await startVictim(), await startVictim()];
     const reaper = await startReaper();
@@ -133,8 +134,7 @@ describe('the reaper', () => {
         'const [reaperScript, pid] = process.argv.slice(2);',
         'const reaper = spawn(process.execPath, [reaperScript], {',
         "  stdio: ['pipe', 'ignore', 'ignore'],",
-        "  detached: process.platform !== 'win32',",
-        '  windowsHide: true,',
+        '  detached: true,',
         '});',
         "reaper.on('spawn', () => {",
         "  reaper.stdin.write('+' + pid + '\\n', () => process.stdout.write('ready\\n'));",

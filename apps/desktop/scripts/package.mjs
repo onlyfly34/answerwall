@@ -62,7 +62,7 @@ const config = {
   removePackageKeywords: true,
 
   electronFuses: {
-    // On: the reaper runs this executable as plain Node (ELECTRON_RUN_AS_NODE).
+    // On: the reaper (Linux, macOS) runs this executable as plain Node (ELECTRON_RUN_AS_NODE).
     runAsNode: true,
     // On: the end-to-end tests drive the packaged app through the inspector.
     enableNodeCliInspectArguments: true,

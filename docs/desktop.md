@@ -95,7 +95,7 @@ all come from `packages/core/src/brand.ts`:
 - Artifacts: `answerwall-desktop-<version>-windows-x64-setup.exe`, the same
   name with `.blockmap`, and `latest.yml`.
 - Not code-signed.
-- Fuses: `runAsNode` stays on (the reaper needs it), and so does
+- Fuses: `runAsNode` stays on (the reaper needs it on Linux), and so does
   `enableNodeCliInspectArguments` (the end-to-end tests drive the packaged
   app through the inspector). `NODE_OPTIONS` is ignored, the app loads only
   from `app.asar`, the archive's integrity is validated, cookies are
@@ -106,7 +106,7 @@ all come from `packages/core/src/brand.ts`:
 ```
 main process (Electron)
 ├─ utility process: core host ── CLI children (one per running cell)
-│      └─ reaper (stdin pipe from the core host)
+│      └─ reaper (not on Windows; stdin pipe from the core host)
 ├─ renderer: local window        http://127.0.0.1:<port>   partition persist:local
 ├─ renderer: remote window       <server origin>           partition persist:remote
 └─ renderer: connection page     file: (bundled)           partition connection (in memory)
@@ -155,20 +155,29 @@ keyring) nothing is stored: saving an API key fails with a message, and the
 value is never written in plain text. Secret values are in no log and in no
 error message.
 
-**The reaper.** A utility process ends without running any code when the
-main process is killed or crashes, so nothing in the core host could kill
-its CLI children then. The core host therefore starts one helper, the app's
-own executable in plain Node mode running `reaper.cjs`, with a pipe to its
-stdin, and reports every child process tree to it (`watchChildProcessTrees`
-in core). When the pipe closes, however the core host ended, the helper
-kills the trees that were still registered (`SIGKILL` to the process group,
-`taskkill /T /F` on Windows) and exits. On an orderly quit it finds nothing
-left to do.
+**When the main process dies.** A utility process ends without running any
+code when the main process is killed or crashes, so nothing in the core
+host could kill its CLI children then.
+
+- Linux and macOS: the core host starts one helper, the reaper: the app's
+  own executable in plain Node mode running `reaper.cjs`, with a pipe to its
+  stdin. The core host reports every child process tree to it
+  (`watchChildProcessTrees` in core). When the pipe closes, however the core
+  host ended, the reaper sends `SIGKILL` to the process groups that were
+  still registered and exits. On an orderly quit it finds nothing to do.
+- Windows: there is no reaper. Node puts every child process it starts into
+  a job object that the system closes, killing those processes, when the
+  parent ends in any way. That ends the CLI processes the core host started.
+  It does not reach a process that such a CLI started itself, unless the CLI
+  is a Node program, which ends its own children the same way. (A helper
+  like the reaper would be in the same job and die first, and a tree can
+  only be found through its root on Windows.) An orderly quit is not
+  affected: it kills whole trees with `taskkill /T /F`.
 
 **Shutdown.** Quit (menu, last window closed, `SIGINT`/`SIGTERM`/`SIGHUP`,
 a system shutdown on Linux and macOS) stops the core host with `shutdown`
-and waits for it; a host that does not finish in 12 s is killed, and the
-reaper ends its children. When a Windows session ends (`session-end`), the
+and waits for it; a host that does not finish in 12 s is killed, and its
+children end as described above. When a Windows session ends (`session-end`), the
 shell sends `shutdown` without waiting. An uncaught error in the main
 process sends `shutdown`, shows an error box and exits. When the core host
 exits unexpectedly, the shell offers to restart it. A second start of the
@@ -333,6 +342,9 @@ trigger, so that nothing runs twice.
 - The whole update flow against a published release: check, download,
   installer, restart.
 - The end of a Windows session (log-off, shutdown) while answers run.
+- A killed or crashed app on Windows while a real CLI runs that has started
+  processes of its own (see "When the main process dies"); the tests' mock
+  CLIs are Node programs, whose children end with them.
 - A server with a private CA installed in the Windows certificate store,
   and the wording of the certificate error without it.
 - The installer's pages, the per-machine choice with elevation, high-DPI

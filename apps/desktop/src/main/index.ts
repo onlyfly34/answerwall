@@ -156,7 +156,7 @@ const coreOptions: CoreProcessOptions = {
     dataDir: path.join(userData, 'data'),
     webRoot: PATHS.webRoot,
     logLevel: 'info',
-    reaper: PATHS.reaper,
+    reaper: process.platform === 'win32' ? undefined : PATHS.reaper,
   },
   // 256 bits, new for every start of the local server.
   generateToken: () => randomBytes(32).toString('base64url'),
