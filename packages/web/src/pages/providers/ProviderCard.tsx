@@ -14,6 +14,7 @@ import { CopyButton } from '../../app/ui/CopyButton.tsx';
 import { formatDateTime } from '../../app/ui/format.ts';
 import type { MessageKey } from '../../contracts/messages.ts';
 import { useServices } from '../../contracts/services.ts';
+import { desktopBridge } from '../../infra/desktop-bridge.ts';
 import { AcknowledgeDialog } from './AcknowledgeDialog.tsx';
 import { ModelsEditor } from './ModelsEditor.tsx';
 import { toInput } from './provider-edits.ts';
@@ -63,7 +64,7 @@ export interface ProviderCardProps {
 
 /** One provider: what the server detected, how to sign in, and its settings. */
 export const ProviderCard: Component<ProviderCardProps> = (props) => {
-  const { i18n } = useServices();
+  const { i18n, meta, notify } = useServices();
   const t = i18n.t;
   const ids = {
     enabled: createUniqueId(),
@@ -78,6 +79,29 @@ export const ProviderCard: Component<ProviderCardProps> = (props) => {
   const bounds = () => concurrencyBounds(props.instance.kind);
   const detection = () => props.status?.detection ?? undefined;
   const isCli = () => isCliKind(props.instance.kind);
+
+  // Only the desktop app's local window has the bridge; a browser never does.
+  const bridge = () => (meta()?.mode === 'desktop' ? desktopBridge() : undefined);
+  const [openingTerminal, setOpeningTerminal] = createSignal(false);
+
+  async function openLoginTerminal(): Promise<void> {
+    const kind = props.instance.kind;
+    const shell = bridge();
+    if (!shell || !isCliKind(kind) || openingTerminal()) return;
+    setOpeningTerminal(true);
+    try {
+      const opened = await shell.openLoginTerminal(kind);
+      notify.toast(
+        opened.ok
+          ? { kind: 'info', message: t('app.providers.loginTerminal.opened') }
+          : { kind: 'error', message: t('app.providers.loginTerminal.failed') },
+      );
+    } catch {
+      notify.toast({ kind: 'error', message: t('app.providers.loginTerminal.failed') });
+    } finally {
+      setOpeningTerminal(false);
+    }
+  }
 
   function toggle(enabled: boolean): void {
     const instance = props.instance;
@@ -206,10 +230,29 @@ export const ProviderCard: Component<ProviderCardProps> = (props) => {
         {(command) => (
           <div class="app-field">
             <span class="app-label">{t('app.providers.loginCommand.title')}</span>
-            <span class="app-muted">{t('app.providers.loginCommand.help')}</span>
+            <span class="app-muted">
+              {t(
+                meta()?.mode === 'desktop'
+                  ? 'app.providers.loginCommand.helpDesktop'
+                  : 'app.providers.loginCommand.help',
+              )}
+            </span>
             <div class="app-row">
               <code class="app-code">{command()}</code>
               <CopyButton text={command()} label={t('app.providers.loginCommand.copy')} />
+              <Show when={isCli() && bridge()}>
+                <button
+                  type="button"
+                  class="app-button"
+                  disabled={openingTerminal()}
+                  aria-label={t('app.providers.loginTerminal.openOne', {
+                    label: props.instance.label,
+                  })}
+                  onClick={() => void openLoginTerminal()}
+                >
+                  {t('app.providers.loginTerminal.open')}
+                </button>
+              </Show>
             </div>
           </div>
         )}

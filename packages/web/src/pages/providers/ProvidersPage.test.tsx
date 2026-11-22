@@ -1,7 +1,14 @@
 import { cleanup, fireEvent, screen, waitFor, within } from '@solidjs/testing-library';
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { createDefaultSettings, SettingsPatchSchema } from '@answerwall/core/protocol';
+import {
+  API_VERSION,
+  BRAND,
+  createDefaultSettings,
+  DESKTOP_BRIDGE_GLOBAL,
+  SettingsPatchSchema,
+} from '@answerwall/core/protocol';
 import type {
+  Meta,
   OpenAiCompatInstance,
   ProviderInstanceInput,
   ProviderStatus,
@@ -17,6 +24,7 @@ import { ProvidersPage } from './ProvidersPage.tsx';
 afterEach(() => {
   cleanup();
   Reflect.deleteProperty(navigator, 'clipboard');
+  Reflect.deleteProperty(window, DESKTOP_BRIDGE_GLOBAL);
 });
 
 const endpoint: OpenAiCompatInstance = {
@@ -35,8 +43,9 @@ function settingsWith(...extra: OpenAiCompatInstance[]): Settings {
   return { ...settings, providers: [...settings.providers, ...extra] };
 }
 
-function setup(options: { settings?: Settings; providers?: ProviderStatus[] } = {}) {
+function setup(options: { settings?: Settings; providers?: ProviderStatus[]; meta?: Meta } = {}) {
   const services = createFakeServices({
+    ...(options.meta ? { meta: options.meta } : {}),
     ...(options.settings ? { settings: options.settings } : {}),
     ...(options.providers ? { providers: options.providers } : {}),
   });
@@ -166,6 +175,91 @@ describe('what was detected', () => {
 
     await waitFor(() => expect(services.toasts).toEqual([{ kind: 'success', message: 'Copied.' }]));
     expect(writeText).toHaveBeenCalledWith('codex login');
+  });
+
+  describe('the desktop app', () => {
+    const desktopMeta: Meta = {
+      name: BRAND.name,
+      version: '0.0.0-test',
+      apiVersion: API_VERSION,
+      mode: 'desktop',
+      tls: 'off',
+      authRequired: true,
+    };
+    const withLoginCommands = (settings: Settings): ProviderStatus[] =>
+      settings.providers.map((instance) => ({
+        ...readyProviderStatus(instance),
+        ...(instance.kind === 'openai-compat' ? {} : { loginCommand: `${instance.id} login` }),
+      }));
+    const installBridge = (answer: unknown) => {
+      const openLoginTerminal = vi.fn(async () => answer);
+      Object.defineProperty(window, DESKTOP_BRIDGE_GLOBAL, {
+        value: { openLoginTerminal },
+        configurable: true,
+      });
+      return openLoginTerminal;
+    };
+    const OPEN = 'Open a terminal to log in to Codex';
+
+    test('offers to open a terminal, naming the provider kind and never a command', async () => {
+      const openLoginTerminal = installBridge({ ok: true });
+      const settings = settingsWith(endpoint);
+      const services = setup({
+        settings,
+        providers: withLoginCommands(settings),
+        meta: desktopMeta,
+      });
+
+      expect(card('Home LLM').queryByRole('button', { name: /Open a terminal/ })).toBeNull();
+      fireEvent.click(card('Codex').getByRole('button', { name: OPEN }));
+
+      await waitFor(() =>
+        expect(services.toasts).toEqual([
+          {
+            kind: 'info',
+            message: 'A terminal window was opened. Log in there, then press Refresh.',
+          },
+        ]),
+      );
+      expect(openLoginTerminal.mock.calls).toEqual([['codex']]);
+      // Logging in is the user's act; nothing is detected again on its own.
+      expect(services.refreshes).toEqual([]);
+    });
+
+    test('says so when no terminal could be opened, or the shell answers something else', async () => {
+      installBridge({ ok: false, reason: 'no_terminal' });
+      const settings = createDefaultSettings();
+      const services = setup({
+        settings,
+        providers: withLoginCommands(settings),
+        meta: desktopMeta,
+      });
+
+      fireEvent.click(card('Codex').getByRole('button', { name: OPEN }));
+      await waitFor(() => expect(services.toasts).toHaveLength(1));
+
+      installBridge('opened');
+      fireEvent.click(card('Codex').getByRole('button', { name: OPEN }));
+      await waitFor(() => expect(services.toasts).toHaveLength(2));
+
+      expect(services.toasts.map((toast) => toast.kind)).toEqual(['error', 'error']);
+    });
+
+    test('the button is absent in a browser, with or without something of that name on the page', () => {
+      const settings = createDefaultSettings();
+      installBridge({ ok: true });
+      setup({ settings, providers: withLoginCommands(settings) });
+
+      expect(screen.queryByRole('button', { name: /Open a terminal/ })).toBeNull();
+    });
+
+    test('the button is absent in desktop mode without the bridge', () => {
+      const settings = createDefaultSettings();
+      setup({ settings, providers: withLoginCommands(settings), meta: desktopMeta });
+
+      expect(screen.queryByRole('button', { name: /Open a terminal/ })).toBeNull();
+      expect(card('Codex').getByText(/in a terminal on this computer/)).toBeDefined();
+    });
   });
 
   test('where the clipboard is unavailable the copy button says so', async () => {

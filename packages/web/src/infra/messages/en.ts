@@ -129,6 +129,14 @@ export const en = {
   'app.providers.loginCommand.help':
     'Run this official command in a terminal on the server, as the user the server runs as. This app never sees or stores the login.',
   'app.providers.loginCommand.copy': 'Copy the login command',
+  'app.providers.loginCommand.helpDesktop':
+    'Log in with this official command in a terminal on this computer. This app never sees or stores the login. Press Refresh afterwards.',
+  'app.providers.loginTerminal.open': 'Open a terminal to log in',
+  'app.providers.loginTerminal.openOne': 'Open a terminal to log in to {label}',
+  'app.providers.loginTerminal.opened':
+    'A terminal window was opened. Log in there, then press Refresh.',
+  'app.providers.loginTerminal.failed':
+    'No terminal could be opened. Copy the command and run it in a terminal yourself.',
   'app.providers.concurrency.label': 'Parallel requests',
   'app.providers.concurrency.help': 'Between {min} and {max}. Further cells wait in a queue.',
   'app.providers.concurrency.fixed': 'Fixed at {value} for this provider.',
