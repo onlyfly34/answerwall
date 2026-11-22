@@ -73,7 +73,10 @@ hangs here exactly as it would with the real CLI. `grok` never reads stdin.
 Set `MOCK_CLI_LOG` to a file and every invocation appends one JSON line to
 it: `kind`, `pid`, `argv`, `cwd`, the names of all environment variables, the
 values of a few fixed ones, the scenario and the prompt it received. The
-`tree` and `lingering-child` scenarios also log `grandchildPid`.
+`tree` and `lingering-child` scenarios also log `grandchildPid`. That child's
+command line ends with the mock's script path and `stubborn-child`, so
+`pgrep -af 'src/(claude|codex|grok|agy).mjs'` lists it with the mocks when
+something has left it behind.
 
 Set `MOCK_CLI_REMOVED_FEATURE` to a feature name and the mock `codex` treats
 that name as one it does not know: it prints `Error: Unknown feature flag:

@@ -329,6 +329,37 @@ describe('stdin handling', () => {
   });
 });
 
+describe('descendants', () => {
+  // Reads the command line from /proc, which only Linux has.
+  test.skipIf(process.platform !== 'linux')(
+    'the child left behind names the mock script, so the search for leftover mocks finds it',
+    async () => {
+      const log = path.join(workDir, 'invocations.jsonl');
+      const child = start('claude', validArgs('claude'), {
+        MOCK_CLI_SCENARIO: 'tree',
+        MOCK_CLI_LOG: log,
+      });
+      child.stdin.end('ping');
+      await new Promise<void>((resolve) => child.stdout.once('data', () => resolve()));
+      let grandchild: number | undefined;
+      for (let attempt = 0; attempt < 100 && grandchild === undefined; attempt++) {
+        const text = await readFile(log, 'utf8').catch(() => '');
+        grandchild = jsonLines(text).find((entry) => typeof entry.grandchildPid === 'number')
+          ?.grandchildPid as number | undefined;
+        if (grandchild === undefined) await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      try {
+        expect(grandchild).toBeTypeOf('number');
+        const commandLine = (await readFile(`/proc/${grandchild}/cmdline`, 'utf8')).split('\0');
+        expect(commandLine.join(' ')).toMatch(/src\/claude\.mjs stubborn-child/);
+      } finally {
+        if (grandchild !== undefined) process.kill(grandchild, 'SIGKILL');
+        child.kill('SIGKILL');
+      }
+    },
+  );
+});
+
 describe('status subcommands', () => {
   test('claude auth status reports the login as JSON and by exit code', async () => {
     const loggedIn = await runMock('claude', ['auth', 'status']);

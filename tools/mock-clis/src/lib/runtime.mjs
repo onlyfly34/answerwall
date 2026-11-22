@@ -157,11 +157,21 @@ export function logInvocation(kind, extra = {}) {
   });
 }
 
-/** A descendant that ignores SIGTERM and inherits stdout: only a tree kill removes it. */
+/**
+ * A descendant that ignores SIGTERM and inherits stdout: only a tree kill
+ * removes it. Its command line names the mock's script, unused, so that the
+ * search for leftover mocks (`pgrep -f 'src/(claude|codex|grok|agy).mjs'`)
+ * finds it too.
+ */
 function spawnStubbornChild() {
   const child = spawn(
     process.execPath,
-    ['-e', "process.on('SIGTERM', () => {}); setInterval(() => {}, 1000);"],
+    [
+      '-e',
+      "process.on('SIGTERM', () => {}); setInterval(() => {}, 1000);",
+      process.argv[1] ?? '',
+      'stubborn-child',
+    ],
     { stdio: ['ignore', 'inherit', 'ignore'] },
   );
   log({ grandchildPid: child.pid });
