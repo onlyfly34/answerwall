@@ -1,9 +1,17 @@
+import { readFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import type { AddressInfo } from 'node:net';
 import type { Page } from '@playwright/test';
 import { expect, pageApi, test, until } from '../support/fixtures.ts';
 
 const wall = (page: Page) => page.getByRole('form', { name: 'Ask' });
+
+/** The version the remote server reports: that of the server package the tests start. */
+const serverVersion = (
+  JSON.parse(readFileSync(new URL('../../../server/package.json', import.meta.url), 'utf8')) as {
+    version: string;
+  }
+).version;
 
 /** A loopback port on which nothing listens. */
 async function closedPort(): Promise<number> {
@@ -95,7 +103,7 @@ test.describe('the connection page', () => {
     await address.fill(server.base);
     await expect(connection.getByText('This address uses plain HTTP')).toBeVisible();
     await connection.getByRole('button', { name: 'Check' }).click();
-    await expect(result).toContainText('Found AnswerWall 0.0.0 (protocol version 1).');
+    await expect(result).toContainText(`Found AnswerWall ${serverVersion} (protocol version 1).`);
     await connection.getByRole('button', { name: 'Continue' }).click();
 
     const page = await first.contentWindow();
