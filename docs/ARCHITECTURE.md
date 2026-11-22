@@ -178,8 +178,9 @@ timeoutMs, signal, workDir })` and translates each `ProviderEvent` into a
 
 `createServer(config)` creates the data directory and builds the units in
 dependency order: storage, secrets, settings (`load`), providers, runner
-(`start`, which fails slots interrupted by a previous process), auth, TLS,
-HTTP layer, app. `listen()` binds the socket (HTTPS when `TlsProvider` has
+(`start`, which takes the data directory's `work.lock`, then fails slots
+interrupted by a previous process), auth, TLS, HTTP layer, app. If a unit
+after the runner fails, the runner is shut down again, releasing the lock. `listen()` binds the socket (HTTPS when `TlsProvider` has
 material), then runs `AuthService.bootstrap` and a first provider detection
 in the background. `shutdown()` stops accepting connections, shuts the runner
 down (which kills every child and flushes), stops provider detection, closes
@@ -200,6 +201,10 @@ why pairing codes are read from storage on every attempt and never cached.
 Secrets can also come from the environment: the variable
 `secretEnvName(key)` (prefix `SECRET_ENV_PREFIX`) overrides the stored value
 of `key`, read-only. Configuration parsing skips variables with that prefix.
+
+The data directory holds `answerwall.sqlite`, `secrets.json`, `work/` (one
+directory per running slot), `work.lock` and, in TLS `auto` mode, `tls/`
+with the generated certificates (their private keys are in `secrets.json`).
 
 ## Conventions
 

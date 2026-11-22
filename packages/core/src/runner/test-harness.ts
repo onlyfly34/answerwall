@@ -40,6 +40,8 @@ export function createMemoryWorkDirs(): MemoryWorkDirs {
     existing,
     created,
     failCreate: false,
+    async claim() {},
+    async release() {},
     async reset() {
       existing.clear();
     },

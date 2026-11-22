@@ -414,13 +414,24 @@ export function createAskManager(deps: AskManagerDeps): AskManager {
     }
     while (tasks.size > 0) await Promise.allSettled([...tasks]);
     await Promise.allSettled([...asks.values()].map((ask) => ask.saving));
+    // Last: until here this process still had children in the work dirs.
+    await workDirs.release();
   };
 
   return {
     async start() {
-      const failed = await storage.turns.failInterrupted(SERVER_RESTARTED_ERROR);
-      if (failed > 0) logger.warn('failed slots interrupted by a previous process', { failed });
-      await workDirs.reset();
+      // First: everything below assumes that no other process is running asks
+      // on this data directory. A second server would otherwise fail the
+      // first one's running slots and delete the directories of its children.
+      await workDirs.claim();
+      try {
+        const failed = await storage.turns.failInterrupted(SERVER_RESTARTED_ERROR);
+        if (failed > 0) logger.warn('failed slots interrupted by a previous process', { failed });
+        await workDirs.reset();
+      } catch (error) {
+        await workDirs.release();
+        throw error;
+      }
     },
 
     submit(request) {

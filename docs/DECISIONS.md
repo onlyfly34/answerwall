@@ -389,6 +389,13 @@ In v1 a conversation has exactly one turn. Also: `presets`, `settings`,
 `devices`, `pairing_codes`, schema version + forward-only migrations. No CLI
 credential is ever stored.
 
+One server per data dir: the runner holds an OS-level lock (an exclusive
+SQLite transaction on the empty file `<dataDir>/work.lock`) from before it
+fails interrupted slots and resets the work dirs until the end of its
+shutdown. A second server on the same data dir refuses to start. The lock
+ends with the process, even on `SIGKILL`, so it never goes stale.
+`answerwall pair` does not take it.
+
 ## 9. Web UI
 
 - Layout: CSS grid `repeat(auto-fill, minmax(<min width>, 1fr))`; user can

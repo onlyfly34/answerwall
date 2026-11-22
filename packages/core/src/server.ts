@@ -12,6 +12,7 @@ import { BRAND } from './brand.ts';
 import type {
   AppConfig,
   AppEnv,
+  AskManager,
   AuthService,
   Logger,
   SecretStore,
@@ -97,6 +98,7 @@ export async function createServer(
     overrides.secrets ?? createFileSecretStore({ file: join(config.dataDir, 'secrets.json'), env });
   let units;
   let tlsProvider: TlsProvider | undefined;
+  let startedAsks: AskManager | undefined;
   try {
     const settings = createSettingsService({ storage, secrets, logger });
     await settings.load();
@@ -111,13 +113,15 @@ export async function createServer(
       workRoot: join(config.dataDir, 'work'),
     });
     await asks.start();
+    startedAsks = asks;
     const auth = buildAuthService(config, storage, logger);
     const tls = createTlsProvider({ config, secrets, logger });
     tlsProvider = tls;
     const http = createHttpLayer({ config, settings, clock, logger });
     units = { settings, providers, asks, auth, tls, http };
   } catch (error) {
-    // Nothing is running yet: no socket, no ask, no child process.
+    // No socket and no ask yet; a started runner holds the data directory's work lock.
+    await startedAsks?.shutdown().catch(() => undefined);
     await tlsProvider?.close().catch(() => undefined);
     await storage.close().catch(() => undefined);
     throw error;

@@ -1,10 +1,15 @@
-import { expect, test } from 'vitest';
+import { existsSync } from 'node:fs';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { expect, test, vi } from 'vitest';
 import type { ProviderAdapter, ProviderEvent, RunRequest, Storage } from '../contracts/index.ts';
 import { SERVER_RESTARTED_ERROR } from '../protocol/index.ts';
 import type { ProviderInstance } from '../protocol/index.ts';
 import { answerScript, createFakeStorage, READY_DETECTION } from '../testing/index.ts';
 import type { ScriptStep } from '../testing/index.ts';
 import { createHarness, targets } from './test-harness.ts';
+import { WorkRootInUseError } from './work-dirs.ts';
 
 const partialThenHang: ScriptStep[] = [
   { event: { type: 'start' } },
@@ -53,6 +58,58 @@ test('start fails the slots a previous process left queued or running, keeping t
   expect(restarted.logger.entries.find((entry) => entry.level === 'warn')?.fields).toMatchObject({
     failed: 3,
   });
+});
+
+test('a second manager on a data directory that is being served refuses to start and touches nothing', async () => {
+  const base = await mkdtemp(join(tmpdir(), 'runner-owner-'));
+  const workRoot = join(base, 'work');
+  const storage = createFakeStorage();
+  let workDir: string | undefined;
+  const running = createHarness({
+    storage,
+    workRoot,
+    adapters: [
+      claudeAdapter(async function* (_instance, request) {
+        workDir = request.workDir;
+        yield { type: 'start' };
+        yield { type: 'delta', text: 'partial' };
+        await aborted(request.signal);
+      }),
+    ],
+  });
+  try {
+    await running.manager.start();
+    const askId = await running.ask(targets('claude', 2));
+    // Real directories: the slots reach the adapter only once the file system has answered.
+    await vi.waitFor(
+      async () => {
+        await running.clock.advance(1000);
+        const stored = await storage.turns.get(askId);
+        expect(stored!.slots.map((slot) => slot.status)).toEqual(['running', 'running']);
+      },
+      { interval: 1 },
+    );
+    const before = await storage.turns.get(askId);
+
+    const second = createHarness({ storage, workRoot });
+    await expect(second.manager.start()).rejects.toBeInstanceOf(WorkRootInUseError);
+
+    expect(await storage.turns.get(askId)).toEqual(before);
+    expect(existsSync(workDir!)).toBe(true);
+    // Stopping the one that never started must not free the directory either.
+    await second.manager.shutdown();
+    await expect(createHarness({ storage, workRoot }).manager.start()).rejects.toBeInstanceOf(
+      WorkRootInUseError,
+    );
+
+    await running.manager.shutdown();
+    const next = createHarness({ storage, workRoot });
+    await next.manager.start();
+    await next.manager.shutdown();
+  } finally {
+    await running.manager.shutdown();
+    await rm(base, { recursive: true, force: true });
+  }
 });
 
 test('an ask recovered after a restart streams as one done snapshot and is never run again', async () => {
