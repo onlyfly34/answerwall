@@ -6,13 +6,13 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import path from 'node:path';
+import {
+  killProcessTree,
+  recordedProcesses,
+  runningProcesses,
+} from '../../tools/mock-clis/src/lib/leftovers.mjs';
 import { registryDir, RUN_DIR_ENV } from './environment.ts';
-import { isAlive, killTree, mockPids } from './server.ts';
-
-interface Registration {
-  pid: number;
-  mockLog: string;
-}
+import type { Registration } from './server.ts';
 
 export default async function globalTeardown(): Promise<void> {
   const dir = process.env[RUN_DIR_ENV];
@@ -21,13 +21,13 @@ export default async function globalTeardown(): Promise<void> {
   const leaked: string[] = [];
   for (const name of readdirSync(registryDir())) {
     const entry = JSON.parse(readFileSync(path.join(registryDir(), name), 'utf8')) as Registration;
-    if (isAlive(entry.pid)) {
-      leaked.push(`server ${entry.pid}`);
-      killTree(entry.pid);
+    for (const pid of await runningProcesses([{ pid: entry.pid, at: entry.at }])) {
+      leaked.push(`server ${pid}`);
+      killProcessTree(pid);
     }
-    for (const pid of mockPids(entry.mockLog).filter(isAlive)) {
+    for (const pid of await runningProcesses(recordedProcesses(entry.mockLog))) {
       leaked.push(`mock CLI ${pid}`);
-      killTree(pid);
+      killProcessTree(pid);
     }
   }
   await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });

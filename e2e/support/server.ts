@@ -9,6 +9,11 @@ import { once } from 'node:events';
 import { readFileSync } from 'node:fs';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import {
+  killProcessTree,
+  recordedProcesses,
+  runningProcesses,
+} from '../../tools/mock-clis/src/lib/leftovers.mjs';
 import { registryDir, runDir, sandboxEnv, SERVER_MAIN } from './environment.ts';
 import type { CliKind, MockSet } from './environment.ts';
 
@@ -121,8 +126,8 @@ export interface TestServer {
 
   /** What the mock CLIs recorded, oldest first. */
   mockInvocations(): MockInvocation[];
-  /** Process ids of mock CLIs (and their children) that are still alive. */
-  liveMockPids(): number[];
+  /** Process ids of mock CLIs (and their children) that are still running. */
+  liveMockPids(): Promise<number[]>;
   /** The server's log so far, one JSON object per line. */
   logText(): string;
   /** Stops the server gracefully and removes its directory. Returns the process ids that outlived it. */
@@ -145,38 +150,6 @@ export async function until<T>(
   }
 }
 
-export function isAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-  } catch (error) {
-    return (error as NodeJS.ErrnoException).code === 'EPERM';
-  }
-  if (process.platform !== 'linux') return true;
-  try {
-    // A zombie still answers signal 0; it is not running any more.
-    const status = readFileSync(`/proc/${pid}/stat`, 'utf8');
-    return status.charAt(status.lastIndexOf(')') + 2) !== 'Z';
-  } catch {
-    return false;
-  }
-}
-
-export function killTree(pid: number): void {
-  try {
-    if (process.platform === 'win32') {
-      spawn('taskkill', ['/T', '/F', '/PID', String(pid)], { stdio: 'ignore' });
-    } else {
-      process.kill(-pid, 'SIGKILL');
-    }
-  } catch {
-    try {
-      process.kill(pid, 'SIGKILL');
-    } catch {
-      // Gone in the meantime.
-    }
-  }
-}
-
 export function readMockLog(file: string): MockInvocation[] {
   let text: string;
   try {
@@ -190,13 +163,15 @@ export function readMockLog(file: string): MockInvocation[] {
     .map((line) => JSON.parse(line) as MockInvocation);
 }
 
-export function mockPids(file: string): number[] {
-  const pids = new Set<number>();
-  for (const entry of readMockLog(file)) {
-    if (entry.pid !== undefined) pids.add(entry.pid);
-    if (entry.grandchildPid !== undefined) pids.add(entry.grandchildPid);
-  }
-  return [...pids];
+/**
+ * What a running test server left in the registry of the run: its own process
+ * and the file its mock CLIs record themselves in.
+ */
+export interface Registration {
+  pid: number;
+  /** When the server had been started; see `leftovers.mjs` for why this is kept. */
+  at: number;
+  mockLog: string;
 }
 
 interface LogEntry {
@@ -264,7 +239,8 @@ export async function startServer(options: ServerOptions): Promise<TestServer> {
   );
 
   const registration = path.join(registryDir(), `${child.pid}.json`);
-  await writeFile(registration, JSON.stringify({ pid: child.pid, mockLog }));
+  const registered: Registration = { pid: child.pid ?? 0, at: Date.now(), mockLog };
+  await writeFile(registration, JSON.stringify(registered));
 
   const listening = await Promise.race([
     until('the server to listen', () =>
@@ -333,12 +309,14 @@ export async function startServer(options: ServerOptions): Promise<TestServer> {
       }
     }
     // The server ends its children before it exits; the system may need a moment to reap them.
-    let survivors = mockPids(mockLog).filter(isAlive);
-    for (let waited = 0; survivors.length > 0 && waited < 2000; waited += 50) {
+    let left = recordedProcesses(mockLog);
+    let survivors = await runningProcesses(left);
+    for (const deadline = Date.now() + 2000; survivors.length > 0 && Date.now() < deadline;) {
       await sleep(50);
-      survivors = survivors.filter(isAlive);
+      left = left.filter((process) => survivors.includes(process.pid));
+      survivors = await runningProcesses(left);
     }
-    for (const pid of survivors) killTree(pid);
+    for (const pid of survivors) killProcessTree(pid);
     await rm(registration, { force: true });
     await rm(temp, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     return survivors;
@@ -417,7 +395,7 @@ export async function startServer(options: ServerOptions): Promise<TestServer> {
       ),
 
     mockInvocations: () => readMockLog(mockLog),
-    liveMockPids: () => mockPids(mockLog).filter(isAlive),
+    liveMockPids: () => runningProcesses(recordedProcesses(mockLog)),
     logText: () => lines.join('\n'),
     stop: () => (stopped ??= stop()),
   };

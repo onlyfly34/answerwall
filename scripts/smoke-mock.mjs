@@ -18,6 +18,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { isDeepStrictEqual } from 'node:util';
+import {
+  killProcessTree,
+  recordedProcesses,
+  runningProcesses,
+} from '../tools/mock-clis/src/lib/leftovers.mjs';
 
 const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 const SERVER_MAIN = path.join(ROOT, 'apps', 'server', 'dist', 'main.js');
@@ -60,21 +65,6 @@ async function until(what, condition, timeoutMs = 20_000) {
   }
 }
 
-function isAlive(pid) {
-  try {
-    process.kill(pid, 0);
-  } catch (error) {
-    return error.code === 'EPERM';
-  }
-  if (process.platform !== 'linux') return true;
-  try {
-    const status = readFileSync(`/proc/${pid}/stat`, 'utf8');
-    return status.slice(status.lastIndexOf(')') + 2, status.lastIndexOf(')') + 3) !== 'Z';
-  } catch {
-    return false;
-  }
-}
-
 /** A GET with headers that fetch() does not let a caller set, such as Host. */
 function rawStatus(port, pathname, headers) {
   return new Promise((resolve, reject) => {
@@ -85,24 +75,6 @@ function rawStatus(port, pathname, headers) {
     req.on('error', reject);
     req.end();
   });
-}
-
-/** Every process id the mock CLIs recorded: their own and their children's. */
-function mockPids(logFile) {
-  const pids = new Set();
-  let text;
-  try {
-    text = readFileSync(logFile, 'utf8');
-  } catch {
-    return pids;
-  }
-  for (const line of text.split('\n')) {
-    if (line.trim() === '') continue;
-    const entry = JSON.parse(line);
-    if (entry.pid) pids.add(entry.pid);
-    if (entry.grandchildPid) pids.add(entry.grandchildPid);
-  }
-  return pids;
 }
 
 // ---------------------------------------------------- OpenAI-compatible stub
@@ -405,19 +377,10 @@ async function main() {
       }
     }
     // Whatever survived anyway (a forced stop leaves children behind) is ended here.
-    for (const pid of mockPids(mockLog)) {
-      if (!isAlive(pid)) continue;
+    const leftovers = await runningProcesses(recordedProcesses(mockLog)).catch(() => []);
+    for (const pid of leftovers) {
       log(`ending leftover CLI process ${pid}`);
-      try {
-        if (process.platform === 'win32') spawn('taskkill', ['/T', '/F', '/PID', String(pid)]);
-        else process.kill(-pid, 'SIGKILL');
-      } catch {
-        try {
-          process.kill(pid, 'SIGKILL');
-        } catch {
-          // Gone in the meantime.
-        }
-      }
+      killProcessTree(pid);
     }
     await stub.close();
     await rm(temp, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
@@ -1097,12 +1060,12 @@ async function main() {
       'the server logged that it stopped',
     );
 
-    const pids = mockPids(mockLog);
+    const recorded = recordedProcesses(mockLog);
     await sleep(300);
-    const survivors = [...pids].filter(isAlive);
+    const survivors = await runningProcesses(recorded);
     check(
-      pids.size > 0 && survivors.length === 0,
-      `none of the ${pids.size} CLI processes or their children outlived the server`,
+      recorded.length > 0 && survivors.length === 0,
+      `none of the ${recorded.length} CLI processes or their children outlived the server`,
       survivors,
     );
     const logText = server.entries.map((e) => JSON.stringify(e)).join('\n');
