@@ -137,6 +137,8 @@ export const en = {
     'A terminal window was opened. Log in there, then press Refresh.',
   'app.providers.loginTerminal.failed':
     'No terminal could be opened. Copy the command and run it in a terminal yourself.',
+  'app.providers.loginTerminal.busy':
+    'A terminal window was opened a moment ago. Wait a few seconds before opening another.',
   'app.providers.concurrency.label': 'Parallel requests',
   'app.providers.concurrency.help': 'Between {min} and {max}. Further cells wait in a queue.',
   'app.providers.concurrency.fixed': 'Fixed at {value} for this provider.',

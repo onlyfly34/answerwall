@@ -130,6 +130,7 @@ export const zhTW: Record<keyof typeof en, string> = {
   'app.providers.loginTerminal.openOne': '開啟終端機登入 {label}',
   'app.providers.loginTerminal.opened': '已開啟終端機視窗。請在那裡登入，然後按「重新檢查」。',
   'app.providers.loginTerminal.failed': '無法開啟終端機。請複製指令，自行在終端機中執行。',
+  'app.providers.loginTerminal.busy': '剛才已開啟終端機視窗。請稍候幾秒再開啟另一個。',
   'app.providers.concurrency.label': '同時請求數',
   'app.providers.concurrency.help': '介於 {min} 到 {max}。超過的格子會排隊等候。',
   'app.providers.concurrency.fixed': '這個供應商固定為 {value}。',

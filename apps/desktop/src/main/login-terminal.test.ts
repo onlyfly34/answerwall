@@ -1,6 +1,12 @@
 import { describe, expect, test } from 'vitest';
 import { CLI_PROVIDER_KINDS, LOGIN_COMMANDS } from '@answerwall/core/protocol';
-import { loginCommandFor, openLoginTerminal, terminalLaunches } from './login-terminal.ts';
+import {
+  createLoginTerminalGate,
+  LOGIN_TERMINAL_COOLDOWN_MS,
+  loginCommandFor,
+  openLoginTerminal,
+  terminalLaunches,
+} from './login-terminal.ts';
 import type { TerminalLaunch } from './login-terminal.ts';
 
 const WINDOWS_ENV = { SystemRoot: 'C:\\Windows', LOCALAPPDATA: 'C:\\Users\\me\\AppData\\Local' };
@@ -185,5 +191,89 @@ describe('openLoginTerminal', () => {
       });
     }
     expect(started).toBe(0);
+  });
+});
+
+describe('createLoginTerminalGate', () => {
+  function setup() {
+    let time = 1_000_000;
+    const opened: unknown[] = [];
+    const pending: ((started: boolean) => void)[] = [];
+    const gate = createLoginTerminalGate(
+      (kind) => {
+        opened.push(kind);
+        return new Promise((resolve) => {
+          pending.push((started) =>
+            resolve(started ? { ok: true } : { ok: false, reason: 'no_terminal' }),
+          );
+        });
+      },
+      () => time,
+    );
+    return {
+      gate,
+      opened,
+      finish: (started: boolean) => pending.shift()?.(started),
+      advance: (ms: number) => void (time += ms),
+    };
+  }
+
+  test('a page calling in a loop opens one terminal, not one per call', async () => {
+    const { gate, opened, finish } = setup();
+
+    const calls = Array.from({ length: 50 }, (_, index) =>
+      gate(CLI_PROVIDER_KINDS[index % CLI_PROVIDER_KINDS.length]),
+    );
+    finish(true);
+    const answers = await Promise.all(calls);
+    // Still refused once the first call has returned: the terminal was just opened.
+    answers.push(await gate('claude'), await gate('codex'));
+
+    expect(opened).toHaveLength(1);
+    expect(answers.filter((answer) => answer.ok)).toHaveLength(1);
+    expect(answers.filter((answer) => !answer.ok)).toEqual(
+      Array.from({ length: 51 }, () => ({ ok: false, reason: 'busy' })),
+    );
+  });
+
+  test('the next terminal can be opened once the pause is over', async () => {
+    const { gate, opened, finish, advance } = setup();
+
+    const first = gate('claude');
+    finish(true);
+    expect(await first).toEqual({ ok: true });
+
+    advance(LOGIN_TERMINAL_COOLDOWN_MS - 1);
+    expect(await gate('codex')).toEqual({ ok: false, reason: 'busy' });
+
+    advance(1);
+    const second = gate('codex');
+    finish(true);
+    expect(await second).toEqual({ ok: true });
+    expect(opened).toEqual(['claude', 'codex']);
+  });
+
+  test('a terminal that could not be opened starts no pause', async () => {
+    const { gate, opened, finish } = setup();
+
+    const first = gate('claude');
+    finish(false);
+    expect(await first).toEqual({ ok: false, reason: 'no_terminal' });
+
+    const second = gate('claude');
+    finish(true);
+    expect(await second).toEqual({ ok: true });
+    expect(opened).toHaveLength(2);
+  });
+
+  test('an unknown kind is refused as such and never holds the gate', async () => {
+    const { gate, opened, finish } = setup();
+
+    const first = gate('claude');
+    expect(await gate('calc.exe')).toEqual({ ok: false, reason: 'unknown_provider' });
+    finish(true);
+    await first;
+    expect(await gate(null)).toEqual({ ok: false, reason: 'unknown_provider' });
+    expect(opened).toEqual(['claude']);
   });
 });

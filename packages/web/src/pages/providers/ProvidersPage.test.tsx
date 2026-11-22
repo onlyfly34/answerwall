@@ -245,6 +245,28 @@ describe('what was detected', () => {
       expect(services.toasts.map((toast) => toast.kind)).toEqual(['error', 'error']);
     });
 
+    test('says that a terminal was just opened when the shell is holding further ones back', async () => {
+      installBridge({ ok: false, reason: 'busy' });
+      const settings = createDefaultSettings();
+      const services = setup({
+        settings,
+        providers: withLoginCommands(settings),
+        meta: desktopMeta,
+      });
+
+      fireEvent.click(card('Codex').getByRole('button', { name: OPEN }));
+
+      await waitFor(() =>
+        expect(services.toasts).toEqual([
+          {
+            kind: 'info',
+            message:
+              'A terminal window was opened a moment ago. Wait a few seconds before opening another.',
+          },
+        ]),
+      );
+    });
+
     test('the button is absent in a browser, with or without something of that name on the page', () => {
       const settings = createDefaultSettings();
       installBridge({ ok: true });

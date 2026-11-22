@@ -10,10 +10,17 @@ import type { CliProviderKind } from './providers.ts';
  */
 export const DESKTOP_BRIDGE_GLOBAL = BRAND.desktopBridge;
 
-/** `no_terminal`: no terminal program could be started on this system. */
+/**
+ * `no_terminal`: no terminal program could be started on this system.
+ * `busy`: a terminal is being opened or was opened a moment ago; the shell
+ * limits how often a page can open one.
+ */
 export const LoginTerminalResultSchema = z.union([
   z.object({ ok: z.literal(true) }),
-  z.object({ ok: z.literal(false), reason: z.enum(['unknown_provider', 'no_terminal']) }),
+  z.object({
+    ok: z.literal(false),
+    reason: z.enum(['unknown_provider', 'no_terminal', 'busy']),
+  }),
 ]);
 export type LoginTerminalResult = z.infer<typeof LoginTerminalResultSchema>;
 

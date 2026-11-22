@@ -46,7 +46,7 @@ import { CoreStartError, startCore } from './core-process.ts';
 import type { CoreProcessOptions, RunningCore } from './core-process.ts';
 import { createDesktopSettingsStore } from './desktop-settings.ts';
 import { createAppLog } from './log.ts';
-import { openLoginTerminal } from './login-terminal.ts';
+import { createLoginTerminalGate, openLoginTerminal } from './login-terminal.ts';
 import type { Starter } from './login-terminal.ts';
 import { menuTemplate } from './menu.ts';
 import { allowsNavigation, isSameOrigin } from './navigation.ts';
@@ -519,16 +519,22 @@ function registerIpc(updatesSupported: boolean): void {
     if (core) await syncUpdateSetting(core);
   });
 
-  ipcMain.handle(
-    CHANNELS.openLoginTerminal,
-    (event, kind: unknown): Promise<LoginTerminalResult> => {
-      if (!fromLocalPage(event)) throw new Error('forbidden');
-      return openLoginTerminal(kind, {
+  // One gate for every call: a page cannot open terminals in a loop.
+  const openTerminal = createLoginTerminalGate(
+    (kind) =>
+      openLoginTerminal(kind, {
         platform: process.platform,
         title: t('terminal.title', { name: APP.name }),
         env: process.env,
         start: startDetached,
-      });
+      }),
+    () => Date.now(),
+  );
+  ipcMain.handle(
+    CHANNELS.openLoginTerminal,
+    (event, kind: unknown): Promise<LoginTerminalResult> => {
+      if (!fromLocalPage(event)) throw new Error('forbidden');
+      return openTerminal(kind);
     },
   );
 }

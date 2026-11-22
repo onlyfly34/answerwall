@@ -219,7 +219,10 @@ directory).
   terminal is an external window (Windows Terminal when its alias exists,
   else a console window of `cmd`), started with an argument array and the
   user's own environment. The app does not read its output and does not
-  detect the login afterwards: the user presses Refresh.
+  detect the login afterwards: the user presses Refresh. The main process
+  opens one terminal at a time and, after one was opened, none for five
+  seconds (the page is told `busy`), so a script in the page cannot open
+  them in a loop.
 - **Remote mode.** The window loads the server's own page in the partition
   `persist:remote`; pairing happens on that page, and the session cookie
   stays in that partition (encrypted on disk by Chromium). `https` to any

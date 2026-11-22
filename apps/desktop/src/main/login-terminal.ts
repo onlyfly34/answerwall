@@ -116,3 +116,38 @@ export async function openLoginTerminal(
   }
   return { ok: false, reason: 'no_terminal' };
 }
+
+/** How long after a terminal was opened the next one is refused. */
+export const LOGIN_TERMINAL_COOLDOWN_MS = 5_000;
+
+/**
+ * Limits how often a page can open a terminal. The page asks through its
+ * bridge, and a script that got into the page could ask in a loop: every
+ * call would start another detached window running a vendor's CLI, none of
+ * which the app tracks or ends. One call at a time, whatever the kind, and
+ * after a terminal was opened none for {@link LOGIN_TERMINAL_COOLDOWN_MS}.
+ * A refused call starts nothing and answers `busy`.
+ */
+export function createLoginTerminalGate(
+  open: (kind: unknown) => Promise<LoginTerminalResult>,
+  now: () => number,
+): (kind: unknown) => Promise<LoginTerminalResult> {
+  let opening = false;
+  let openedAt: number | undefined;
+  return async (kind) => {
+    // Nothing would be started for it: it neither waits nor makes others wait.
+    if (loginCommandFor(kind) === undefined) return { ok: false, reason: 'unknown_provider' };
+    if (opening) return { ok: false, reason: 'busy' };
+    if (openedAt !== undefined && now() - openedAt < LOGIN_TERMINAL_COOLDOWN_MS) {
+      return { ok: false, reason: 'busy' };
+    }
+    opening = true;
+    try {
+      const result = await open(kind);
+      if (result.ok) openedAt = now();
+      return result;
+    } finally {
+      opening = false;
+    }
+  };
+}

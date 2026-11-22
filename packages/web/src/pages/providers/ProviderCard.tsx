@@ -91,11 +91,13 @@ export const ProviderCard: Component<ProviderCardProps> = (props) => {
     setOpeningTerminal(true);
     try {
       const opened = await shell.openLoginTerminal(kind);
-      notify.toast(
-        opened.ok
-          ? { kind: 'info', message: t('app.providers.loginTerminal.opened') }
-          : { kind: 'error', message: t('app.providers.loginTerminal.failed') },
-      );
+      if (opened.ok) {
+        notify.toast({ kind: 'info', message: t('app.providers.loginTerminal.opened') });
+      } else if (opened.reason === 'busy') {
+        notify.toast({ kind: 'info', message: t('app.providers.loginTerminal.busy') });
+      } else {
+        notify.toast({ kind: 'error', message: t('app.providers.loginTerminal.failed') });
+      }
     } catch {
       notify.toast({ kind: 'error', message: t('app.providers.loginTerminal.failed') });
     } finally {
