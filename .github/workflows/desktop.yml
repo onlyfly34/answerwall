@@ -1,0 +1,198 @@
+name: Desktop app
+
+# Builds the Windows installer of the desktop app and proves it: the installer
+# is installed on the runner, the end-to-end tests drive the installed app,
+# and it is uninstalled again. A Linux job runs the same tests against the
+# unpacked application. No job uses a secret or an AI account: every provider
+# is a mock from tools/mock-clis, and the tests reach nothing but loopback.
+#
+# Reusable: the release workflow calls it for the installer (docs/desktop.md,
+# "Workflows"). On its own it runs for pull requests that touch the app.
+
+on:
+  pull_request:
+    paths:
+      - apps/desktop/**
+      - .github/workflows/desktop.yml
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      artifact-name:
+        description: Name of the artifact that holds the installer, its blockmap and latest.yml.
+        type: string
+        default: windows-installer
+      expected-version:
+        description: Fail unless the app has this version. Empty accepts any.
+        type: string
+        default: ''
+    outputs:
+      version:
+        description: Version of the packaged app.
+        value: ${{ jobs.windows.outputs.version }}
+      installer:
+        description: File name of the installer.
+        value: ${{ jobs.windows.outputs.installer }}
+      artifact-name:
+        description: Name of the uploaded artifact.
+        value: ${{ inputs.artifact-name || 'windows-installer' }}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    # Git Bash on Windows, so that every step reads the same on both systems.
+    shell: bash
+
+jobs:
+  windows:
+    name: Windows installer
+    runs-on: windows-latest
+    timeout-minutes: 45
+    outputs:
+      version: ${{ steps.package.outputs.version }}
+      installer: ${{ steps.package.outputs.installer }}
+    env:
+      ARTIFACT_NAME: ${{ inputs.artifact-name || 'windows-installer' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      # Core, the web UI, the server (the remote-mode tests connect to one) and the app's bundles.
+      - run: pnpm build
+
+      - name: Build the installer
+        id: package
+        env:
+          EXPECTED_VERSION: ${{ inputs.expected-version }}
+          # Unsigned on purpose; never pick up a certificate from the environment.
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: |
+          pnpm --filter @answerwall/desktop run package --expect-version "$EXPECTED_VERSION"
+          cd apps/desktop/release
+          installers=(*.exe)
+          if (( ${#installers[@]} != 1 )); then
+            echo "::error::Expected one installer, found: ${installers[*]}"
+            exit 1
+          fi
+          ls -l
+          # The application's executable carries the product name, which lives in the brand module.
+          executables=(win-unpacked/*.exe)
+          if (( ${#executables[@]} != 1 )); then
+            echo "::error::Expected one executable in win-unpacked, found: ${executables[*]}"
+            exit 1
+          fi
+          {
+            echo "installer=${installers[0]}"
+            echo "executable=$(basename "${executables[0]}")"
+            echo "version=$(node -p "require('../package.json').version")"
+          } >> "$GITHUB_OUTPUT"
+      - name: Inspect the package
+        run: pnpm --filter @answerwall/desktop run verify-package release/win-unpacked
+
+      # As a user would, except silently: for the current user, no administrator rights.
+      - name: Install
+        id: install
+        shell: pwsh
+        env:
+          INSTALLER: ${{ steps.package.outputs.installer }}
+          EXECUTABLE: ${{ steps.package.outputs.executable }}
+        run: |
+          $installer = Join-Path 'apps/desktop/release' $env:INSTALLER
+          $process = Start-Process -FilePath $installer -ArgumentList '/S', '/currentuser' -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "The installer exited with $($process.ExitCode)" }
+          $found = @(Get-ChildItem -Path (Join-Path $env:LOCALAPPDATA 'Programs') -Recurse -Filter $env:EXECUTABLE -ErrorAction SilentlyContinue)
+          if ($found.Count -ne 1) { throw "Expected one installed executable, found $($found.Count)" }
+          $executable = $found[0].FullName
+          Write-Host "Installed: $executable"
+          Get-ChildItem $found[0].DirectoryName | Format-Table Name, Length
+          "executable=$executable" >> $env:GITHUB_OUTPUT
+          "directory=$($found[0].DirectoryName)" >> $env:GITHUB_OUTPUT
+
+      - name: End-to-end tests against the installed app
+        env:
+          E2E_APP_EXECUTABLE: ${{ steps.install.outputs.executable }}
+        run: pnpm --filter @answerwall/desktop run e2e
+
+      - name: Uninstall
+        shell: pwsh
+        env:
+          DIRECTORY: ${{ steps.install.outputs.directory }}
+          EXECUTABLE: ${{ steps.package.outputs.executable }}
+        run: |
+          $uninstaller = @(Get-ChildItem -Path $env:DIRECTORY -Filter 'Uninstall*.exe')
+          if ($uninstaller.Count -ne 1) { throw "Expected one uninstaller, found $($uninstaller.Count)" }
+          # The uninstaller continues from a copy of itself, so its end is not the end of the removal.
+          Start-Process -FilePath $uninstaller[0].FullName -ArgumentList '/S', '/currentuser' -Wait
+          $deadline = (Get-Date).AddMinutes(2)
+          $installed = Join-Path $env:DIRECTORY $env:EXECUTABLE
+          while ((Test-Path $installed) -and ((Get-Date) -lt $deadline)) { Start-Sleep -Seconds 1 }
+          if (Test-Path $installed) { throw 'The app is still installed' }
+          Write-Host 'Uninstalled.'
+
+      - name: Upload the installer
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ env.ARTIFACT_NAME }}
+          # Exactly what a release publishes: the installer, the blockmap for
+          # differential updates and the metadata the installed app reads.
+          path: |
+            apps/desktop/release/*.exe
+            apps/desktop/release/*.exe.blockmap
+            apps/desktop/release/latest.yml
+          if-no-files-found: error
+          # The installer is compressed already.
+          compression-level: 0
+          overwrite: true
+          retention-days: 14
+
+      - name: Upload the traces
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: desktop-traces-windows
+          path: |
+            apps/desktop/e2e/test-results/
+            apps/desktop/e2e/playwright-report/
+            apps/desktop/release/builder-debug.yml
+            apps/desktop/release/builder-effective-config.yaml
+          if-no-files-found: ignore
+          overwrite: true
+          retention-days: 7
+
+  # The same tests against the unpacked application on Linux, without a
+  # display. Not a release target: it keeps the app runnable where it is developed.
+  linux:
+    name: Linux (unpacked)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - run: pnpm build
+      - name: Assemble the unpacked application
+        run: pnpm --filter @answerwall/desktop run package --dir
+      - name: Inspect the package
+        run: pnpm --filter @answerwall/desktop run verify-package
+      - name: End-to-end tests against the unpacked application
+        run: |
+          executable="$(echo "$PWD"/apps/desktop/release/linux-*unpacked/answerwall)"
+          E2E_APP_EXECUTABLE="$executable" pnpm --filter @answerwall/desktop run e2e
+      - name: Upload the traces
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: desktop-traces-linux
+          path: |
+            apps/desktop/e2e/test-results/
+            apps/desktop/e2e/playwright-report/
+          if-no-files-found: ignore
+          overwrite: true
+          retention-days: 7
