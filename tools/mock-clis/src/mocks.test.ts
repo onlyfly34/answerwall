@@ -45,10 +45,13 @@ function validArgs(kind: Kind): string[] {
         '',
         '--strict-mcp-config',
         '--safe-mode',
+        '--restricted',
         '--disable-slash-commands',
         '--no-session-persistence',
         '--permission-prompts',
         'none',
+        '--system-prompt',
+        'Answer the question.',
       ];
     case 'codex':
       return [
@@ -256,17 +259,26 @@ describe.each(KINDS)('the mock %s CLI', (kind) => {
     expect(jsonLines(noisy.stdout).length).toBeGreaterThan(1);
   });
 
-  test('its fixtures are labelled as synthetic and hold one JSON object per line', async () => {
+  test('its fixtures are labelled as recorded or synthetic and hold one JSON object per line', async () => {
     const dir = path.join(ROOT, 'fixtures', kind);
     const files = await readdir(dir);
 
-    expect(files).toEqual(expect.arrayContaining(['ok.synthetic.jsonl', 'quota.synthetic.jsonl']));
+    for (const scenario of ['ok', 'quota']) {
+      expect(files.some((file) => file.replace(/(\.synthetic)?\.jsonl$/, '') === scenario)).toBe(
+        true,
+      );
+    }
     for (const file of files) {
-      expect(file).toMatch(/\.synthetic\.jsonl$/);
+      expect(file).toMatch(/\.jsonl$/);
       const [header, ...lines] = (await readFile(path.join(dir, file), 'utf8'))
         .trimEnd()
         .split('\n');
-      expect(header).toMatch(/^# synthetic, from documentation/);
+      // A recording says which CLI version printed it; anything else says it is synthetic.
+      expect(header).toMatch(
+        file.endsWith('.synthetic.jsonl')
+          ? /^# synthetic\b/
+          : new RegExp(`^# recorded from ${kind}(-cli)? \\d+\\.\\d+\\.\\d+, scrubbed`),
+      );
       for (const line of lines) expect(typeof JSON.parse(line)).toBe('object');
     }
   });
@@ -362,8 +374,8 @@ describe('descendants', () => {
 
 describe('status subcommands', () => {
   test('claude auth status reports the login as JSON and by exit code', async () => {
-    const loggedIn = await runMock('claude', ['auth', 'status']);
-    const loggedOut = await runMock('claude', ['auth', 'status'], {
+    const loggedIn = await runMock('claude', ['auth', 'status', '--json']);
+    const loggedOut = await runMock('claude', ['auth', 'status', '--json'], {
       env: { MOCK_CLI_SCENARIO: 'logged-out' },
     });
 

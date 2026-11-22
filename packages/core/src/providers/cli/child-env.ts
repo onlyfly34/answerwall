@@ -21,7 +21,8 @@ const BILLING_COMPANIONS: readonly string[] = [
  * Variables that mark a nested coding-agent session. A CLI started with them
  * would believe it runs inside another session, so they are always removed.
  * The prefix is matched as a whole, so a marker this list has never heard of
- * is removed too. Not in this group: `CLAUDE_CODE_USE_*` and its companions
+ * is removed too. `AI_AGENT` is the same kind of marker under a generic name.
+ * Not in this group: `CLAUDE_CODE_USE_*` and its companions
  * (a billing source) and the login token.
  */
 function isNestedSessionVariable(name: string): boolean {
@@ -29,6 +30,7 @@ function isNestedSessionVariable(name: string): boolean {
     name === 'CLAUDECODE' ||
     name === 'CLAUDE_EFFORT' ||
     name === 'CLAUDE_PID' ||
+    name === 'AI_AGENT' ||
     (name.startsWith('CLAUDE_CODE_') &&
       !name.startsWith(BILLING_PREFIX) &&
       !BILLING_COMPANIONS.includes(name) &&

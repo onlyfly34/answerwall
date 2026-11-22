@@ -1,3 +1,0 @@
-# synthetic, from documentation (headless mode: --output-format stream-json --verbose --include-partial-messages); not a recording of the real claude CLI. Replace with a recorded run.
-{"type":"system","subtype":"init","cwd":"/work","session_id":"synthetic-session","tools":[],"mcp_servers":[],"model":"mock-model","permissionMode":"default","slash_commands":[],"apiKeySource":"none","plugins":[]}
-{"type":"result","subtype":"success","is_error":true,"duration_ms":1200,"num_turns":1,"session_id":"synthetic-session","permission_denials":[],"result":"There's an issue with the selected model (mock-model-not-found). It may not exist or you may not have access to it."}

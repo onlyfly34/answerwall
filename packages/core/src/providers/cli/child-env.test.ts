@@ -14,6 +14,7 @@ const base = {
   CLAUDE_CODE_SSE_PORT: '1234',
   CLAUDE_EFFORT: 'high',
   CLAUDE_PID: '42',
+  AI_AGENT: 'some-agent',
   CLAUDE_CONFIG_DIR: '/home/someone/.claude-alt',
   CLAUDE_CODE_USE_BEDROCK: '1',
   ANTHROPIC_API_KEY: 'a',
@@ -76,6 +77,7 @@ describe('buildChildEnv', () => {
     }
     expect(env).not.toHaveProperty('CLAUDE_EFFORT');
     expect(env).not.toHaveProperty('CLAUDE_PID');
+    expect(env).not.toHaveProperty('AI_AGENT');
   });
 
   test.each([false, true])(

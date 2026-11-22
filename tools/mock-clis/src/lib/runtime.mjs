@@ -108,8 +108,15 @@ export function readStdin() {
   });
 }
 
-function loadFixture(kind, name) {
-  const file = new URL(`${kind}/${name}.synthetic.jsonl`, FIXTURE_ROOT);
+/**
+ * The lines of a fixture: the scrubbed recording `<name>.jsonl` when there is
+ * one, otherwise the synthetic `<name>.synthetic.jsonl`.
+ */
+export function loadFixture(kind, name) {
+  const recorded = new URL(`${kind}/${name}.jsonl`, FIXTURE_ROOT);
+  const file = existsSync(recorded)
+    ? recorded
+    : new URL(`${kind}/${name}.synthetic.jsonl`, FIXTURE_ROOT);
   if (!existsSync(file)) {
     throw new UsageError(`the mock ${kind} CLI has no "${name}" fixture (${fileURLToPath(file)})`);
   }

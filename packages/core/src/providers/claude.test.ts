@@ -1,8 +1,11 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import type { ProviderAdapter, ProviderEvent } from '../contracts/index.ts';
 import {
   buildClaudeArgs,
   CLAUDE_STATUS_ARGS,
+  CLAUDE_SYSTEM_PROMPT,
   CLAUDE_VERSION_ARGS,
   createClaudeAdapter,
   createClaudeParser,
@@ -15,6 +18,7 @@ import {
   collect,
   createMockCliHarness,
   isAlive,
+  MOCK_BIN_DIR,
   noticesOf,
   reasoningOf,
   typesOf,
@@ -32,11 +36,23 @@ const RUN_ARGS = [
   '',
   '--strict-mcp-config',
   '--safe-mode',
+  '--restricted',
   '--disable-slash-commands',
   '--no-session-persistence',
   '--permission-prompts',
   'none',
+  '--system-prompt',
+  CLAUDE_SYSTEM_PROMPT,
 ];
+
+/** The events of a fixture of the mock CLI: a scrubbed recording, or a labelled synthetic one. */
+function fixture(name: string): Record<string, unknown>[] {
+  const file = path.join(MOCK_BIN_DIR, '..', 'fixtures', 'claude', `${name}.jsonl`);
+  return readFileSync(file, 'utf8')
+    .split('\n')
+    .filter((line) => line !== '' && !line.startsWith('#'))
+    .map((line) => JSON.parse(line) as Record<string, unknown>);
+}
 
 describe('buildClaudeArgs', () => {
   test('is the restricted print-mode invocation, with nothing from the user in it', () => {
@@ -53,6 +69,57 @@ describe('buildClaudeArgs', () => {
     ]);
   });
 
+  test('the web search invocation is exactly the confirmed one', () => {
+    expect(buildClaudeArgs({ webSearch: true, model: 'haiku', effort: 'low' })).toEqual([
+      '-p',
+      '--output-format',
+      'stream-json',
+      '--verbose',
+      '--include-partial-messages',
+      '--tools',
+      'WebSearch',
+      '--allowedTools',
+      'WebSearch',
+      '--strict-mcp-config',
+      '--safe-mode',
+      '--restricted',
+      '--disable-slash-commands',
+      '--no-session-persistence',
+      '--permission-prompts',
+      'none',
+      '--system-prompt',
+      CLAUDE_SYSTEM_PROMPT,
+      '--model',
+      'haiku',
+      '--effort',
+      'low',
+    ]);
+    expect(buildClaudeArgs({ webSearch: false })).toEqual(RUN_ARGS);
+  });
+
+  test('offers the web search alone, with the allow rule it needs, and never the fetch tool', () => {
+    const args = buildClaudeArgs({ webSearch: true });
+    const plain = buildClaudeArgs({});
+
+    expect(args.slice(args.indexOf('--tools'), args.indexOf('--strict-mcp-config'))).toEqual([
+      '--tools',
+      'WebSearch',
+      '--allowedTools',
+      'WebSearch',
+    ]);
+    expect(args.filter((arg) => !['WebSearch', '--allowedTools'].includes(arg))).toEqual(
+      plain.filter((arg) => arg !== ''),
+    );
+    expect(args.join(' ')).not.toContain('WebFetch');
+    expect(plain).not.toContain('--allowedTools');
+  });
+
+  test('replaces the system prompt with one that survives any argument quoting', () => {
+    expect(CLAUDE_SYSTEM_PROMPT).toMatch(/^[A-Za-z0-9 .,-]+$/);
+    expect(CLAUDE_SYSTEM_PROMPT.length).toBeLessThan(1000);
+    expect(buildClaudeArgs({})).not.toContain('--append-system-prompt');
+  });
+
   test('never uses --bare or plan mode', () => {
     const args = buildClaudeArgs({ model: 'sonnet' });
 
@@ -62,7 +129,7 @@ describe('buildClaudeArgs', () => {
 
   test('the status commands are the documented ones', () => {
     expect(CLAUDE_VERSION_ARGS).toEqual(['--version']);
-    expect(CLAUDE_STATUS_ARGS).toEqual(['auth', 'status']);
+    expect(CLAUDE_STATUS_ARGS).toEqual(['auth', 'status', '--json']);
   });
 });
 
@@ -75,8 +142,8 @@ const assistant = (content: unknown[], extra: Record<string, unknown> = {}) => (
   ...extra,
 });
 
-function feed(events: Record<string, unknown>[]) {
-  const parser = createClaudeParser();
+function feed(events: Record<string, unknown>[], options: { webSearch?: boolean } = {}) {
+  const parser = createClaudeParser(options);
   const content: ContentEvent[] = events.flatMap((event) => parser.event(event));
   return { content, outcome: parser.outcome() };
 }
@@ -317,6 +384,203 @@ describe('createClaudeParser', () => {
   });
 });
 
+describe('createClaudeParser on recorded runs', () => {
+  test('the plain answer: text deltas once, usage of the whole run', () => {
+    const events = fixture('ok');
+    const { content, outcome } = feed(events);
+
+    expect(events[0]).toMatchObject({
+      type: 'system',
+      subtype: 'init',
+      tools: [],
+      mcp_servers: [],
+    });
+    expect(content).toEqual([
+      { type: 'delta', text: 'Hello from the mock C' },
+      { type: 'delta', text: 'LI.' },
+    ]);
+    expect(outcome).toEqual({ completed: true, usage: { inputTokens: 743, outputTokens: 13 } });
+  });
+
+  test('the init line of a restricted run raises no notice although it lists built-in plugins and agents', () => {
+    const [init] = fixture('ok');
+
+    expect(init).toMatchObject({ skills: [], slash_commands: [] });
+    expect((init?.plugins as unknown[]).length).toBeGreaterThan(0);
+    expect((init?.agents as unknown[]).length).toBeGreaterThan(0);
+    expect(feed([init ?? {}]).content).toEqual([]);
+  });
+
+  test('an allowed request whose overage is rejected is not a quota failure', () => {
+    const events = fixture('ok');
+
+    expect(events.find((event) => event.type === 'rate_limit_event')).toMatchObject({
+      rate_limit_info: { status: 'allowed', overageStatus: 'rejected' },
+    });
+    expect(feed(events).outcome.failure).toBeUndefined();
+  });
+
+  test('an unknown model: the message the CLI makes up is the error, never an answer', () => {
+    const { content, outcome } = feed(fixture('model-not-found'));
+
+    expect(content).toEqual([]);
+    expect(outcome).toEqual({
+      completed: false,
+      usage: { inputTokens: 0, outputTokens: 0 },
+      failure: {
+        code: 'model_not_found',
+        message:
+          "There's an issue with the selected model (no-such-model-zz9). It may not exist or you may not have access to it. Run --model to pick a different model.",
+      },
+    });
+  });
+
+  test('empty thinking deltas give no reasoning text, only the token count', () => {
+    const events = fixture('tool-denied');
+    const { content, outcome } = feed(events);
+
+    expect(
+      events.filter(
+        (event) =>
+          event.type === 'stream_event' &&
+          (event.event as { delta?: { type?: string } }).delta?.type === 'thinking_delta',
+      ).length,
+    ).toBeGreaterThan(0);
+    expect(content.filter((event) => event.type === 'reasoning')).toEqual([]);
+    expect(outcome.usage).toEqual({ inputTokens: 3686, outputTokens: 424, reasoningTokens: 238 });
+  });
+
+  test('a tool call the CLI refuses is reported once, and the answer after it is kept', () => {
+    const { content, outcome } = feed(fixture('tool-denied'));
+
+    // The run was recorded with the search tool offered, which the first notice points out.
+    expect(noticesOf(content as ProviderEvent[])).toEqual([
+      'The CLI started with extras that this app switches off (1 tool(s)); they may affect the answer.',
+      'The model asked for the tool "WebSearch"; tools are switched off.',
+    ]);
+    expect(answerOf(content as ProviderEvent[])).toMatch(/^I couldn't check this because/);
+    expect(outcome.completed).toBe(true);
+  });
+
+  test('a refused search, when the search is offered, is reported as refused', () => {
+    const { content } = feed(fixture('tool-denied'), { webSearch: true });
+
+    expect(noticesOf(content as ProviderEvent[])).toEqual([
+      'Searching the web: latest stable Python version release 2026',
+      'The CLI refused the web search.',
+    ]);
+  });
+
+  test('a web search: a notice with the query before the answer, the results never shown', () => {
+    const events = fixture('web-search');
+    const { content, outcome } = feed(events, { webSearch: true });
+
+    expect(events[0]).toMatchObject({ subtype: 'init', tools: ['WebSearch'], mcp_servers: [] });
+    expect(content[0]).toEqual({
+      type: 'notice',
+      message: 'Searching the web: Node.js latest release line and version number November 2026',
+    });
+    expect(noticesOf(content as ProviderEvent[])).toHaveLength(1);
+    expect(answerOf(content as ProviderEvent[])).toMatch(/^The newest Node\.js release line is/);
+    expect(answerOf(content as ProviderEvent[])).not.toContain('Web search results for query');
+    // The search is a request of its own, which only `modelUsage` counts.
+    expect(outcome).toEqual({
+      completed: true,
+      usage: { inputTokens: 19593, outputTokens: 861, reasoningTokens: 340 },
+    });
+  });
+
+  test('a run that reports a tool although none is offered raises a notice', () => {
+    const { content } = feed(fixture('web-search'));
+
+    expect(noticesOf(content as ProviderEvent[])).toEqual([
+      'The CLI started with extras that this app switches off (1 tool(s)); they may affect the answer.',
+      'The model asked for the tool "WebSearch"; tools are switched off.',
+    ]);
+  });
+});
+
+describe('createClaudeParser on shapes that were not recorded', () => {
+  test('counts what the init line should not list', () => {
+    const { content } = feed([
+      {
+        type: 'system',
+        subtype: 'init',
+        tools: ['Bash', 'Read'],
+        mcp_servers: [{ name: 'private-server', status: 'connected' }],
+        skills: ['private-skill'],
+        slash_commands: ['private-command'],
+        plugins: [
+          { name: 'shipped', path: 'builtin' },
+          { name: 'private-plugin', path: '/home/someone/plugins/private-plugin' },
+        ],
+      },
+    ]);
+
+    expect(noticesOf(content as ProviderEvent[])).toEqual([
+      'The CLI started with extras that this app switches off (2 tool(s), 1 MCP server(s), 1 skill(s), 1 command(s), 1 plugin(s)); they may affect the answer.',
+    ]);
+    expect(JSON.stringify(content)).not.toMatch(/private|someone/);
+  });
+
+  test('a search query is shown as one bounded line', () => {
+    const { content } = feed(
+      [
+        assistant([
+          {
+            type: 'tool_use',
+            name: 'WebSearch',
+            input: { query: `first\nsecond\u001b[31m ${'x'.repeat(400)}` },
+          },
+        ]),
+        assistant([{ type: 'tool_use', name: 'WebSearch', input: {} }]),
+        assistant([{ type: 'tool_use', name: 'Bash', input: { command: 'ls' } }]),
+      ],
+      { webSearch: true },
+    );
+    const notices = noticesOf(content);
+
+    expect(notices[0]).toMatch(/^Searching the web: first second \[31m x+…$/);
+    expect(notices[0]?.length).toBeLessThan(220);
+    expect(notices.slice(1)).toEqual([
+      'Searching the web…',
+      'The model asked for the tool "Bash"; tools are switched off.',
+    ]);
+  });
+
+  test('the error of a made-up message outranks an earlier retry error', () => {
+    const { content, outcome } = feed([
+      { type: 'system', subtype: 'api_retry', error: 'overloaded' },
+      {
+        ...assistant([{ type: 'text', text: 'Not logged in' }]),
+        error: 'authentication_failed',
+        is_api_error_message: true,
+      },
+      { type: 'result', subtype: 'success', is_error: true, result: '' },
+    ]);
+
+    expect(answerOf(content as ProviderEvent[])).toBe('');
+    expect(outcome.failure).toEqual({ message: 'Not logged in', code: 'not_logged_in' });
+  });
+
+  test('thinking tokens are reported as reasoning tokens', () => {
+    const { outcome } = feed([
+      {
+        type: 'result',
+        subtype: 'success',
+        result: 'x',
+        usage: {
+          input_tokens: 2,
+          output_tokens: 30,
+          output_tokens_details: { thinking_tokens: 20 },
+        },
+      },
+    ]);
+
+    expect(outcome.usage).toEqual({ inputTokens: 2, outputTokens: 30, reasoningTokens: 20 });
+  });
+});
+
 describe('parseClaudeAuthStatus', () => {
   test('reads a subscription login', () => {
     const status = JSON.stringify({
@@ -397,10 +661,10 @@ describe('the claude adapter against the mock CLI', () => {
   test('streams an answer token by token with usage', async () => {
     const events = await run();
 
-    expect(typesOf(events)).toEqual(['start', 'delta', 'delta', 'delta', 'done']);
+    expect(typesOf(events)).toEqual(['start', 'delta', 'delta', 'done']);
     expect(events[0]).toEqual({ type: 'start', streaming: 'token' });
     expect(answerOf(events)).toBe('Hello from the mock CLI.');
-    expect(events.at(-1)).toMatchObject({ usage: { inputTokens: 42, outputTokens: 7 } });
+    expect(events.at(-1)).toMatchObject({ usage: { inputTokens: 743, outputTokens: 13 } });
   });
 
   test('sends the prompt on stdin, never in argv, and runs in the work dir with a scrubbed environment', async () => {
@@ -422,6 +686,7 @@ describe('the claude adapter against the mock CLI', () => {
     const events = await collect(adapter.run(instance, request));
 
     expect(events.at(-1)?.type).toBe('done');
+    expect(noticesOf(events)).toEqual([]);
     const [call] = await harness.invocations();
     expect(call?.argv).toEqual([...RUN_ARGS, '--model', 'sonnet', '--effort', 'low']);
     expect(call?.prompt).toBe(prompt);
@@ -482,6 +747,19 @@ describe('the claude adapter against the mock CLI', () => {
     expect(call?.envNames).not.toContain('CLAUDECODE');
   });
 
+  test('says so when the effort level is one the CLI would silently ignore', async () => {
+    const request = await harness.request({ effort: 'ultra' });
+
+    const events = await collect(adapter.run(instance, request));
+
+    expect(typesOf(events).slice(0, 2)).toEqual(['start', 'notice']);
+    expect(noticesOf(events)).toEqual([
+      'The effort level "ultra" is not one the CLI documents (low, medium, high, xhigh, max); it ignores an unknown level and uses its default.',
+    ]);
+    expect((await harness.invocations())[0]?.argv?.slice(-2)).toEqual(['--effort', 'ultra']);
+    expect(events.at(-1)?.type).toBe('done');
+  });
+
   test('echoes a long multi-line prompt intact', async () => {
     const prompt = `${'long line with ünïcödé '.repeat(5000)}\nsecond line`;
 
@@ -508,9 +786,42 @@ describe('the claude adapter against the mock CLI', () => {
     const events = await run('mock-tool-denied');
 
     expect(noticesOf(events)).toEqual([
-      'The model asked for the tool "Bash"; tools are switched off.',
+      'The model asked for the tool "WebSearch"; tools are switched off.',
     ]);
-    expect(answerOf(events)).toBe('I cannot run commands here.');
+    expect(answerOf(events)).toMatch(/^I couldn't check this because/);
+    expect(events.at(-1)?.type).toBe('done');
+  });
+
+  test('an instance that allows web search starts the CLI with the search alone and reports the search', async () => {
+    const events = await collect(
+      adapter.run(cliInstance('claude', { webSearch: true }), await harness.request()),
+    );
+
+    const [call] = await harness.invocations();
+    expect(call?.argv).toEqual(buildClaudeArgs({ webSearch: true }));
+    expect(noticesOf(events)).toHaveLength(1);
+    expect(noticesOf(events)[0]).toMatch(/^Searching the web: \S/);
+    expect(answerOf(events)).not.toBe('');
+    expect(events.at(-1)?.type).toBe('done');
+  });
+
+  test('an instance without the switch never offers the search', async () => {
+    await run();
+
+    const [call] = await harness.invocations();
+    expect(call?.argv).toEqual(buildClaudeArgs({}));
+    expect(call?.argv).not.toContain('WebSearch');
+  });
+
+  test('with the search allowed, a refused search is reported as refused', async () => {
+    const events = await collect(
+      adapter.run(
+        cliInstance('claude', { webSearch: true }),
+        await harness.request({ model: 'mock-tool-denied' }),
+      ),
+    );
+
+    expect(noticesOf(events)).toContain('The CLI refused the web search.');
     expect(events.at(-1)?.type).toBe('done');
   });
 
@@ -527,6 +838,17 @@ describe('the claude adapter against the mock CLI', () => {
       1,
     );
     expect(answerOf(events)).toBe('');
+  });
+
+  test("an unknown model is reported with the CLI's own sentence", async () => {
+    const events = await run('mock-model-not-found');
+
+    expect(events.at(-1)).toEqual({
+      type: 'error',
+      code: 'model_not_found',
+      message:
+        "There's an issue with the selected model (no-such-model-zz9). It may not exist or you may not have access to it. Run --model to pick a different model.",
+    });
   });
 
   test('a crash is an error with the sanitised diagnostics', async () => {
@@ -605,7 +927,7 @@ describe('the claude adapter against the mock CLI', () => {
         streaming: 'token',
       });
       const calls = await harness.invocations();
-      expect(calls.map((call) => call.argv)).toEqual([['--version'], ['auth', 'status']]);
+      expect(calls.map((call) => call.argv)).toEqual([['--version'], ['auth', 'status', '--json']]);
       expect(JSON.stringify([detection, harness.logger.entries])).not.toMatch(
         /example\.com|Mock Organisation|org-mock|\/home\/mock/,
       );
