@@ -72,7 +72,8 @@ const prompts = (): (string | null | undefined)[] =>
   rows().map((row) => row.querySelector('.wall-history-prompt')?.textContent);
 const state = (): string | null | undefined =>
   document.querySelector('.wall-history-state')?.textContent;
-const searchBox = (): HTMLInputElement => screen.getByLabelText<HTMLInputElement>('Search prompts and answers');
+const searchBox = (): HTMLInputElement =>
+  screen.getByLabelText<HTMLInputElement>('Search prompts and answers');
 const listCalls = (services: FakeServices): unknown[] =>
   services.apiCalls.filter((call) => call.method === 'listHistory').map((call) => call.args[0]);
 
