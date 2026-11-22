@@ -540,7 +540,11 @@ is spawned or fetched for it.
   `unsupported` when the frame cannot be reached) and leaves the page alone.
   A wall page that was reloaded, or a cell that was closed, while its slot
   was running submits `cancelled` with the reason: the prompt is never typed
-  twice.
+  twice. A second page of the same wall (a duplicated tab) only watches
+  while the page that runs the slot is there; the two are told apart by a
+  Web Lock that the running page holds. A result that cannot be delivered
+  is sent again until the server answers or the slot has ended, and a
+  `done` the server refuses is followed by `failed`.
 
 ## 6. HTTP API
 

@@ -424,6 +424,84 @@ test('cancelling a web cell ends its slot without an answer and leaves the page 
   );
 });
 
+test('a second wall page with the same session, as a duplicated tab is, does not cancel the first page’s web slot', async ({
+  server,
+  vendor,
+  signInToVendor,
+  useStandIn,
+  allowExtension,
+  openWallPage,
+  connect,
+}) => {
+  await signInToVendor();
+  await useStandIn();
+  await allowExtension({ fillPrompt: true, readAnswer: true });
+  const wall = await openWallPage();
+  await connect(wall);
+  await mixedWall(wall, server);
+
+  const question = `${SLOW_MARK} once`;
+  await send(wall, question);
+  await expect(statusOf(wall, WEB.slotId)).toHaveText('Waiting for the page to finish its answer…');
+  const askId = await currentAskId(wall);
+
+  // Chromium gives a duplicated tab a copy of the session storage. A test
+  // cannot press "Duplicate", so the copy is made by hand: a second wall
+  // page that starts with the first one's session storage.
+  const session = await wall.evaluate(() => Object.entries(window.sessionStorage));
+  const copy = await openWallPage();
+  await copy.evaluate((entries) => {
+    for (const [key, value] of entries) window.sessionStorage.setItem(key, String(value));
+  }, session);
+  await copy.reload();
+  expect(await currentAskId(copy)).toBe(askId);
+  await expectPhase(copy, WEB.slotId, 'waiting');
+
+  // The copy watches. The slot keeps running and ends with the answer the first page read.
+  await copy.waitForTimeout(1_500);
+  const running = await server.snapshot(askId);
+  expect(running.slots.find((slot) => slot.slotId === WEB.slotId)?.status).toBe('running');
+  const stored = await server.finished(askId);
+  expect(stored.slots.find((slot) => slot.slotId === WEB.slotId)).toMatchObject({
+    status: 'done',
+    text: vendor.answerFor(question),
+  });
+  await expectPhase(copy, WEB.slotId, 'done');
+  // The prompt was typed once, by the first page.
+  expect(vendor.prompts).toEqual([question]);
+});
+
+test('a reloaded wall page cancels its running web slot and does not type the prompt again', async ({
+  server,
+  vendor,
+  signInToVendor,
+  useStandIn,
+  allowExtension,
+  openWallPage,
+  connect,
+}) => {
+  await signInToVendor();
+  await useStandIn();
+  await allowExtension({ fillPrompt: true, readAnswer: true });
+  const wall = await openWallPage();
+  await connect(wall);
+  await mixedWall(wall, server);
+
+  const question = `${SLOW_MARK} once`;
+  await send(wall, question);
+  await expect(statusOf(wall, WEB.slotId)).toHaveText('Waiting for the page to finish its answer…');
+  const askId = await currentAskId(wall);
+  await wall.reload();
+
+  const stored = await server.finished(askId);
+  expect(stored.slots.find((slot) => slot.slotId === WEB.slotId)).toMatchObject({
+    status: 'cancelled',
+    text: '',
+  });
+  await expectPhase(wall, WEB.slotId, 'cancelled');
+  expect(vendor.prompts).toEqual([question]);
+});
+
 test('signing in inside a cell works, and the header rule reaches no other tab or page', async ({
   context,
   server,

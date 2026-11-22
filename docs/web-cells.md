@@ -344,8 +344,16 @@ interface WebCellFrame {
   slot is `running`, submits `done` / `failed` / `cancelled`, and stops
   waiting when the slot ended some other way. The slots it started are
   remembered in the session storage, so a reloaded page cancels a running
-  slot with a reason instead of typing again. An answer larger than
-  `limits.maxRequestBodyBytes` is cut to fit, with a marker line.
+  slot with a reason instead of typing again. A duplicated tab inherits
+  that list, so the page that runs a slot also holds a Web Lock named after
+  it until the result is with the server: a page that finds the slot in its
+  list waits for that lock, and so cancels only once the page that started
+  the slot is gone. An answer larger than `limits.maxRequestBodyBytes` is
+  cut to fit, with a marker line. A result that cannot be delivered for
+  lack of a connection is kept and sent again, at growing intervals, until
+  the server answers or the slot has ended; a finished answer the server
+  refuses (reading was switched off meanwhile) is followed by a `failed`
+  result, so the slot ends at once instead of at its timeout.
 - **The switches** (`WallPage.tsx`): with `readAnswer` on, web cells are
   targets of the ask and the request carries `runsWebSlots`. With it off
   they are left out; `fillPrompt` then still types the prompt

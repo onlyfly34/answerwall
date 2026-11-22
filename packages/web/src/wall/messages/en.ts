@@ -105,6 +105,8 @@ export const en = {
     'The site rule read an answer without text; the site may have changed. Nothing was stored. The cell can still be used by hand.',
   'wall.web.failure.signed_out':
     'The site shows its sign-in page. Sign in there, in the cell or in a normal tab, and ask again. Nothing was stored.',
+  'wall.web.failure.refused':
+    'The server did not take the answer read from this cell; reading answers may have been switched off meanwhile. Nothing was stored.',
   'wall.web.reason.reloaded':
     'The wall page was reloaded while this web cell was answering, so its answer was not read.',
   'wall.web.reason.closed':

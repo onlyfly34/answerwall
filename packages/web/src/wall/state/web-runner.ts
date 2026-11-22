@@ -49,6 +49,28 @@ export interface WebCellRunner {
   fillOnly(slotIds: readonly string[], prompt: string): void;
 }
 
+/**
+ * The part of the Web Locks API the runner uses (`navigator.locks`). A lock
+ * is held by one document and released when its callback has finished or the
+ * document is gone, which is what tells a reloaded page from a second page
+ * that is open at the same time.
+ */
+export interface RunLocks {
+  request(
+    name: string,
+    options: { signal?: AbortSignal },
+    callback: () => Promise<void>,
+  ): Promise<unknown>;
+}
+
+function browserLocks(): RunLocks | undefined {
+  try {
+    return globalThis.navigator.locks;
+  } catch {
+    return undefined;
+  }
+}
+
 export interface WebCellRunnerDeps {
   api: Pick<ApiClient, 'submitWebResult'>;
   notify: Pick<Notifier, 'reportError'>;
@@ -56,13 +78,18 @@ export interface WebCellRunnerDeps {
   webCells(): WebCellsSettings | undefined;
   /** `limits.maxRequestBodyBytes`: a result larger than this is refused by the server. */
   maxRequestBodyBytes(): number;
-  /** Pause before a result is sent again after a lost connection. */
+  /** Pause before a result is sent again after a lost connection; it grows with every attempt. */
   retryDelayMs?: number;
+  /** The browser's locks by default; `null` for none. */
+  locks?: RunLocks | null;
 }
 
 /** Room for the JSON around the text and for the request's own framing. */
 const BODY_SLACK_BYTES = 512;
+/** After this many attempts in a row without a connection the user is told, once. */
 const SUBMIT_ATTEMPTS = 3;
+/** The pause between attempts doubles up to this many times the first one. */
+const MAX_RETRY_FACTOR = 32;
 
 /** Size of a string once it is a JSON string literal in a UTF-8 body. */
 const jsonBytes = (text: string): number => utf8Bytes(JSON.stringify(text));
@@ -105,11 +132,36 @@ export function createWebCellRunner(deps: WebCellRunnerDeps): WebCellRunner {
   };
 
   const keyOf = (askId: string, slotId: string): string => `${askId}/${slotId}`;
+  const locks = deps.locks === undefined ? browserLocks() : deps.locks;
+
+  /**
+   * Runs `work` while this document holds the lock of the slot. The page
+   * that started a slot holds it until the result is with the server. A
+   * page that finds the lock taken is a second page of the same wall (a
+   * duplicated tab carries the session storage with it): it waits, and gets
+   * its turn only when the first page is gone or has finished. Waiting ends
+   * when the slot ends.
+   */
+  async function holding(name: string, run: Run, work: () => Promise<void>): Promise<void> {
+    if (!locks) return work();
+    let entered = false;
+    try {
+      await locks.request(name, { signal: run.controller.signal }, () => {
+        entered = true;
+        return work();
+      });
+    } catch (error) {
+      if (entered) throw error;
+      // The slot ended while this page waited; or there are no locks here after all.
+      if (!run.controller.signal.aborted) await work();
+    }
+  }
 
   /**
    * The slots this page already started to run, kept across a reload: a
    * reloaded page cannot know whether the prompt was submitted, so it must
-   * not type it again.
+   * not type it again. A duplicated tab inherits the list; the lock of the
+   * slot (see `holding`) says whether the page that started it is still there.
    */
   function startedBefore(askId: string, slotId: string): boolean {
     const stored = readStored('session', WEB_RUNS_KEY, StartedSchema);
@@ -121,7 +173,19 @@ export function createWebCellRunner(deps: WebCellRunnerDeps): WebCellRunner {
     writeStored('session', WEB_RUNS_KEY, { askId, slotIds: [...slotIds, slotId] });
   }
 
-  async function submit(askId: string, slotId: string, result: WebResultRequest): Promise<void> {
+  /**
+   * Sends the slot's one result. Without a connection the result is kept and
+   * sent again, at growing intervals, for as long as the slot has not ended:
+   * the server takes the same result twice. A finished answer the server
+   * refuses for any other reason is followed by a failure, which it does
+   * take, so that the slot ends now and not at its timeout.
+   */
+  async function submit(
+    run: Run,
+    askId: string,
+    slotId: string,
+    result: WebResultRequest,
+  ): Promise<void> {
     for (let attempt = 1; ; attempt += 1) {
       try {
         await api.submitWebResult(askId, slotId, result);
@@ -130,12 +194,25 @@ export function createWebCellRunner(deps: WebCellRunnerDeps): WebCellRunner {
         if (error instanceof ApiError) {
           // The slot ended some other way, or the ask is gone: nothing left to say.
           if (error.code === 'conflict' || error.code === 'not_found') return;
-          if (error.code === 'network' && attempt < SUBMIT_ATTEMPTS) {
-            await new Promise((resolve) => setTimeout(resolve, deps.retryDelayMs ?? 1_000));
+          if (error.code === 'network') {
+            if (run.ended) return;
+            if (attempt === SUBMIT_ATTEMPTS) notify.reportError(error);
+            const factor = Math.min(2 ** (attempt - 1), MAX_RETRY_FACTOR);
+            await new Promise((resolve) =>
+              setTimeout(resolve, (deps.retryDelayMs ?? 1_000) * factor),
+            );
+            if (run.ended) return;
             continue;
           }
         }
         notify.reportError(error);
+        if (result.outcome === 'done') {
+          await submit(run, askId, slotId, {
+            outcome: 'failed',
+            code: 'unknown',
+            message: t('wall.web.failure.refused'),
+          });
+        }
         return;
       }
     }
@@ -165,14 +242,27 @@ export function createWebCellRunner(deps: WebCellRunnerDeps): WebCellRunner {
   async function begin(askId: string, slotId: string, prompt: string): Promise<void> {
     const run: Run = { controller: new AbortController(), ended: false };
     runs.set(keyOf(askId, slotId), run);
-    if (startedBefore(askId, slotId)) {
-      await submit(askId, slotId, { outcome: 'cancelled', reason: t('wall.web.reason.reloaded') });
-      return;
-    }
-    remember(askId, slotId);
+    const resumed = startedBefore(askId, slotId);
+    if (!resumed) remember(askId, slotId);
+    await holding(`${BRAND.slug}.web-run.${keyOf(askId, slotId)}`, run, async () => {
+      if (run.ended) return;
+      if (resumed) {
+        // The page that started this slot is gone: this one was reloaded, or
+        // is what is left of a duplicated tab.
+        await submit(run, askId, slotId, {
+          outcome: 'cancelled',
+          reason: t('wall.web.reason.reloaded'),
+        });
+        return;
+      }
+      await work(run, askId, slotId, prompt);
+    });
+  }
+
+  async function work(run: Run, askId: string, slotId: string, prompt: string): Promise<void> {
     const frame = frames.get(slotId);
     if (!frame) {
-      await submit(askId, slotId, {
+      await submit(run, askId, slotId, {
         outcome: 'failed',
         code: 'unsupported',
         message: t('wall.web.failure.no_connection'),
@@ -189,6 +279,7 @@ export function createWebCellRunner(deps: WebCellRunnerDeps): WebCellRunner {
     setNotes(slotId, undefined);
     if (run.ended) return;
     await submit(
+      run,
       askId,
       slotId,
       // Aborted without the slot having ended: the frame went away.

@@ -12,6 +12,7 @@ import type {
 import { slotSnapshot } from '../test-support.tsx';
 import { utf8Bytes } from './slot-view.ts';
 import { createWebCellRunner, fitAnswer, WEB_RUNS_KEY } from './web-runner.ts';
+import type { RunLocks } from './web-runner.ts';
 
 const t = createI18n('en').t;
 const settle = async (): Promise<void> => {
@@ -36,9 +37,77 @@ function fakeFrame() {
   return { frame, runs };
 }
 
+/**
+ * The locks of one browser, as `navigator.locks` gives them to each page:
+ * one holder per name, the others wait in line, and a page that goes away
+ * gives up what it held and what it waited for.
+ */
+function browserLocks() {
+  interface Waiting {
+    page: object;
+    grant(): void;
+  }
+  const held = new Map<string, object>();
+  const waiting = new Map<string, Waiting[]>();
+  const release = (name: string): void => {
+    held.delete(name);
+    const next = waiting.get(name)?.shift();
+    if (next) {
+      held.set(name, next.page);
+      next.grant();
+    }
+  };
+  return {
+    page(): RunLocks & { close(): void } {
+      const page = {};
+      let open = true;
+      return {
+        request: (name, options, callback) =>
+          new Promise((resolve, reject) => {
+            const grant = (): void => {
+              void Promise.resolve()
+                .then(callback)
+                .then(resolve, reject)
+                .finally(() => {
+                  if (open && held.get(name) === page) release(name);
+                });
+            };
+            if (!held.has(name)) {
+              held.set(name, page);
+              grant();
+              return;
+            }
+            const entry = { page, grant };
+            waiting.set(name, [...(waiting.get(name) ?? []), entry]);
+            options.signal?.addEventListener('abort', () => {
+              const line = waiting.get(name) ?? [];
+              if (!line.includes(entry)) return;
+              waiting.set(
+                name,
+                line.filter((other) => other !== entry),
+              );
+              reject(new DOMException('The request was aborted', 'AbortError'));
+            });
+          }),
+        close() {
+          open = false;
+          for (const [name, line] of waiting) {
+            waiting.set(
+              name,
+              line.filter((entry) => entry.page !== page),
+            );
+          }
+          for (const [name, holder] of held) if (holder === page) release(name);
+        },
+      };
+    },
+  };
+}
+
 function harness(
   switches: Partial<WebCellsSettings> = { enabled: true, fillPrompt: true, readAnswer: true },
   answer: (result: WebResultRequest) => Promise<void> = async () => undefined,
+  locks?: RunLocks,
 ) {
   const submitted: { askId: string; slotId: string; result: WebResultRequest }[] = [];
   const errors: unknown[] = [];
@@ -56,6 +125,7 @@ function harness(
       webCells: () => ({ ...DEFAULT_WEB_CELLS, ...switches }),
       maxRequestBodyBytes: () => 4_096,
       retryDelayMs: 0,
+      ...(locks ? { locks } : {}),
     }),
   );
   return { runner, submitted, errors };
@@ -189,6 +259,120 @@ describe('a web slot of the wall’s own ask', () => {
     });
   });
 
+  describe('with the browser’s locks', () => {
+    /** A page with a running web slot, and the browser it lives in. */
+    async function runningPage(answer?: (result: WebResultRequest) => Promise<void>) {
+      const browser = browserLocks();
+      const page = browser.page();
+      const first = harness(undefined, answer, page);
+      const frame = fakeFrame();
+      first.runner.register('w1', frame.frame);
+      first.runner.follow('ask-1', 'hi', [web('running')]);
+      await settle();
+      expect(frame.runs).toHaveLength(1);
+      return { browser, page, first, frame };
+    }
+    /** Another page with the same session storage: a reload, or a duplicated tab. */
+    async function secondPage(
+      browser: ReturnType<typeof browserLocks>,
+      answer?: (result: WebResultRequest) => Promise<void>,
+    ) {
+      const page = browser.page();
+      const second = harness(undefined, answer, page);
+      const frame = fakeFrame();
+      second.runner.register('w1', frame.frame);
+      second.runner.follow('ask-1', 'hi', [web('running')]);
+      await settle();
+      return { page, second, frame };
+    }
+
+    test('a reloaded page still cancels the slot instead of typing again', async () => {
+      const { browser, page } = await runningPage();
+      // The reload: the first document is gone, and with it what it held.
+      page.close();
+      const { second, frame } = await secondPage(browser);
+      expect(frame.runs).toHaveLength(0);
+      expect(second.submitted.map((call) => call.result)).toEqual([
+        { outcome: 'cancelled', reason: t('wall.web.reason.reloaded') },
+      ]);
+    });
+
+    test('a duplicated tab only watches: the first page’s slot is not cancelled and its answer is stored', async () => {
+      const { browser, first, frame } = await runningPage();
+      const copy = await secondPage(browser);
+      expect(copy.frame.runs).toHaveLength(0);
+      expect(copy.second.submitted).toEqual([]);
+
+      frame.runs[0]?.finish({ outcome: 'done', text: 'The answer' });
+      // The copy learns from the stream that the slot is done.
+      copy.second.runner.follow('ask-1', 'hi', [web('done')]);
+      await settle();
+      expect(first.submitted.map((call) => call.result)).toEqual([
+        { outcome: 'done', text: 'The answer' },
+      ]);
+      expect(copy.second.submitted).toEqual([]);
+    });
+
+    test('the copy gets its turn only after the first page’s answer is with the server', async () => {
+      // The server: the first result is the slot's one result, anything else a conflict.
+      const taken: WebResultRequest[] = [];
+      const server = async (result: WebResultRequest): Promise<void> => {
+        if (taken.length > 0) throw new ApiError('conflict', 409, 'This slot has already ended');
+        // The answer takes a while to arrive.
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        taken.push(result);
+      };
+      const { browser, frame } = await runningPage(server);
+      const copy = await secondPage(browser, server);
+
+      frame.runs[0]?.finish({ outcome: 'done', text: 'The answer' });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      await settle();
+      // The copy's stream had not said "done" yet. What it sends meets a
+      // slot that has its result, and the refusal is dropped.
+      expect(taken).toEqual([{ outcome: 'done', text: 'The answer' }]);
+      expect(copy.second.errors).toEqual([]);
+    });
+
+    test('the copy stops waiting when the slot ends some other way', async () => {
+      const { browser, page } = await runningPage();
+      const copy = await secondPage(browser);
+      copy.second.runner.follow('ask-1', 'hi', [web('cancelled')]);
+      await settle();
+      page.close();
+      await settle();
+      expect(copy.second.submitted).toEqual([]);
+    });
+
+    test('when the first page is closed mid-run, the copy cancels the slot: nobody reads the answer any more', async () => {
+      const { browser, page } = await runningPage();
+      const copy = await secondPage(browser);
+      expect(copy.second.submitted).toEqual([]);
+      page.close();
+      await settle();
+      expect(copy.frame.runs).toHaveLength(0);
+      expect(copy.second.submitted.map((call) => call.result)).toEqual([
+        { outcome: 'cancelled', reason: t('wall.web.reason.reloaded') },
+      ]);
+    });
+
+    test('a browser whose locks refuse the page behaves as one without locks', async () => {
+      const refusing: RunLocks = {
+        request: async () => {
+          throw new DOMException('No locks for this page', 'SecurityError');
+        },
+      };
+      const { runner, submitted } = harness(undefined, undefined, refusing);
+      const { frame, runs } = fakeFrame();
+      runner.register('w1', frame);
+      runner.follow('ask-1', 'hi', [web('running')]);
+      await settle();
+      runs[0]?.finish({ outcome: 'done', text: 'answer' });
+      await settle();
+      expect(submitted.map((call) => call.result)).toEqual([{ outcome: 'done', text: 'answer' }]);
+    });
+  });
+
   test('a slot that was still queued at the reload runs normally afterwards', async () => {
     const { runner } = harness();
     const { frame, runs } = fakeFrame();
@@ -248,12 +432,59 @@ describe('submitting the result', () => {
     expect(errors).toEqual([]);
   });
 
-  test('any other failure is shown to the user once', async () => {
+  test('without a connection the answer is kept and sent again until the server has it', async () => {
+    let attempts = 0;
     const { submitted, errors } = await submitWith(async () => {
-      throw new ApiError('forbidden', 403, 'reading answers is off');
+      attempts += 1;
+      if (attempts < 8) throw new ApiError('network', 0, 'offline');
     });
-    expect(submitted).toHaveLength(1);
+    // More attempts than a short blip takes; the user is told once on the way.
+    await expect.poll(() => submitted.length).toBe(8);
+    expect(new Set(submitted.map((call) => JSON.stringify(call.result)))).toEqual(
+      new Set([JSON.stringify({ outcome: 'done', text: 'answer' })]),
+    );
     expect(errors).toHaveLength(1);
+  });
+
+  test('the attempts stop when the slot has ended on the server', async () => {
+    const context = await submitWith(async () => {
+      throw new ApiError('network', 0, 'offline');
+    });
+    await expect.poll(() => context.submitted.length).toBeGreaterThan(4);
+    // The stream is back and says the slot timed out.
+    context.runner.follow('ask-1', 'hi', [web('timeout')]);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const sent = context.submitted.length;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(context.submitted).toHaveLength(sent);
+  });
+
+  test('an answer the server refuses is followed by a failure, so the slot does not wait for its timeout', async () => {
+    // Reading answers was switched off after the ask began: the server
+    // refuses the answer and still takes a failure.
+    const { submitted, errors } = await submitWith(async (result) => {
+      if (result.outcome === 'done') throw new ApiError('forbidden', 403, 'reading answers is off');
+    });
+    expect(submitted.map((call) => call.result)).toEqual([
+      { outcome: 'done', text: 'answer' },
+      { outcome: 'failed', code: 'unknown', message: t('wall.web.failure.refused') },
+    ]);
+    expect(t('wall.web.failure.refused')).toContain('Nothing was stored');
+    expect(errors).toHaveLength(1);
+  });
+
+  test('a refused failure or cancel is shown once and not followed by anything', async () => {
+    const context = harness(undefined, async () => {
+      throw new ApiError('forbidden', 403, 'not your ask');
+    });
+    const { frame, runs } = fakeFrame();
+    context.runner.register('w1', frame);
+    context.runner.follow('ask-1', 'hi', [web('running')]);
+    await settle();
+    runs[0]?.finish({ outcome: 'failed', code: 'bad_output', detail: 'input' });
+    await settle();
+    expect(context.submitted).toHaveLength(1);
+    expect(context.errors).toHaveLength(1);
   });
 
   test('an answer larger than the server takes in one request is cut and says so', async () => {

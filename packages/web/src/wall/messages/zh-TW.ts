@@ -103,6 +103,8 @@ export const zhTW: Record<keyof typeof en, string> = {
     '網站規則讀到的回答沒有文字；網站可能已變更。沒有儲存任何內容。這一格仍可手動使用。',
   'wall.web.failure.signed_out':
     '網站顯示登入頁。請在這一格或一般分頁中登入後再詢問。沒有儲存任何內容。',
+  'wall.web.failure.refused':
+    '伺服器沒有接受從這一格讀到的回答；「讀取回答」可能已在這期間被關閉。沒有儲存任何內容。',
   'wall.web.reason.reloaded':
     '這個網頁儲存格正在回答時，牆面頁面被重新載入，因此沒有讀取它的回答。',
   'wall.web.reason.closed': '這個網頁儲存格正在回答時被關閉，因此沒有讀取它的回答。',
