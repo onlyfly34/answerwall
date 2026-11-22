@@ -1,12 +1,14 @@
 import { createMemo, createSignal, For, Show } from 'solid-js';
 import type { Component } from 'solid-js';
-import { isCliKind, MAX_PROVIDER_INSTANCES } from '@answerwall/core/protocol';
+import { A } from '@solidjs/router';
+import { BRAND, isCliKind, MAX_PROVIDER_INSTANCES } from '@answerwall/core/protocol';
 import type {
   OpenAiCompatInstance,
   ProviderInstance,
   ProviderInstanceInput,
 } from '@answerwall/core/protocol';
 import { Dialog } from '../../app/ui/Dialog.tsx';
+import { ROUTES } from '../../contracts/routes.ts';
 import { useServices } from '../../contracts/services.ts';
 import { EndpointDialog } from './EndpointDialog.tsx';
 import { ProviderCard } from './ProviderCard.tsx';
@@ -21,7 +23,7 @@ type Editing = 'new' | OpenAiCompatInstance | undefined;
  * the user presses a refresh button.
  */
 export const ProvidersPage: Component = () => {
-  const { settings, providers, notify, i18n } = useServices();
+  const { meta, settings, providers, notify, i18n } = useServices();
   const t = i18n.t;
   const [saving, setSaving] = createSignal(false);
   /** Bumped by a refused save: the cards are rebuilt so their controls show the stored values again. */
@@ -149,6 +151,29 @@ export const ProvidersPage: Component = () => {
         <p class="app-muted">{t('app.providers.endpoint.none')}</p>
       </Show>
       <For each={endpointIds()}>{(id) => card(id, true)}</For>
+
+      {/* Web cells need a browser extension paired as a device, which the desktop app does not have. */}
+      <Show when={meta()?.mode !== 'desktop'}>
+        <section aria-labelledby="providers-web-cells">
+          <h2 id="providers-web-cells">{t('app.providers.webCells.title')}</h2>
+          <p class="app-muted">{t('app.providers.webCells.intro')}</p>
+          <ol class="app-steps">
+            <li>
+              {t('app.providers.webCells.stepGet')}{' '}
+              <a href={`${BRAND.repository}/releases`} target="_blank" rel="noreferrer">
+                {t('app.providers.webCells.releases')}
+              </a>
+            </li>
+            <li>{t('app.providers.webCells.stepLoad')}</li>
+            <li>
+              {t('app.providers.webCells.stepAllow')}{' '}
+              <A href={ROUTES.settings}>{t('app.providers.webCells.openSettings')}</A>
+            </li>
+            <li>{t('app.providers.webCells.stepPair')}</li>
+          </ol>
+          <p class="app-muted">{t('app.providers.webCells.terms')}</p>
+        </section>
+      </Show>
 
       <Show when={editing()}>
         {(target) => {

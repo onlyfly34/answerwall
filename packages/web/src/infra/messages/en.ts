@@ -176,6 +176,21 @@ export const en = {
   'app.providers.endpoint.intro':
     'Any server that speaks the OpenAI chat completions API. Requests go from the server to the address you enter and nowhere else.',
   'app.providers.endpoint.none': 'No endpoints yet.',
+  'app.providers.webCells.title': 'Web cells (browser extension)',
+  'app.providers.webCells.intro':
+    'A web cell shows a site’s own web app (Claude, ChatGPT, Gemini, Grok, Z.ai) in a frame next to the other cells. It exists only on the wall page of the AnswerWall browser extension for Chrome and Edge, in the browser where you are signed in to that site. This page, the desktop app and phones show the answers it stored.',
+  'app.providers.webCells.stepGet':
+    'Download answerwall-extension-<version>.zip from the release that matches this server and unpack it.',
+  'app.providers.webCells.releases': 'Releases',
+  'app.providers.webCells.stepLoad':
+    'In Chrome or Edge open the extensions page, switch on developer mode, choose “Load unpacked” and pick the unpacked folder. The extension is not in any store.',
+  'app.providers.webCells.stepAllow':
+    'On this server switch web cells on, choose the sites, and list the ID the extension shows on its first page.',
+  'app.providers.webCells.openSettings': 'Open Settings',
+  'app.providers.webCells.stepPair':
+    'Click the extension’s icon, enter this server’s address and a pairing code from Settings > Devices.',
+  'app.providers.webCells.terms':
+    'The terms of these sites restrict automated access to their web apps. Filling in the prompt and reading the answer are two separate switches, both off by default; whether to switch them on is your decision. Nothing here is a statement about what those terms permit.',
   'app.providers.endpoint.add': 'Add endpoint',
   'app.providers.endpoint.addTitle': 'Add an endpoint',
   'app.providers.endpoint.editTitle': 'Edit endpoint',

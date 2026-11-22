@@ -3,7 +3,7 @@ import type { Component } from 'solid-js';
 import { useNavigate, useSearchParams } from '@solidjs/router';
 import { DEFAULT_LAYOUT } from '@answerwall/core/protocol';
 import type { AskSnapshot, AskTarget, ProviderStatus } from '@answerwall/core/protocol';
-import { ROUTES } from '../contracts/routes.ts';
+import { hrefOf, ROUTES } from '../contracts/routes.ts';
 import { ApiError, useServices } from '../contracts/services.ts';
 import type { AskStream } from '../contracts/services.ts';
 import { Composer } from './components/Composer.tsx';
@@ -16,12 +16,13 @@ import { effectiveLayout } from './state/layout.ts';
 import { WALL_QUERY } from './navigation.ts';
 import { createPresets } from './state/presets.ts';
 import type { Presets } from './state/presets.ts';
-import { canSendTo, defaultSlots } from './state/providers.ts';
+import { canSendTo, defaultSlots, isWebProvider } from './state/providers.ts';
 import { copyTarget, isUnfinished, showsSlot } from './state/slots.ts';
 import { utf8Bytes } from './state/slot-view.ts';
 import { createTicker } from './state/ticker.ts';
 import { createViewport } from './state/viewport.ts';
 import { createWallState } from './state/wall-state.ts';
+import { createWebCellRunner, WebCellRunnerContext } from './state/web-runner.ts';
 import './wall.css';
 
 type Viewed =
@@ -38,7 +39,21 @@ export const WallPage: Component = () => {
   const [query] = useSearchParams();
   const navigate = useNavigate();
   const viewport = createViewport();
-  const state = createWallState(() => defaultSlots(providers.providers()));
+  /** This page can frame the vendors' sites: the wall page of the browser extension. */
+  const showsWebCells = services.webCells !== undefined;
+  const sendsTo = (provider: ProviderStatus | undefined): boolean =>
+    canSendTo(provider, showsWebCells);
+  const state = createWallState(() => defaultSlots(providers.providers(), showsWebCells));
+  const runner = showsWebCells
+    ? createWebCellRunner({
+        api,
+        notify,
+        t,
+        webCells: () => settings.settings()?.webCells,
+        maxRequestBodyBytes: () =>
+          settings.settings()?.limits.maxRequestBodyBytes ?? Number.MAX_SAFE_INTEGER,
+      })
+    : undefined;
   const presets = createPresets(services, state);
   /** The presets as the bar uses them: switching the wall first stops what would go unseen. */
   const shownPresets: Presets = {
@@ -200,7 +215,23 @@ export const WallPage: Component = () => {
 
   // Sending.
   const [sending, setSending] = createSignal(false);
-  const sendable = createMemo(() => state.slots.filter((slot) => canSendTo(providerOf(slot))));
+  const sendable = createMemo(() => state.slots.filter((slot) => sendsTo(providerOf(slot))));
+  const isWebCell = (slot: AskTarget): boolean => isWebProvider(providerOf(slot));
+  /**
+   * The cells that are part of the ask. The server takes a web slot only
+   * to store its answer, so a web cell is asked only while answers are read.
+   */
+  const asked = createMemo(() => {
+    const reads = settings.settings()?.webCells.readAnswer === true;
+    return sendable().filter((slot) => reads || !isWebCell(slot));
+  });
+  /** Web cells that get the prompt typed in without being part of an ask: nothing is stored. */
+  const filledOnly = createMemo(() => {
+    const switches = settings.settings()?.webCells;
+    if (switches?.readAnswer !== false || !switches.fillPrompt) return [];
+    return sendable().filter(isWebCell);
+  });
+  const targetCount = () => asked().length + filledOnly().length;
   const promptBytes = createMemo(() => utf8Bytes(state.prompt()));
   const maxPromptBytes = () =>
     settings.settings()?.limits.maxPromptBytes ?? Number.MAX_SAFE_INTEGER;
@@ -208,8 +239,10 @@ export const WallPage: Component = () => {
     const maxTargets = settings.settings()?.limits.maxTargetsPerAsk ?? Number.MAX_SAFE_INTEGER;
     if (state.slots.length === 0) return t('wall.composer.noCells');
     if (sendable().length === 0) return t('wall.composer.noneAvailable');
-    if (sendable().length > maxTargets) {
-      return t('wall.composer.tooManyCells', { count: sendable().length, limit: maxTargets });
+    // Only web cells, and neither filling in nor reading is switched on.
+    if (targetCount() === 0) return t('wall.composer.webByHand');
+    if (asked().length > maxTargets) {
+      return t('wall.composer.tooManyCells', { count: asked().length, limit: maxTargets });
     }
     if (anyActive()) return t('wall.composer.running');
     // Until the ask is known, it may well have unfinished cells.
@@ -223,11 +256,19 @@ export const WallPage: Component = () => {
     if (blocked() !== undefined || sending()) return;
     setSending(true);
     try {
-      const stream = await asks.submit({
-        prompt: state.prompt(),
-        targets: sendable().map(copyTarget),
-      });
-      state.setAskId(stream.askId);
+      const prompt = state.prompt();
+      const targets = asked().map(copyTarget);
+      const local = filledOnly().map((slot) => slot.slotId);
+      if (targets.length > 0) {
+        const stream = await asks.submit({
+          prompt,
+          targets,
+          // This page runs the web slots itself and submits their results.
+          ...(asked().some(isWebCell) ? { runsWebSlots: true } : {}),
+        });
+        state.setAskId(stream.askId);
+      }
+      runner?.fillOnly(local, prompt);
       state.setPrompt('');
     } catch (error) {
       // The prompt stays in the composer.
@@ -236,6 +277,15 @@ export const WallPage: Component = () => {
       setSending(false);
     }
   }
+
+  // The web slots of this wall's own ask are run here, in their cells' frames.
+  createEffect(() => {
+    const askId = state.askId();
+    const stream = asks.current();
+    if (!runner || askId === null || stream?.askId !== askId) return;
+    const snapshot = stream.snapshot();
+    if (snapshot) runner.follow(askId, snapshot.prompt, snapshot.slots);
+  });
 
   function cancel(slotId?: string): void {
     asks.cancel(slotId).catch((error: unknown) => notify.reportError(error));
@@ -249,8 +299,8 @@ export const WallPage: Component = () => {
   function addCell(): void {
     const last = state.slots[state.slots.length - 1];
     const provider =
-      (last && canSendTo(providerOf(last)) ? providerOf(last) : undefined) ??
-      providers.providers().find(canSendTo);
+      (last && sendsTo(providerOf(last)) ? providerOf(last) : undefined) ??
+      providers.providers().find(sendsTo);
     if (provider) state.addSlot(provider.instance.id);
   }
 
@@ -335,10 +385,10 @@ export const WallPage: Component = () => {
                 {t('wall.composer.cancelAll')}
               </button>
             </Show>
-            <a class="wall-button wall-button-small" href={ROUTES.history}>
+            <a class="wall-button wall-button-small" href={hrefOf(ROUTES.history)}>
               {t('wall.view.backToHistory')}
             </a>
-            <a class="wall-button wall-button-small" href={ROUTES.wall}>
+            <a class="wall-button wall-button-small" href={hrefOf(ROUTES.wall)}>
               {t('wall.view.backToWall')}
             </a>
           </div>
@@ -355,7 +405,7 @@ export const WallPage: Component = () => {
           <button
             type="button"
             class="wall-button wall-button-small"
-            disabled={!providers.providers().some(canSendTo)}
+            disabled={!providers.providers().some(sendsTo)}
             onClick={addCell}
           >
             <Icon name="add" />
@@ -397,36 +447,38 @@ export const WallPage: Component = () => {
       <Show when={!readOnly() && state.slots.length === 0}>
         <p class="wall-empty">
           {t('wall.empty')}{' '}
-          <Show when={!providers.providers().some(canSendTo)}>
-            <a href={ROUTES.providers}>{t('wall.issue.openProviders')}</a>
+          <Show when={!providers.providers().some(sendsTo)}>
+            <a href={hrefOf(ROUTES.providers)}>{t('wall.issue.openProviders')}</a>
           </Show>
         </p>
       </Show>
 
-      <WallGrid
-        slots={slots()}
-        ask={shownAsk()}
-        layout={layout()}
-        viewport={viewport()}
-        maximised={readOnly() ? viewMaximised() : state.maximised()}
-        readOnly={readOnly()}
-        now={now}
-        onChange={change}
-        onRemove={remove}
-        onDuplicate={duplicate}
-        onMaximise={(slotId) =>
-          readOnly() ? setViewMaximised(slotId) : state.setMaximised(slotId)
-        }
-        onCancel={cancel}
-        onMove={(slotId, toIndex) => state.moveSlot(slotId, toIndex)}
-      />
+      <WebCellRunnerContext.Provider value={runner}>
+        <WallGrid
+          slots={slots()}
+          ask={shownAsk()}
+          layout={layout()}
+          viewport={viewport()}
+          maximised={readOnly() ? viewMaximised() : state.maximised()}
+          readOnly={readOnly()}
+          now={now}
+          onChange={change}
+          onRemove={remove}
+          onDuplicate={duplicate}
+          onMaximise={(slotId) =>
+            readOnly() ? setViewMaximised(slotId) : state.setMaximised(slotId)
+          }
+          onCancel={cancel}
+          onMove={(slotId, toIndex) => state.moveSlot(slotId, toIndex)}
+        />
+      </WebCellRunnerContext.Provider>
 
       <Show when={!readOnly()}>
         <Composer
           prompt={state.prompt()}
           promptBytes={promptBytes()}
           maxPromptBytes={maxPromptBytes()}
-          targetCount={sendable().length}
+          targetCount={targetCount()}
           blocked={blocked()}
           sending={sending()}
           running={anyActive()}

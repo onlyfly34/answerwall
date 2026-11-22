@@ -6,12 +6,24 @@
 // First: it configures the validation library before any module builds a schema.
 import './infra/zod-config.ts';
 import { mountApp } from './app/mount.tsx';
+import { keepRoutesInFragment } from './contracts/routes.ts';
 import { createRemoteConnection } from './infra/connection.ts';
 import type { TokenStore } from './infra/connection.ts';
 import { createServices } from './infra/services.ts';
+import type { WebCellHost } from './contracts/services.ts';
 import type { ShellServices } from './infra/services.ts';
 
 export type { TokenStore } from './infra/connection.ts';
+export type {
+  WebCellConnection,
+  WebCellFailureDetail,
+  WebCellFrame,
+  WebCellHost,
+  WebCellRunOptions,
+  WebCellRunResult,
+  WebCellSite,
+  WebCellStage,
+} from './contracts/services.ts';
 
 export interface EmbeddedOptions {
   root: HTMLElement;
@@ -19,8 +31,8 @@ export interface EmbeddedOptions {
   server: string;
   /** Where the device token is kept between page loads. */
   tokens: TokenStore;
-  /** This page can show web cells: the wall is offered the web providers. */
-  webProviders?: boolean;
+  /** This page can frame the vendors' sites: the wall shows web cells through it. */
+  webCells?: WebCellHost;
 }
 
 export interface EmbeddedApp {
@@ -34,10 +46,12 @@ export interface EmbeddedApp {
  * fragment, and no service worker is registered.
  */
 export function mountEmbedded(options: EmbeddedOptions): EmbeddedApp {
+  // The page is one file: a plain link to a route must not leave it.
+  keepRoutesInFragment();
   const connection = createRemoteConnection({ base: options.server, tokens: options.tokens });
   const services = createServices({
     connection,
-    webProviders: options.webProviders === true,
+    ...(options.webCells ? { webCells: options.webCells } : {}),
   });
   return { services, unmount: mountApp(options.root, services) };
 }

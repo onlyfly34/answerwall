@@ -27,8 +27,10 @@ import type {
   Settings,
   SettingsPatch,
   SettingsResponse,
+  WebFailureCode,
   WebResultRequest,
   WebResultResponse,
+  WebSiteId,
 } from '@answerwall/core/protocol';
 import type { MessageKey } from './messages.ts';
 
@@ -170,6 +172,79 @@ export interface Notifier {
   reportError(error: unknown): void;
 }
 
+/** What the page that frames a site knows about it. */
+export interface WebCellSite {
+  /** The address a web cell opens. */
+  url: string;
+  /**
+   * The site rule (where the message box, the send control and the answers
+   * are) was checked by hand against the real site. Until then filling and
+   * reading are a best effort and the cell says so.
+   */
+  verified: boolean;
+}
+
+/**
+ * `loading`: no script of the host answers from the framed page yet.
+ * `ready`: it does, so the page can be filled in and read. `unreachable`:
+ * the frame loaded something the host has no script in (the site refused
+ * the frame, or went to another host); the cell can at most be used by hand.
+ */
+export type WebCellConnection = 'loading' | 'ready' | 'unreachable';
+
+/** What a run is doing, for the cell's status line. */
+export type WebCellStage = 'filling' | 'awaiting_hand' | 'answering';
+
+/**
+ * Which part of the site rule did not match, or what else went wrong:
+ * `no_connection` (the frame is not `ready`), `input` (no message box),
+ * `submit` (no send control, or it never became usable), `answer` (no new
+ * answer appeared, or the site showed an error in its place), `empty` (the
+ * finished answer had no text), `signed_out`.
+ */
+export type WebCellFailureDetail =
+  'no_connection' | 'input' | 'submit' | 'answer' | 'empty' | 'signed_out';
+
+export interface WebCellRunOptions {
+  prompt: string;
+  /** Type the prompt into the page and submit it. Off: the user does that by hand. */
+  fill: boolean;
+  /** Wait for the answer to finish and return its text. */
+  read: boolean;
+  /** Stops waiting. The framed page is left as it is. */
+  signal: AbortSignal;
+  onStage?(stage: WebCellStage): void;
+}
+
+export type WebCellRunResult =
+  /** `read` was on: the finished answer, as plain text or Markdown. */
+  | { outcome: 'done'; text: string }
+  /** `read` was off: the prompt was submitted in the page. */
+  | { outcome: 'submitted' }
+  | { outcome: 'failed'; code: WebFailureCode; detail: WebCellFailureDetail }
+  /** `signal` fired, or the frame went away. */
+  | { outcome: 'aborted' };
+
+/** One framed site, as the page that hosts the frame sees it. */
+export interface WebCellFrame {
+  connection: Accessor<WebCellConnection>;
+  /** One run at a time per frame; a second call while one runs resolves as `failed`. */
+  run(options: WebCellRunOptions): Promise<WebCellRunResult>;
+  /** The frame element is gone: forget it and abort its run. */
+  dispose(): void;
+}
+
+/**
+ * Provided only by a page that can frame the vendors' sites: the wall page
+ * of the browser extension (docs/web-cells.md). Everywhere else it is
+ * absent, and the wall shows a web cell's stored answer or a notice.
+ */
+export interface WebCellHost {
+  site(site: WebSiteId): WebCellSite | undefined;
+  /** Called once the wall has created the frame element for a web cell. */
+  attach(frame: HTMLIFrameElement, site: WebSiteId): WebCellFrame;
+}
+
 /**
  * The shell mounts `WallPage` and `HistoryPage` only after `settings.load()`
  * and `providers.load()` have succeeded, so inside them `settings.settings()`
@@ -189,6 +264,8 @@ export interface AppServices {
   providers: ProvidersStore;
   i18n: I18n;
   notify: Notifier;
+  /** Present when this page can show web cells. */
+  webCells?: WebCellHost;
 }
 
 export const ServicesContext = createContext<AppServices>();

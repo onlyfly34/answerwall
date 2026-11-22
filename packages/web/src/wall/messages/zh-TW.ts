@@ -66,11 +66,47 @@ export const zhTW: Record<keyof typeof en, string> = {
   'wall.issue.disabled': '已停用',
   'wall.issue.not_installed': '未安裝',
   'wall.issue.not_logged_in': '未登入',
+  'wall.issue.extension_only': '僅限瀏覽器擴充功能',
   'wall.issue.notice.missing': '此供應商已不在設定中，因此會略過這一格。',
   'wall.issue.notice.disabled': '此供應商已停用，因此會略過這一格。',
   'wall.issue.notice.not_installed': '伺服器上找不到此供應商。',
   'wall.issue.notice.not_logged_in': '此供應商尚未登入。',
+  'wall.issue.notice.extension_only':
+    '這一格顯示的是廠商自己的網頁版。它只能在瀏覽器擴充功能的牆面頁面使用，在這裡會略過；從那裡存下的回答可在「歷史紀錄」中查看。',
   'wall.issue.openProviders': '開啟供應商頁面',
+
+  'wall.web.frameTitle': '{label}（網頁）',
+  'wall.web.reload': '重新載入 {label}',
+  'wall.web.openTab': '在分頁中開啟 {label}',
+  'wall.web.noRule': '此擴充功能沒有這個網站的規則。',
+  'wall.web.connection.loading': '正在連接頁面…',
+  'wall.web.connection.ready': '已連接頁面',
+  'wall.web.connection.unreachable': '無法連接頁面。請手動使用，或在分頁中開啟以登入。',
+  'wall.web.unverified': '規則未驗證',
+  'wall.web.unverifiedHint':
+    '用來在此網站找到輸入框與回答的規則，是依頁面的公開結構撰寫，尚未經人工檢查。自動填入與讀取可能失敗；頁面本身隨時可以手動使用。',
+  'wall.web.status.starting': '開始中…',
+  'wall.web.status.filling': '正在把提示輸入頁面…',
+  'wall.web.status.awaiting_hand': '請在頁面中輸入並送出提示。回答完成後會被讀取。',
+  'wall.web.status.answering': '等待頁面完成回答…',
+  'wall.web.status.stored': '完成。回答已存入歷史紀錄。',
+  'wall.web.status.sent': '已在頁面中送出。「讀取回答」已關閉，因此不會儲存任何內容。',
+  'wall.web.status.byHand': '自動填入與讀取皆已關閉：請手動使用頁面。',
+  'wall.web.failure.no_connection':
+    '擴充功能無法連接這一格中的頁面：網站可能拒絕被嵌入，或顯示的是其他網站（例如登入頁）。沒有儲存任何內容。這一格仍可手動使用。',
+  'wall.web.failure.input':
+    '網站規則找不到輸入框；網站可能已變更。沒有儲存任何內容。這一格仍可手動使用。',
+  'wall.web.failure.submit':
+    '網站規則找不到可用的送出按鈕；網站可能已變更。沒有儲存任何內容。這一格仍可手動使用。',
+  'wall.web.failure.answer': '頁面中沒有出現新的回答。沒有儲存任何內容。這一格仍可手動使用。',
+  'wall.web.failure.empty':
+    '網站規則讀到的回答沒有文字；網站可能已變更。沒有儲存任何內容。這一格仍可手動使用。',
+  'wall.web.failure.signed_out':
+    '網站顯示登入頁。請在這一格或一般分頁中登入後再詢問。沒有儲存任何內容。',
+  'wall.web.reason.reloaded':
+    '這個網頁儲存格正在回答時，牆面頁面被重新載入，因此沒有讀取它的回答。',
+  'wall.web.reason.closed': '這個網頁儲存格正在回答時被關閉，因此沒有讀取它的回答。',
+  'wall.web.cut': '[已由擴充功能截斷：回答超過伺服器單次請求可接受的大小。]',
 
   'wall.picker.provider': '供應商',
   'wall.picker.model': '模型',
@@ -102,6 +138,7 @@ export const zhTW: Record<keyof typeof en, string> = {
   'wall.composer.cancelAll': '全部取消',
   'wall.composer.noCells': '請先新增格子再送出。',
   'wall.composer.noneAvailable': '沒有任何格子的供應商已啟用。',
+  'wall.composer.webByHand': '網頁儲存格的自動填入與讀取皆已關閉。請手動使用。',
   'wall.composer.tooManyCells': '{count} 格超過每次提問 {limit} 格的上限。',
   'wall.composer.running': '回答仍在產生中。請等待完成或全部取消後再提問。',
   'wall.composer.loading': '正在載入牆上這次提問的狀態…',

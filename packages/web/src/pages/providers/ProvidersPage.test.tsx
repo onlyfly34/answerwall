@@ -729,3 +729,37 @@ describe('OpenAI-compatible endpoints', () => {
     expect(dialog().getByLabelText<HTMLInputElement>('Name').value).toBe('Lab');
   });
 });
+
+describe('web cells', () => {
+  test('the page says how to get the extension, where to allow it, and that the user decides', () => {
+    setup();
+    const section = within(screen.getByRole('region', { name: 'Web cells (browser extension)' }));
+    expect(section.getByText(/answerwall-extension-<version>\.zip/)).toBeTruthy();
+    expect(section.getByText(/Load unpacked/)).toBeTruthy();
+    expect(section.getByRole('link', { name: 'Releases' }).getAttribute('href')).toBe(
+      'https://github.com/onlyfly34/answerwall/releases',
+    );
+    expect(section.getByRole('link', { name: 'Open Settings' }).getAttribute('href')).toBe(
+      '/settings',
+    );
+    const terms = section.getByText(/restrict automated access/);
+    expect(terms.textContent).toContain('your decision');
+    expect(terms.textContent).toContain(
+      'Nothing here is a statement about what those terms permit',
+    );
+  });
+
+  test('the desktop app, which no extension can pair with, does not show it', () => {
+    setup({
+      meta: {
+        name: 'AnswerWall',
+        version: '0.0.0-test',
+        apiVersion: API_VERSION,
+        mode: 'desktop',
+        tls: 'off',
+        authRequired: true,
+      },
+    });
+    expect(screen.queryByRole('region', { name: 'Web cells (browser extension)' })).toBeNull();
+  });
+});

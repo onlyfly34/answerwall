@@ -9,6 +9,7 @@ import {
   defaultSlots,
   effectiveModel,
   effortChoices,
+  isWebProvider,
   modelChoices,
   providerIssue,
 } from './providers.ts';
@@ -238,5 +239,49 @@ describe('slot view', () => {
     expect(formatBytes(1536)).toBe('1.5 KB');
     expect(formatBytes(200 * 1024)).toBe('200 KB');
     expect(formatBytes(3 * 1024 * 1024)).toBe('3.0 MB');
+  });
+});
+
+describe('web providers', () => {
+  const web: ProviderStatus = {
+    instance: {
+      id: 'web-claude',
+      kind: 'web',
+      site: 'claude',
+      label: 'Claude (web)',
+      enabled: true,
+      concurrency: 2,
+      models: [],
+    },
+    detection: null,
+    detectedAt: null,
+    detecting: false,
+    models: [],
+    toolAccess: 'unrestricted',
+    webSearch: 'none',
+  };
+  const disabled: ProviderStatus = { ...web, instance: { ...web.instance, enabled: false } };
+
+  test('a page that cannot frame a site neither sends to a web provider nor offers it', () => {
+    expect(isWebProvider(web)).toBe(true);
+    expect(isWebProvider(claude)).toBe(false);
+    expect(providerIssue(web)).toBe('extension_only');
+    expect(canSendTo(web)).toBe(false);
+    expect(defaultSlots([claude, web])).toEqual([{ slotId: 's-1', providerId: 'claude' }]);
+  });
+
+  test('the wall page of the extension treats it like any enabled provider', () => {
+    expect(providerIssue(web, true)).toBeUndefined();
+    expect(canSendTo(web, true)).toBe(true);
+    expect(defaultSlots([claude, web], true)).toEqual([
+      { slotId: 's-1', providerId: 'claude' },
+      { slotId: 's-2', providerId: 'web-claude' },
+    ]);
+  });
+
+  test('a disabled web provider is disabled everywhere', () => {
+    expect(providerIssue(disabled)).toBe('disabled');
+    expect(providerIssue(disabled, true)).toBe('disabled');
+    expect(canSendTo(disabled, true)).toBe(false);
   });
 });

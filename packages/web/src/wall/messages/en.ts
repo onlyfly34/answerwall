@@ -65,11 +65,52 @@ export const en = {
   'wall.issue.disabled': 'disabled',
   'wall.issue.not_installed': 'not installed',
   'wall.issue.not_logged_in': 'not logged in',
+  'wall.issue.extension_only': 'browser extension only',
   'wall.issue.notice.missing': 'This provider is not configured any more, so this cell is skipped.',
   'wall.issue.notice.disabled': 'This provider is disabled, so this cell is skipped.',
   'wall.issue.notice.not_installed': 'This provider was not found on the server.',
   'wall.issue.notice.not_logged_in': 'This provider is not logged in.',
+  'wall.issue.notice.extension_only':
+    'This cell shows a vendor’s own web app. It works only on the wall page of the browser extension and is skipped here; answers stored from there are in History.',
   'wall.issue.openProviders': 'Open Providers',
+
+  'wall.web.frameTitle': '{label} (web page)',
+  'wall.web.reload': 'Reload {label}',
+  'wall.web.openTab': 'Open {label} in a tab',
+  'wall.web.noRule': 'This extension has no rule for this site.',
+  'wall.web.connection.loading': 'Connecting to the page…',
+  'wall.web.connection.ready': 'Connected to the page',
+  'wall.web.connection.unreachable':
+    'No connection to the page. Use it by hand, or open it in a tab to sign in.',
+  'wall.web.unverified': 'Unverified rule',
+  'wall.web.unverifiedHint':
+    'The rule that finds the message box and the answer on this site was written from the page’s public structure and has not been checked by hand. Filling in and reading may fail; the page itself always works by hand.',
+  'wall.web.status.starting': 'Starting…',
+  'wall.web.status.filling': 'Typing the prompt into the page…',
+  'wall.web.status.awaiting_hand':
+    'Type and send the prompt in the page. The answer is read when it has finished.',
+  'wall.web.status.answering': 'Waiting for the page to finish its answer…',
+  'wall.web.status.stored': 'Done. The answer is stored in history.',
+  'wall.web.status.sent': 'Sent in the page. Reading answers is off, so nothing is stored.',
+  'wall.web.status.byHand': 'Filling in and reading are off: use the page by hand.',
+  'wall.web.failure.no_connection':
+    'The extension has no connection to the page in this cell: the site may have refused the frame, or it shows another site (a sign-in, for example). Nothing was stored. The cell can still be used by hand.',
+  'wall.web.failure.input':
+    'The site rule did not find the message box; the site may have changed. Nothing was stored. The cell can still be used by hand.',
+  'wall.web.failure.submit':
+    'The site rule did not find a usable send control; the site may have changed. Nothing was stored. The cell can still be used by hand.',
+  'wall.web.failure.answer':
+    'No new answer appeared in the page. Nothing was stored. The cell can still be used by hand.',
+  'wall.web.failure.empty':
+    'The site rule read an answer without text; the site may have changed. Nothing was stored. The cell can still be used by hand.',
+  'wall.web.failure.signed_out':
+    'The site shows its sign-in page. Sign in there, in the cell or in a normal tab, and ask again. Nothing was stored.',
+  'wall.web.reason.reloaded':
+    'The wall page was reloaded while this web cell was answering, so its answer was not read.',
+  'wall.web.reason.closed':
+    'The web cell was closed while it was answering, so its answer was not read.',
+  'wall.web.cut':
+    '[Cut by the extension: the answer is larger than the server accepts in one request.]',
 
   'wall.picker.provider': 'Provider',
   'wall.picker.model': 'Model',
@@ -101,6 +142,8 @@ export const en = {
   'wall.composer.cancelAll': 'Cancel all',
   'wall.composer.noCells': 'Add a cell to send.',
   'wall.composer.noneAvailable': 'No cell has an enabled provider.',
+  'wall.composer.webByHand':
+    'Filling in and reading are switched off for web cells. Use them by hand.',
   'wall.composer.tooManyCells': '{count} cells exceed the limit of {limit} per ask.',
   'wall.composer.running': 'Answers are still coming in. Wait or cancel all to ask again.',
   'wall.composer.loading': 'Loading the ask on the wall…',

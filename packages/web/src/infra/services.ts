@@ -1,6 +1,6 @@
 import { createSignal } from 'solid-js';
 import type { Language, Meta } from '@answerwall/core/protocol';
-import type { ApiClient, AppServices, I18n } from '../contracts/services.ts';
+import type { ApiClient, AppServices, I18n, WebCellHost } from '../contracts/services.ts';
 import { createBrowserUpdater } from '../pwa/updater.ts';
 import type { Updater } from '../pwa/updater.ts';
 import { createApiClient, defaultFetch } from './api.ts';
@@ -37,8 +37,8 @@ export interface ServicesOptions {
    * the page keeps itself up to date some other way than from the server.
    */
   connection?: RemoteConnection;
-  /** The wall of this page can show web cells, so the providers store lists the web providers. */
-  webProviders?: boolean;
+  /** This page can frame the vendors' sites: the wall shows web cells through it. */
+  webCells?: WebCellHost;
   /** Used for every request, the event stream included. Ignored with `connection`. */
   fetch?: Fetch;
   /** Replaces the client built on `fetch`; the event stream still uses `fetch`. */
@@ -88,7 +88,7 @@ export function createServices(options: ServicesOptions = {}): ShellServices {
   };
   const notify = createNotifier({ t: i18n.t, onUnauthorized: signedOut });
 
-  const providers = createProvidersStore(api, { webProviders: options.webProviders === true });
+  const providers = createProvidersStore(api);
   const settings = createSettingsStore({
     api,
     onChange(current, patch) {
@@ -147,5 +147,6 @@ export function createServices(options: ServicesOptions = {}): ShellServices {
     notify,
     shell,
     remote: connection !== undefined,
+    ...(options.webCells ? { webCells: options.webCells } : {}),
   };
 }

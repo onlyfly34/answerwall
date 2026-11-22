@@ -167,6 +167,21 @@ export const zhTW: Record<keyof typeof en, string> = {
   'app.providers.endpoint.intro':
     '任何支援 OpenAI chat completions API 的伺服器。請求只會從伺服器送往你輸入的位址。',
   'app.providers.endpoint.none': '尚未設定端點。',
+  'app.providers.webCells.title': '網頁儲存格（瀏覽器擴充功能）',
+  'app.providers.webCells.intro':
+    '網頁儲存格會在其他格子旁邊，以內嵌框架顯示網站自己的網頁版（Claude、ChatGPT、Gemini、Grok、Z.ai）。它只存在於 AnswerWall 瀏覽器擴充功能（Chrome 與 Edge）的牆面頁面，也就是你已登入該網站的那個瀏覽器。本頁、桌面應用程式與手機只會顯示它存下的回答。',
+  'app.providers.webCells.stepGet':
+    '從與此伺服器版本相符的發行版下載 answerwall-extension-<版本>.zip 並解壓縮。',
+  'app.providers.webCells.releases': '發行版',
+  'app.providers.webCells.stepLoad':
+    '在 Chrome 或 Edge 開啟擴充功能頁面，開啟開發人員模式，選擇「載入未封裝項目」並選取解壓縮後的資料夾。此擴充功能未在任何商店上架。',
+  'app.providers.webCells.stepAllow':
+    '在此伺服器開啟網頁儲存格、選擇網站，並填入擴充功能第一個頁面顯示的 ID。',
+  'app.providers.webCells.openSettings': '開啟設定',
+  'app.providers.webCells.stepPair':
+    '點選擴充功能的圖示，輸入此伺服器的位址，以及「設定 > 裝置」中的配對碼。',
+  'app.providers.webCells.terms':
+    '這些網站的條款限制以自動化方式存取其網頁版。「填入提示」與「讀取回答」是兩個獨立的開關，預設皆為關閉；是否開啟由你自行決定。此處的任何內容都不是對這些條款允許什麼的陳述。',
   'app.providers.endpoint.add': '新增端點',
   'app.providers.endpoint.addTitle': '新增端點',
   'app.providers.endpoint.editTitle': '編輯端點',

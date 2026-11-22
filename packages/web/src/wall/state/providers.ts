@@ -7,18 +7,33 @@ import { makeTarget } from './slots.ts';
  * `not_installed` and `not_logged_in` come from a cached detection that may be
  * out of date, so they only warn; the provider itself has the last word.
  */
-export type ProviderIssue = 'missing' | 'disabled' | 'not_installed' | 'not_logged_in';
+export type ProviderIssue =
+  'missing' | 'disabled' | 'not_installed' | 'not_logged_in' | 'extension_only';
 
-export function providerIssue(status: ProviderStatus | undefined): ProviderIssue | undefined {
+/** The provider stands for a vendor's web app shown in a frame (a web cell). */
+export function isWebProvider(status: ProviderStatus | undefined): boolean {
+  return status?.instance.kind === 'web';
+}
+
+/**
+ * `showsWebCells`: this page can frame the vendors' sites (the wall page of
+ * the browser extension). Everywhere else a web provider is `extension_only`:
+ * its cell shows stored answers and takes no part in an ask.
+ */
+export function providerIssue(
+  status: ProviderStatus | undefined,
+  showsWebCells = false,
+): ProviderIssue | undefined {
   if (!status) return 'missing';
   if (!status.instance.enabled) return 'disabled';
+  if (isWebProvider(status) && !showsWebCells) return 'extension_only';
   if (status.detection && !status.detection.installed) return 'not_installed';
   if (status.detection?.loggedIn === 'no') return 'not_logged_in';
   return undefined;
 }
 
-export function canSendTo(status: ProviderStatus | undefined): boolean {
-  return status?.instance.enabled === true;
+export function canSendTo(status: ProviderStatus | undefined, showsWebCells = false): boolean {
+  return status?.instance.enabled === true && (showsWebCells || !isWebProvider(status));
 }
 
 /** The model a slot runs with: its own, else the provider's default. */
@@ -46,9 +61,12 @@ export function effortChoices(status: ProviderStatus | undefined, slot: AskTarge
     : efforts;
 }
 
-/** One slot per enabled provider: the wall of a fresh start. */
-export function defaultSlots(providers: readonly ProviderStatus[]): AskTarget[] {
+/** One slot per provider this page can send to: the wall of a fresh start. */
+export function defaultSlots(
+  providers: readonly ProviderStatus[],
+  showsWebCells = false,
+): AskTarget[] {
   return providers
-    .filter((status) => status.instance.enabled)
+    .filter((status) => canSendTo(status, showsWebCells))
     .map((status, index) => makeTarget(`s-${index + 1}`, status.instance.id));
 }

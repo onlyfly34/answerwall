@@ -36,6 +36,7 @@ import type {
   AskStreamStore,
   StreamConnection,
   Toast,
+  WebCellHost,
 } from './services.ts';
 
 export interface FakeAskStream extends AskStream {
@@ -115,6 +116,8 @@ export interface FakeServicesOptions {
   language?: Language;
   /** Handlers for the `api` methods the test needs; any other call rejects. */
   api?: Partial<ApiClient>;
+  /** Makes the page one that can frame the vendors' sites. */
+  webCells?: WebCellHost;
 }
 
 /** A provider that is installed, logged in and streams token by token. */
@@ -262,6 +265,7 @@ export function createFakeServices(options: FakeServicesOptions = {}): FakeServi
       toast: (toast) => void toasts.push(toast),
       reportError: (error) => void errors.push(error),
     },
+    ...(options.webCells ? { webCells: options.webCells } : {}),
     setProviders,
     apiCalls,
     settingsUpdates,

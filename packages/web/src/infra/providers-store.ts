@@ -5,24 +5,12 @@ import type { ApiClient, ProvidersStore } from '../contracts/services.ts';
 /** How long to wait before reading again while the server is still detecting. */
 export const FOLLOW_UP_MS = 1_000;
 
-export interface ProvidersStoreOptions {
-  /**
-   * Keep the web providers in the list. Only a page that can show web cells
-   * (the extension's wall page) does; everywhere else they are left out, so
-   * nothing offers a cell this page could not run.
-   */
-  webProviders?: boolean;
-}
-
 export function createProvidersStore(
   api: Pick<ApiClient, 'listProviders' | 'refreshProviders'>,
-  options: ProvidersStoreOptions = {},
 ): ProvidersStore {
-  const [all, setProviders] = createSignal<ProviderStatus[]>([]);
-  const providers = (): ProviderStatus[] =>
-    options.webProviders === true
-      ? all()
-      : all().filter((status) => status.instance.kind !== 'web');
+  // Web providers are listed like any other; the wall decides what a page
+  // that cannot frame a site shows for them.
+  const [providers, setProviders] = createSignal<ProviderStatus[]>([]);
   const [inFlight, setInFlight] = createSignal(0);
   /** Only the most recently started request may write: an older answer is stale. */
   let latest = 0;

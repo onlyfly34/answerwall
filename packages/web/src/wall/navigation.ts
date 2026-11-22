@@ -1,5 +1,5 @@
 /** Addresses on the wall's route that the history links to. */
-import { ROUTES } from '../contracts/routes.ts';
+import { hrefOf, ROUTES } from '../contracts/routes.ts';
 
 export const WALL_QUERY = {
   /** Shows this past ask read-only. */
@@ -9,7 +9,7 @@ export const WALL_QUERY = {
 } as const;
 
 export const viewAskHref = (askId: string): string =>
-  `${ROUTES.wall}?${WALL_QUERY.view}=${encodeURIComponent(askId)}`;
+  hrefOf(`${ROUTES.wall}?${WALL_QUERY.view}=${encodeURIComponent(askId)}`);
 
 export const reaskHref = (askId: string): string =>
-  `${ROUTES.wall}?${WALL_QUERY.reask}=${encodeURIComponent(askId)}`;
+  hrefOf(`${ROUTES.wall}?${WALL_QUERY.reask}=${encodeURIComponent(askId)}`);

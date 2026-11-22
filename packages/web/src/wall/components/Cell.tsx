@@ -10,15 +10,17 @@ import {
 } from 'solid-js';
 import type { Accessor, Component } from 'solid-js';
 import type { AskTarget, ProviderStatus, SlotSnapshot } from '@answerwall/core/protocol';
-import { ROUTES } from '../../contracts/routes.ts';
+import { hrefOf, ROUTES } from '../../contracts/routes.ts';
 import { useServices } from '../../contracts/services.ts';
 import { copyText } from '../clipboard.ts';
 import { COPIED_FEEDBACK_MS, Markdown } from '../markdown/Markdown.tsx';
 import { effectiveModel, providerIssue } from '../state/providers.ts';
+import { useWebCellRunner } from '../state/web-runner.ts';
 import { formatDuration, isActivePhase, slotPhase } from '../state/slot-view.ts';
 import { Icon } from './Icon.tsx';
 import { SlotPickers } from './SlotPickers.tsx';
 import type { SlotChange } from './SlotPickers.tsx';
+import { WebCellFrame } from './WebCellFrame.tsx';
 
 /** How close to the bottom (CSS px) still counts as "at the bottom". */
 const STICK_THRESHOLD_PX = 24;
@@ -53,14 +55,26 @@ export interface CellProps {
 }
 
 export const Cell: Component<CellProps> = (props) => {
-  const { i18n, providers } = useServices();
+  const { i18n, providers, settings, webCells } = useServices();
   const t = i18n.t;
+  const runner = useWebCellRunner();
 
   const status = createMemo((): ProviderStatus | undefined =>
     providers.providers().find((provider) => provider.instance.id === props.slot.providerId),
   );
   const label = () => status()?.instance.label ?? props.slot.providerId;
-  const issue = () => (props.readOnly ? undefined : providerIssue(status()));
+  const issue = () =>
+    props.readOnly ? undefined : providerIssue(status(), webCells !== undefined);
+  /**
+   * The site this cell frames: a web provider, on a page that can frame it,
+   * while the wall is live. A past ask shows the stored answer instead.
+   */
+  const framed = createMemo(() => {
+    const instance = status()?.instance;
+    return !props.readOnly && webCells && instance?.kind === 'web' && instance.enabled
+      ? instance.site
+      : undefined;
+  });
   const phase = createMemo(() => slotPhase(props.snapshot));
   const active = () => isActivePhase(phase());
 
@@ -86,7 +100,27 @@ export const Cell: Component<CellProps> = (props) => {
     return since === undefined ? undefined : formatDuration(props.now() - since, false);
   };
 
+  /** What a framed cell says instead of the wording for a provider the server runs. */
+  const webStatusText = (): string | undefined => {
+    if (!framed()) return undefined;
+    const note = runner?.note(props.slot.slotId);
+    const current = phase();
+    if (current === 'idle' || current === 'waiting' || current === 'streaming') {
+      if (note?.kind === 'stage') return t(`wall.web.status.${note.stage}`);
+      if (current !== 'idle') return t('wall.web.status.starting');
+      if (note?.kind === 'sent') return t('wall.web.status.sent');
+      if (note?.kind === 'failed') return t(`wall.web.failure.${note.detail}`);
+      const switches = settings.settings()?.webCells;
+      return switches?.fillPrompt === true || switches?.readAnswer === true
+        ? undefined
+        : t('wall.web.status.byHand');
+    }
+    return current === 'done' ? t('wall.web.status.stored') : undefined;
+  };
+
   const statusText = (): string => {
+    const web = webStatusText();
+    if (web !== undefined) return web;
     const block = props.snapshot?.streaming === 'block';
     switch (phase()) {
       case 'idle':
@@ -183,6 +217,7 @@ export const Cell: Component<CellProps> = (props) => {
       aria-label={props.single ? undefined : label()}
       data-slot-id={props.slot.slotId}
       data-phase={phase()}
+      data-web={framed() ? 'frame' : undefined}
       hidden={props.hidden}
     >
       <header class="wall-cell-header">
@@ -257,7 +292,7 @@ export const Cell: Component<CellProps> = (props) => {
             <p class="wall-cell-issue">
               {t(`wall.issue.notice.${current()}`)}{' '}
               <Show when={status()?.detection?.hint}>{(hint) => <span>{hint()} </span>}</Show>
-              <a href={ROUTES.providers}>{t('wall.issue.openProviders')}</a>
+              <a href={hrefOf(ROUTES.providers)}>{t('wall.issue.openProviders')}</a>
             </p>
           )}
         </Show>
@@ -326,13 +361,27 @@ export const Cell: Component<CellProps> = (props) => {
             </Show>
           </details>
         </Show>
-        <Markdown
-          text={props.snapshot?.text ?? ''}
-          final={!active()}
-          visible={!props.hidden}
-          onRendered={followOutput}
-        />
+        {/* A framed cell shows the site's own page; its stored answer is in history. */}
+        <Show when={!framed()}>
+          <Markdown
+            text={props.snapshot?.text ?? ''}
+            final={!active()}
+            visible={!props.hidden}
+            onRendered={followOutput}
+          />
+        </Show>
       </div>
+
+      {/* Keyed by the site alone: the frame survives every other change to the provider. */}
+      <Show when={webCells && framed()} keyed>
+        {(site) => (
+          <Show when={webCells}>
+            {(host) => (
+              <WebCellFrame slotId={props.slot.slotId} site={site} label={label()} host={host()} />
+            )}
+          </Show>
+        )}
+      </Show>
 
       <Show when={props.snapshot?.text}>
         <footer class="wall-cell-footer">

@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { createDefaultSettings, initialAskSnapshot } from '@answerwall/core/protocol';
 import { ApiError } from '../contracts/services.ts';
+import type { WebCellHost } from '../contracts/services.ts';
 import { createApiClient } from './api.ts';
 import { createRemoteConnection, withRemoteSession } from './connection.ts';
 import type { TokenStore } from './connection.ts';
@@ -214,7 +215,7 @@ describe('the session of a remote page', () => {
 
 describe('the services of a remote page', () => {
   function harness(
-    options: { meta?: Parameters<typeof testMeta>[0]; webProviders?: boolean } = {},
+    options: { meta?: Parameters<typeof testMeta>[0]; webCells?: WebCellHost } = {},
   ) {
     const settings = createDefaultSettings();
     settings.providers.push({
@@ -265,7 +266,7 @@ describe('the services of a remote page', () => {
     const tokens = memoryTokens(TOKEN);
     const services = createServices({
       connection: createRemoteConnection({ base: SERVER, tokens, fetch: http.fetch }),
-      ...(options.webProviders === undefined ? {} : { webProviders: options.webProviders }),
+      ...(options.webCells === undefined ? {} : { webCells: options.webCells }),
       buildVersion: '9.9.9-extension',
       visibility: fakeVisibility(),
       language: { storage: memoryStorage(), preferred: ['en'], root: { lang: '' } },
@@ -302,17 +303,24 @@ describe('the services of a remote page', () => {
     expect(otherProtocol.services.shell.phase()).toBe('stale');
   });
 
-  test('the wall is offered web providers only when this page can show them', async () => {
+  test('web providers are listed on every page; only a page with a host can show their cells', async () => {
     const plain = harness();
     await plain.services.shell.start();
-    expect(
-      plain.services.providers.providers().map((status) => status.instance.kind),
-    ).not.toContain('web');
-
-    const capable = harness({ webProviders: true });
-    await capable.services.shell.start();
-    expect(capable.services.providers.providers().map((status) => status.instance.id)).toContain(
+    expect(plain.services.providers.providers().map((status) => status.instance.id)).toContain(
       'web-claude',
     );
+    expect(plain.services.webCells).toBeUndefined();
+
+    const host: WebCellHost = {
+      site: () => undefined,
+      attach: () => ({
+        connection: () => 'loading',
+        run: async () => ({ outcome: 'aborted' }),
+        dispose: () => undefined,
+      }),
+    };
+    const capable = harness({ webCells: host });
+    await capable.services.shell.start();
+    expect(capable.services.webCells).toBe(host);
   });
 });

@@ -2,7 +2,13 @@ import { For, Show } from 'solid-js';
 import type { Component } from 'solid-js';
 import type { AskTarget, ProviderStatus } from '@answerwall/core/protocol';
 import { useServices } from '../../contracts/services.ts';
-import { effortChoices, modelChoices, providerIssue } from '../state/providers.ts';
+import {
+  canSendTo,
+  effortChoices,
+  isWebProvider,
+  modelChoices,
+  providerIssue,
+} from '../state/providers.ts';
 
 export interface SlotChange {
   providerId?: string;
@@ -19,11 +25,12 @@ export interface SlotPickersProps {
 
 /** Provider, model and effort of one cell; they apply to the next ask. */
 export const SlotPickers: Component<SlotPickersProps> = (props) => {
-  const { i18n, providers } = useServices();
+  const { i18n, providers, webCells } = useServices();
+  const showsWebCells = webCells !== undefined;
   const efforts = () => effortChoices(props.status, props.slot);
 
   const providerOptionLabel = (status: ProviderStatus): string => {
-    const issue = providerIssue(status);
+    const issue = providerIssue(status, showsWebCells);
     return issue
       ? i18n.t('wall.picker.providerWithIssue', {
           label: status.instance.label,
@@ -54,7 +61,7 @@ export const SlotPickers: Component<SlotPickersProps> = (props) => {
             {(status) => (
               <option
                 value={status.instance.id}
-                disabled={!status.instance.enabled}
+                disabled={!canSendTo(status, showsWebCells)}
                 selected={status.instance.id === props.slot.providerId}
               >
                 {providerOptionLabel(status)}
@@ -63,30 +70,33 @@ export const SlotPickers: Component<SlotPickersProps> = (props) => {
           </For>
         </select>
       </label>
-      <label class="wall-picker">
-        <span class="wall-visually-hidden">{i18n.t('wall.picker.model')}</span>
-        <select
-          value={props.slot.model ?? ''}
-          onChange={(event) =>
-            props.onChange({ model: event.currentTarget.value || null, effort: null })
-          }
-        >
-          <option value="" selected={props.slot.model === undefined}>
-            {props.status?.instance.defaultModel
-              ? i18n.t('wall.picker.defaultModelNamed', {
-                  model: props.status.instance.defaultModel,
-                })
-              : i18n.t('wall.picker.defaultModel')}
-          </option>
-          <For each={modelChoices(props.status, props.slot)}>
-            {(model) => (
-              <option value={model.id} selected={model.id === props.slot.model}>
-                {model.label ?? model.id}
-              </option>
-            )}
-          </For>
-        </select>
-      </label>
+      {/* A web app chooses its model itself, in its own page. */}
+      <Show when={!isWebProvider(props.status)}>
+        <label class="wall-picker">
+          <span class="wall-visually-hidden">{i18n.t('wall.picker.model')}</span>
+          <select
+            value={props.slot.model ?? ''}
+            onChange={(event) =>
+              props.onChange({ model: event.currentTarget.value || null, effort: null })
+            }
+          >
+            <option value="" selected={props.slot.model === undefined}>
+              {props.status?.instance.defaultModel
+                ? i18n.t('wall.picker.defaultModelNamed', {
+                    model: props.status.instance.defaultModel,
+                  })
+                : i18n.t('wall.picker.defaultModel')}
+            </option>
+            <For each={modelChoices(props.status, props.slot)}>
+              {(model) => (
+                <option value={model.id} selected={model.id === props.slot.model}>
+                  {model.label ?? model.id}
+                </option>
+              )}
+            </For>
+          </select>
+        </label>
+      </Show>
       <Show when={efforts().length > 0}>
         <label class="wall-picker">
           <span class="wall-visually-hidden">{i18n.t('wall.picker.effort')}</span>
