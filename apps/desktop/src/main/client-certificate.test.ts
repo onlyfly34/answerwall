@@ -1,12 +1,11 @@
 import { EventEmitter } from 'node:events';
 import { describe, expect, test } from 'vitest';
 import { refuseClientCertificates } from './client-certificate.ts';
-import type { ClientCertificateSource } from './client-certificate.ts';
 
 describe('refuseClientCertificates', () => {
   test('a server that asks for a client certificate is offered none', () => {
     const app = new EventEmitter();
-    refuseClientCertificates(app as ClientCertificateSource);
+    refuseClientCertificates(app);
     let prevented = 0;
     const answers: unknown[][] = [];
 
