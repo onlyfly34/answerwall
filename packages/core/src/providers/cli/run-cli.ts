@@ -24,6 +24,12 @@ export interface CliContext {
   exitDrainMs?: number;
   maxLineLength?: number;
   detectTimeoutMs?: number;
+  /**
+   * Receives every complete stdout line of a run as the CLI printed it,
+   * before it is parsed. Only `pnpm smoke:real` sets it, to check what a real
+   * CLI reported about its own session; the server never does.
+   */
+  onStdoutLine?: (line: string) => void;
 }
 
 export type ContentEvent = Extract<ProviderEvent, { type: 'delta' | 'reasoning' | 'notice' }>;
@@ -174,6 +180,7 @@ export async function* runCli(
         truncatedLines++;
         continue;
       }
+      context.onStdoutLine?.(item.text);
       const value = parseJsonLine(item.text);
       if (value === undefined) {
         if (raw.length < MAX_RAW_LENGTH)

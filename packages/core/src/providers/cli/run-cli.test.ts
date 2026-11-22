@@ -95,6 +95,21 @@ describe('runCli', () => {
     expect((events.at(-1) as { elapsedMs: number }).elapsedMs).toBeGreaterThanOrEqual(0);
   });
 
+  test('hands every stdout line to the observer exactly as printed, next to the parsed events', async () => {
+    await harness.cleanup();
+    const lines: string[] = [];
+    harness = await createMockCliHarness({ context: { onStdoutLine: (line) => lines.push(line) } });
+    const request = await harness.request();
+
+    const events = await collect(
+      runCli(invocation(request.workDir, {}, 'mock-garbage'), request, harness.context),
+    );
+
+    expect(lines.length).toBeGreaterThan(0);
+    expect(lines.every((line) => parseJsonLine(line) === undefined)).toBe(true);
+    expect(answerOf(events)).toBe(lines.join('\n').trim());
+  });
+
   test('runs the child in the work dir with the prompt file written there, private to the user', async () => {
     const request = await harness.request();
     await collect(runCli(invocation(request.workDir), request, harness.context));
