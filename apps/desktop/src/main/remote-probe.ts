@@ -8,7 +8,7 @@
 import { API_VERSION, API_PATHS, BRAND, MetaSchema } from '@answerwall/core/protocol';
 import type { ConnectionProblem, RemoteCheckResult } from '../shared/ipc.ts';
 import { validateRemoteUrl } from './remote-url.ts';
-import type { Resolver } from './remote-url.ts';
+import type { DirectCheck, Resolver } from './remote-url.ts';
 
 export const PROBE_TIMEOUT_MS = 10_000;
 /** A meta document is a few hundred bytes; more than this is not one. */
@@ -20,6 +20,8 @@ export type MetaFetch =
 
 export interface ProbeDeps {
   resolve: Resolver;
+  /** Whether a request goes straight to its host; without it, no proxy is assumed. */
+  direct?: DirectCheck;
   /** `GET <url>` without credentials and without following redirects. */
   fetchMeta(url: string): Promise<MetaFetch>;
   appVersion: string;
@@ -41,7 +43,7 @@ export function classifyFetchFailure(failure: {
 }
 
 export async function probeRemote(input: string, deps: ProbeDeps): Promise<RemoteCheckResult> {
-  const validated = await validateRemoteUrl(input, deps.resolve);
+  const validated = await validateRemoteUrl(input, deps.resolve, deps.direct);
   if (!validated.ok) return { ok: false, problem: { kind: 'url', detail: validated.problem } };
 
   const response = await deps.fetchMeta(`${validated.origin}${API_PATHS.meta}`);

@@ -80,6 +80,8 @@ export interface LaunchOptions {
   env?: Record<string, string>;
   /** Milliseconds between the lines of a mock's `slow` scenario. */
   mockDelayMs?: number;
+  /** Extra command-line switches for Chromium. */
+  args?: string[];
 }
 
 export interface DesktopApp {
@@ -104,7 +106,10 @@ export interface DesktopApp {
   log(): Promise<string>;
 }
 
-export function launchArgs(profile: Profile): { executablePath: string; args: string[] } {
+export function launchArgs(
+  profile: Profile,
+  extra: string[] = [],
+): { executablePath: string; args: string[] } {
   return {
     executablePath: PACKAGED_EXECUTABLE ?? electronBinary(),
     args: [
@@ -112,6 +117,7 @@ export function launchArgs(profile: Profile): { executablePath: string; args: st
       `--user-data-dir=${profile.userData}`,
       '--lang=en-US',
       ...(process.platform === 'linux' ? LINUX_ARGS : []),
+      ...extra,
     ],
   };
 }
@@ -144,7 +150,7 @@ export async function launchDesktop(
   options: LaunchOptions = {},
 ): Promise<DesktopApp> {
   const app = await electron.launch({
-    ...launchArgs(profile),
+    ...launchArgs(profile, options.args),
     env: launchEnv(profile, options),
     cwd: profile.dir,
     timeout: 60_000,

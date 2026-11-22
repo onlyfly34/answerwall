@@ -221,6 +221,56 @@ test.describe('the connection page', () => {
     }
   });
 
+  test('plain HTTP never leaves for a public address, at the check and for every request after it', async ({
+    launch,
+    profile,
+    server,
+  }) => {
+    await profile.seed({ mode: 'remote', remoteUrl: server.base });
+    // Two names in Chromium's resolver, the one the window's connections use:
+    // one on this computer, one at a public address (a documentation range).
+    const app = await launch({
+      args: ['--host-resolver-rules=MAP home.test 127.0.0.1, MAP moved.test 203.0.113.9'],
+    });
+    const page = await app.contentWindow();
+    await expect(page.getByLabel('Device name')).toBeVisible();
+
+    await app.clickMenu(0, 0);
+    const connection = await app.connectionWindow();
+    const address = connection.getByLabel('Server address');
+    const result = connection.getByRole('status');
+    const port = new URL(server.base).port;
+    // The name is judged by the addresses Chromium itself connects to.
+    await address.fill(`http://moved.test:${port}`);
+    await connection.getByRole('button', { name: 'Check' }).click();
+    await expect(result).toContainText('Plain HTTP is allowed only for this computer');
+    // A name on this computer passes the rule and is requested (the server
+    // does not know itself under that name, which is another matter).
+    await address.fill(`http://home.test:${port}`);
+    await connection.getByRole('button', { name: 'Check' }).click();
+    await expect(result).toContainText('it is not a server running AnswerWall');
+
+    // After the check: whatever the remote window's partition requests is
+    // judged again, one request at a time, and is cancelled before it leaves.
+    const attempt = (url: string): Promise<string> =>
+      app.electron.evaluate(async ({ session }, target) => {
+        try {
+          const response = await session.fromPartition('persist:remote').fetch(target);
+          return `answered ${response.status}`;
+        } catch (error) {
+          return error instanceof Error ? error.message : String(error);
+        }
+      }, url);
+    expect(await attempt(`http://moved.test:${port}/api/meta`)).toContain('ERR_BLOCKED_BY_CLIENT');
+    expect(await attempt('http://203.0.113.9:9/')).toContain('ERR_BLOCKED_BY_CLIENT');
+    expect(await attempt(`${server.base}/api/meta`)).toBe('answered 200');
+    const log = await app.log();
+    expect(log.match(/a plain HTTP request was not sent/g)).toHaveLength(2);
+    expect(log).toContain('"reason":"insecure_public"');
+    // The log does not name the machine that was asked for.
+    expect(log).not.toContain('moved.test');
+  });
+
   test('a saved server that does not answer brings up the connection page; local mode is one click away', async ({
     launch,
     profile,

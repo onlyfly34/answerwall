@@ -1,5 +1,10 @@
 import { describe, expect, test } from 'vitest';
-import { classifyAddress, parseRemoteUrl, validateRemoteUrl } from './remote-url.ts';
+import {
+  classifyAddress,
+  parseRemoteUrl,
+  plainHttpRequestVerdict,
+  validateRemoteUrl,
+} from './remote-url.ts';
 import type { Resolver } from './remote-url.ts';
 
 const never: Resolver = () => {
@@ -159,5 +164,121 @@ describe('validateRemoteUrl', () => {
       ok: false,
       problem: 'path',
     });
+  });
+
+  test('plain http through a proxy is refused, whatever the address looks like from here', async () => {
+    const asked: string[] = [];
+    const proxied = async (url: string): Promise<boolean> => {
+      asked.push(url);
+      return false;
+    };
+
+    expect(await validateRemoteUrl('http://192.168.1.5:7717', never, proxied)).toEqual({
+      ok: false,
+      problem: 'insecure_proxy',
+    });
+    expect(await validateRemoteUrl('http://nas.lan', resolvesTo('10.0.0.5'), proxied)).toEqual({
+      ok: false,
+      problem: 'insecure_proxy',
+    });
+    expect(asked).toEqual(['http://192.168.1.5:7717/', 'http://nas.lan/']);
+    // HTTPS is the proxy's business as little as anyone else's.
+    expect(await validateRemoteUrl('https://wall.example.com', never, proxied)).toMatchObject({
+      ok: true,
+    });
+  });
+
+  test('a proxy that cannot be asked about counts as one', async () => {
+    const failing = async (): Promise<boolean> => {
+      throw new Error('no proxy service');
+    };
+    expect(await validateRemoteUrl('http://192.168.1.5', never, failing)).toEqual({
+      ok: false,
+      problem: 'insecure_proxy',
+    });
+  });
+});
+
+describe('plainHttpRequestVerdict', () => {
+  const direct = async (): Promise<boolean> => true;
+
+  test('the rule holds for every later request, not only for the address that was checked', async () => {
+    // The name the user saved: private when it was checked, public an hour later.
+    let addresses = ['192.168.1.9'];
+    const route = { resolve: async () => addresses, direct };
+
+    expect(await validateRemoteUrl('http://nas.example:7717', route.resolve)).toMatchObject({
+      ok: true,
+    });
+    expect(await plainHttpRequestVerdict('http://nas.example:7717/api/ask', route)).toBe('allow');
+
+    addresses = ['203.0.113.7'];
+    expect(await plainHttpRequestVerdict('http://nas.example:7717/api/ask', route)).toBe(
+      'insecure_public',
+    );
+    expect(await plainHttpRequestVerdict('ws://nas.example:7717/socket', route)).toBe(
+      'insecure_public',
+    );
+
+    addresses = ['192.168.1.9', '2001:db8::1'];
+    expect(await plainHttpRequestVerdict('http://nas.example:7717/', route)).toBe(
+      'insecure_public',
+    );
+  });
+
+  test('a proxy that comes into play later stops plain http as well', async () => {
+    let proxy = false;
+    const route = { resolve: resolvesTo('10.0.0.5'), direct: async () => !proxy };
+
+    expect(await plainHttpRequestVerdict('http://nas.lan/', route)).toBe('allow');
+    proxy = true;
+    expect(await plainHttpRequestVerdict('http://nas.lan/', route)).toBe('insecure_proxy');
+    expect(await plainHttpRequestVerdict('http://10.0.0.5/', route)).toBe('insecure_proxy');
+  });
+
+  test('a name that no longer resolves is not requested', async () => {
+    const route = {
+      resolve: async (): Promise<string[]> => {
+        throw new Error('ERR_NAME_NOT_RESOLVED');
+      },
+      direct,
+    };
+    expect(await plainHttpRequestVerdict('http://nas.lan/', route)).toBe('unresolved');
+  });
+
+  test.each([
+    'http://127.0.0.1:7717/api/meta',
+    'http://[::1]:7717/',
+    'http://localhost:7717/',
+    'http://192.168.1.5/assets/app.js',
+    'ws://10.0.0.5/socket',
+  ])('%s needs no lookup and is allowed', async (url) => {
+    expect(await plainHttpRequestVerdict(url, { resolve: never, direct })).toBe('allow');
+  });
+
+  test.each(['http://8.8.8.8/', 'http://[2001:4860:4860::8888]/x', 'ws://172.32.0.1/'])(
+    '%s is a public address and is refused',
+    async (url) => {
+      expect(await plainHttpRequestVerdict(url, { resolve: never, direct })).toBe(
+        'insecure_public',
+      );
+    },
+  );
+
+  test.each([
+    'https://wall.example.com/api/ask',
+    'wss://wall.example.com/socket',
+    'data:text/plain,hello',
+    'blob:https://wall.example.com/0b1c',
+    'devtools://devtools/bundled/inspector.html',
+    'not a url',
+  ])('%s is not plain http and is none of its business', async (url) => {
+    const untouched = {
+      resolve: never,
+      direct: async (): Promise<boolean> => {
+        throw new Error('the proxy was asked');
+      },
+    };
+    expect(await plainHttpRequestVerdict(url, untouched)).toBe('allow');
   });
 });

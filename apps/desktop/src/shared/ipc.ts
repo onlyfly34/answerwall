@@ -38,6 +38,8 @@ export type RemoteUrlProblem =
   | 'path'
   /** Plain HTTP to an address that is not loopback or private. */
   | 'insecure_public'
+  /** Plain HTTP that would go through a proxy, which then decides where it ends up. */
+  | 'insecure_proxy'
   /** Plain HTTP to a name that could not be resolved, so its address class is unknown. */
   | 'unresolved';
 

@@ -232,8 +232,20 @@ directory).
   storage, service workers and caches are cleared (`remote-session.ts`), so
   going back to an earlier server means pairing again. `https` to any
   host; `http` only when every address of the host is loopback or private
-  (RFC 1918, link-local, `100.64.0.0/10`, `fc00::/7`, `fe80::/10`), shown
-  with a warning on the connection page and in the window title. Before
+  (RFC 1918, link-local, `100.64.0.0/10`, `fc00::/7`, `fe80::/10`) and the
+  request would not go through a proxy, shown with a warning on the
+  connection page and in the window title. The addresses and the proxy
+  decision are asked of the partition's own network stack
+  (`ses.resolveHost`, `ses.resolveProxy`), not of Node, and not only once:
+  `webRequest.onBeforeRequest` of the partition applies the same rule to
+  every `http:` and `ws:` request and cancels one that fails it, so a name
+  that resolves elsewhere later (another network, a changed record) or a
+  proxy that appears later does not get the session cookie in clear text;
+  when that happens to the window's own server, the connection page opens
+  with the reason. What this cannot rule out: Electron does not report
+  the address a connection actually used, so a name whose answers change
+  between this lookup and Chromium's own connection, within the lifetime
+  of its host cache entry, is not caught. Before
   loading, the shell requests `GET /api/meta` through the same partition
   and refuses what is not a server of this product. **Certificate errors
   are never bypassed**: there is no `certificate-error` handler, no custom

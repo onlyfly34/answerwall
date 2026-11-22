@@ -9,7 +9,6 @@
  */
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { lookup } from 'node:dns/promises';
 import { createServer as createNetServer } from 'node:net';
 import { homedir } from 'node:os';
 import path from 'node:path';
@@ -54,14 +53,17 @@ import type { Confinement } from './navigation.ts';
 import { classifyFetchFailure, PROBE_TIMEOUT_MS, probeRemote } from './remote-probe.ts';
 import type { MetaFetch } from './remote-probe.ts';
 import { claimRemoteStore } from './remote-session.ts';
+import type { PlainHttpVerdict } from './remote-url.ts';
 import { createEncryptedSecretStore } from './secrets.ts';
 import { createUpdater } from './updater.ts';
 import type { Ask, UpdaterEngine } from './updater.ts';
 import {
   createWindow,
+  guardRemoteSession,
   prepareConnectionSession,
   prepareLocalSession,
   prepareRemoteSession,
+  remoteRoute,
 } from './windows.ts';
 
 /** The bundle's own directory (`dist/`), inside the archive when packaged. */
@@ -114,7 +116,8 @@ const connectionConfinement: Confinement = {
 let t: Translate = createTranslator(messagesFor('en'));
 let core: RunningCore | undefined;
 /** The one window that shows a server's page; `core` is the local server it was opened for. */
-let content: { window: BrowserWindow; mode: ConnectionMode; core?: RunningCore } | undefined;
+let content:
+  { window: BrowserWindow; mode: ConnectionMode; core?: RunningCore; origin?: string } | undefined;
 let connection: BrowserWindow | undefined;
 /** Why the connection page is showing, when it was not the user who opened it. */
 let connectionProblem: ConnectionProblem | undefined;
@@ -264,9 +267,13 @@ function watch(window: BrowserWindow): void {
 }
 
 /** Makes `window` the one content window; the previous one goes away. */
-function replaceContent(window: BrowserWindow, mode: ConnectionMode, running?: RunningCore): void {
+function replaceContent(
+  window: BrowserWindow,
+  mode: ConnectionMode,
+  from: { core: RunningCore } | { origin: string },
+): void {
   const previous = content?.window;
-  content = { window, mode, ...(running ? { core: running } : {}) };
+  content = { window, mode, ...from };
   window.on('closed', () => {
     if (content?.window === window) content = undefined;
   });
@@ -304,7 +311,7 @@ async function openLocal(): Promise<void> {
     icon: PATHS.icon,
     devTools: !app.isPackaged,
   });
-  replaceContent(window, 'local', running);
+  replaceContent(window, 'local', { core: running });
   await window.loadURL(`${running.grant.origin}/`);
 }
 
@@ -337,7 +344,7 @@ async function openRemote(server: RemoteServerInfo): Promise<void> {
     showConnection(classifyFetchFailure({ error: description, timedOut: false }));
   });
   // The previous window goes away here, so nothing of another server writes any more.
-  replaceContent(window, 'remote');
+  replaceContent(window, 'remote', { origin: server.origin });
   // In this order: the partition is emptied of another server's state, then
   // it is recorded whose it is now, and only then is anything of it loaded.
   const store = session.fromPartition(APP.partitions.remote);
@@ -409,10 +416,27 @@ async function fetchMeta(url: string): Promise<MetaFetch> {
 
 const checkRemote = (url: string): Promise<RemoteCheckResult> =>
   probeRemote(url, {
-    resolve: async (host) => (await lookup(host, { all: true })).map((entry) => entry.address),
+    // Chromium's resolver and proxy settings: the ones the window's connections use.
+    ...remoteRoute(),
     fetchMeta,
     appVersion: app.getVersion(),
   });
+
+/**
+ * A request of the remote window's partition was cancelled by the rule for
+ * plain HTTP (`guardRemoteSession`). When it was meant for the server the
+ * window shows, that server can no longer be used as it was accepted: the
+ * connection page says why.
+ */
+function remoteRequestRefused(url: string, verdict: Exclude<PlainHttpVerdict, 'allow'>): void {
+  // Not the address: it can name a machine of the user.
+  logger.warn('a plain HTTP request was not sent', { reason: verdict });
+  if (verdict === 'unresolved') return;
+  if (content?.mode !== 'remote' || content.origin === undefined) return;
+  if (!isSameOrigin(url.replace(/^ws:/i, 'http:'), content.origin)) return;
+  if (connection && !connection.isDestroyed()) return;
+  showConnection({ kind: 'url', detail: verdict });
+}
 
 async function applyChoice(choice: ConnectionChoice): Promise<ApplyResult> {
   if (choice.mode === 'local') {
@@ -603,6 +627,8 @@ async function main(): Promise<void> {
   // Linux and macOS: the system is shutting down.
   powerMonitor.on('shutdown', () => app.quit());
 
+  // Before the remote partition makes its first request.
+  guardRemoteSession(remoteRequestRefused);
   registerIpc(updater.available);
   Menu.setApplicationMenu(
     Menu.buildFromTemplate(

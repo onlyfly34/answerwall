@@ -37,6 +37,8 @@ export const en = {
     'Enter only the server’s origin, without a path: https://wall.example.com or https://wall.example.com:7717',
   'problem.url.insecure_public':
     'Plain HTTP is allowed only for this computer and for private network addresses. Use https:// for this server.',
+  'problem.url.insecure_proxy':
+    'Plain HTTP is allowed only straight to this computer or to a private network address, and this address would be reached through a proxy. Use https:// for this server, or exclude the address from the proxy.',
   'problem.url.unresolved':
     'The name could not be resolved, so it is unknown whether plain HTTP is safe for it. Check the name or use https://.',
   'problem.unreachable':

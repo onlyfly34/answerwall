@@ -37,6 +37,8 @@ export const zhTW: Record<keyof typeof en, string> = {
     '只輸入伺服器的來源，不含路徑：https://wall.example.com 或 https://wall.example.com:7717',
   'problem.url.insecure_public':
     '未加密的 HTTP 只允許用於這台電腦和私人網路位址。這台伺服器請使用 https://。',
+  'problem.url.insecure_proxy':
+    '未加密的 HTTP 只允許直接連到這台電腦或私人網路位址，而這個位址會經由 Proxy 連線。這台伺服器請使用 https://，或將這個位址排除在 Proxy 之外。',
   'problem.url.unresolved':
     '無法解析這個名稱，因此無法判斷對它使用未加密的 HTTP 是否安全。請檢查名稱，或改用 https://。',
   'problem.unreachable': '伺服器沒有回應。請檢查位址，並確認伺服器正在執行。',

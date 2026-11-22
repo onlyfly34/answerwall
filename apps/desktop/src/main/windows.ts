@@ -14,6 +14,8 @@ import {
   windowOpenAction,
 } from './navigation.ts';
 import type { Confinement } from './navigation.ts';
+import { plainHttpRequestVerdict } from './remote-url.ts';
+import type { PlainHttpRoute, PlainHttpVerdict } from './remote-url.ts';
 import { lockedWebPreferences } from './web-preferences.ts';
 
 /** The one permission a page gets: writing text to the clipboard, for the copy buttons. */
@@ -62,6 +64,41 @@ export function prepareRemoteSession(origin: string): Session {
   const ses = session.fromPartition(APP.partitions.remote);
   restrictPermissions(ses, origin);
   return ses;
+}
+
+/**
+ * How the remote partition reaches a host: asked of Chromium's own resolver
+ * and proxy settings, the ones its connections use, not of Node's.
+ */
+export function remoteRoute(): PlainHttpRoute {
+  const ses = session.fromPartition(APP.partitions.remote);
+  return {
+    resolve: async (host) =>
+      (await ses.resolveHost(host)).endpoints.map((endpoint) => endpoint.address),
+    // A proxy list, `PROXY proxy.example:8080; DIRECT` for one, is not direct.
+    direct: async (url) => (await ses.resolveProxy(url)).trim().toUpperCase() === 'DIRECT',
+  };
+}
+
+/**
+ * Applies the rule for plain HTTP to every request of the remote partition,
+ * for as long as the app runs: one that would go to a public address or
+ * through a proxy is cancelled before it leaves, and `refused` is told.
+ * Call it once, before the partition is used.
+ */
+export function guardRemoteSession(
+  refused: (url: string, verdict: Exclude<PlainHttpVerdict, 'allow'>) => void,
+): void {
+  const route = remoteRoute();
+  session.fromPartition(APP.partitions.remote).webRequest.onBeforeRequest((details, callback) => {
+    void plainHttpRequestVerdict(details.url, route).then(
+      (verdict) => {
+        callback({ cancel: verdict !== 'allow' });
+        if (verdict !== 'allow') refused(details.url, verdict);
+      },
+      () => callback({ cancel: true }),
+    );
+  });
 }
 
 export function prepareConnectionSession(): Session {

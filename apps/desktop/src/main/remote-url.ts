@@ -1,8 +1,8 @@
 /**
  * Which remote server addresses the app accepts. HTTPS to anything; plain
- * HTTP only to this computer and to private network addresses, where the
- * caller shows a warning. Nothing here touches the network except the name
- * lookup the caller passes in.
+ * HTTP only to this computer and to private network addresses, reached
+ * without a proxy, where the caller shows a warning. Nothing here touches
+ * the network except the lookups the caller passes in.
  */
 import { BlockList, isIP } from 'node:net';
 import type { RemoteUrlProblem } from '../shared/ipc.ts';
@@ -85,6 +85,22 @@ export function parseRemoteUrl(input: string): ParsedRemoteUrl {
 /** Resolves a host name to every address it has; rejects when it has none. */
 export type Resolver = (host: string) => Promise<string[]>;
 
+/**
+ * Whether a request for this URL goes straight to its host. Through a proxy
+ * it does not: the proxy receives the request in clear text and chooses the
+ * address by itself, so nothing here can tell where it ends up.
+ */
+export type DirectCheck = (url: string) => Promise<boolean>;
+
+/** How plain HTTP reaches a host; both answers must come from the network stack that connects. */
+export interface PlainHttpRoute {
+  resolve: Resolver;
+  direct: DirectCheck;
+}
+
+/** Why plain HTTP to a host is refused, or `allow`. */
+export type PlainHttpVerdict = 'allow' | 'insecure_public' | 'insecure_proxy' | 'unresolved';
+
 export type ValidatedRemoteUrl =
   { ok: true; origin: string; insecure: boolean } | { ok: false; problem: RemoteUrlProblem };
 
@@ -92,32 +108,78 @@ const isLocalhostName = (host: string): boolean =>
   host === 'localhost' || host.endsWith('.localhost');
 
 /**
- * {@link parseRemoteUrl}, then the rule for plain HTTP: every address of the
- * host must be loopback or private. A name is resolved to decide that; when
- * it does not resolve, plain HTTP is refused.
+ * The rule for plain HTTP: every address of the host must be loopback or
+ * private, and the request must go there directly. A name is resolved to
+ * decide that; when it does not resolve, plain HTTP is refused.
  */
-export async function validateRemoteUrl(
-  input: string,
-  resolve: Resolver,
-): Promise<ValidatedRemoteUrl> {
-  const parsed = parseRemoteUrl(input);
-  if (!parsed.ok) return parsed;
-  if (parsed.secure) return { ok: true, origin: parsed.origin, insecure: false };
-
-  const { host } = parsed;
+async function plainHttpVerdict(
+  host: string,
+  url: string,
+  route: PlainHttpRoute,
+): Promise<PlainHttpVerdict> {
   let addresses: string[];
   if (isIP(host) !== 0) addresses = [host];
   else if (isLocalhostName(host)) addresses = ['127.0.0.1'];
   else {
     try {
-      addresses = await resolve(host);
+      addresses = await route.resolve(host);
     } catch {
-      return { ok: false, problem: 'unresolved' };
+      return 'unresolved';
     }
-    if (addresses.length === 0) return { ok: false, problem: 'unresolved' };
+    if (addresses.length === 0) return 'unresolved';
   }
-  if (addresses.some((address) => classifyAddress(address) === 'public')) {
-    return { ok: false, problem: 'insecure_public' };
+  if (addresses.some((address) => classifyAddress(address) === 'public')) return 'insecure_public';
+  let direct: boolean;
+  try {
+    direct = await route.direct(url);
+  } catch {
+    direct = false;
   }
+  return direct ? 'allow' : 'insecure_proxy';
+}
+
+const alwaysDirect: DirectCheck = async () => true;
+
+/**
+ * {@link parseRemoteUrl}, then the rule for plain HTTP. The same rule is
+ * applied again to every request afterwards: {@link plainHttpRequestVerdict}.
+ * Without `direct`, no proxy is assumed.
+ */
+export async function validateRemoteUrl(
+  input: string,
+  resolve: Resolver,
+  direct: DirectCheck = alwaysDirect,
+): Promise<ValidatedRemoteUrl> {
+  const parsed = parseRemoteUrl(input);
+  if (!parsed.ok) return parsed;
+  if (parsed.secure) return { ok: true, origin: parsed.origin, insecure: false };
+
+  const verdict = await plainHttpVerdict(parsed.host, `${parsed.origin}/`, { resolve, direct });
+  if (verdict !== 'allow') return { ok: false, problem: verdict };
   return { ok: true, origin: parsed.origin, insecure: true };
+}
+
+const PLAIN_SCHEMES = new Set(['http:', 'ws:']);
+
+/**
+ * The rule for plain HTTP, applied to one request that is about to leave.
+ * Checking an address once, before the window opens, says nothing about the
+ * connections made later: a name can resolve to another address by then (a
+ * laptop that moved to another network, a short-lived DNS record), and a
+ * proxy can come into play. So the remote window's session asks this for
+ * every request and cancels what is not allowed. Encrypted requests and
+ * requests that do not use the network at all are not its concern.
+ */
+export async function plainHttpRequestVerdict(
+  url: string,
+  route: PlainHttpRoute,
+): Promise<PlainHttpVerdict> {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return 'allow';
+  }
+  if (!PLAIN_SCHEMES.has(parsed.protocol)) return 'allow';
+  return plainHttpVerdict(parsed.hostname.replace(/^\[(.*)\]$/, '$1'), url, route);
 }
