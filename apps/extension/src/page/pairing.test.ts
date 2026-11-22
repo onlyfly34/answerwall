@@ -8,6 +8,7 @@ import {
   readConnection,
   saveConnection,
   SERVER_KEY,
+  signOut,
   TOKEN_KEY,
   tokenStore,
 } from './pairing.ts';
@@ -244,6 +245,27 @@ function memoryStorage(initial: Record<string, unknown> = {}) {
     },
   };
 }
+
+describe('signing the device out', () => {
+  test('is a JSON request with the token and no cookie: the server refuses any other write', async () => {
+    const { env, calls } = environment({ 'POST /api/auth/logout': () => json({ ok: true }) });
+    expect(await signOut(env.fetch, ADDRESS.origin, TOKEN)).toBe(true);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.url).toBe(`${ADDRESS.origin}/api/auth/logout`);
+    expect(calls[0]?.init).toMatchObject({ method: 'POST', credentials: 'omit', body: '{}' });
+    const headers = new Headers(calls[0]?.init.headers);
+    expect(headers.get('Content-Type')).toBe('application/json');
+    expect(headers.get('Authorization')).toBe(`Bearer ${TOKEN}`);
+  });
+
+  test('a refusal or a server that does not answer is reported, not thrown', async () => {
+    const refused = environment({
+      'POST /api/auth/logout': () => json({ error: { code: 'unsupported_media_type' } }, 415),
+    });
+    expect(await signOut(refused.env.fetch, ADDRESS.origin, TOKEN)).toBe(false);
+    expect(await signOut(environment({}).env.fetch, ADDRESS.origin, TOKEN)).toBe(false);
+  });
+});
 
 describe('what the extension keeps', () => {
   test('the server and the token, and nothing after forgetting', async () => {

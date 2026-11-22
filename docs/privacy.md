@@ -65,7 +65,8 @@ the page itself (never of an answer or any other API response).
 extension's device token, in the extension's own storage, and the same
 per-page items as above (language, arrangement of the wall, default preset).
 It stores no prompt, no answer, no cookie and nothing about the sites.
-**Change server** on its wall page deletes the address and the token;
+**Change server** on its wall page signs that device out on the server and
+deletes the address and the token;
 removing the extension removes everything.
 
 ## What leaves the machine

@@ -372,6 +372,25 @@ describe('originGuard', () => {
       }
     });
 
+    test('signs its device out with a JSON body; a bare POST is refused and revokes nothing', async () => {
+      const harness = await allowed();
+      const paired = await pairFrom(harness, origin(ID));
+      const { token } = (await paired.json()) as { token: string };
+      const bearer = { ...origin(ID), Authorization: `Bearer ${token}` };
+
+      const bare = await harness.send(API_PATHS.authLogout, { method: 'POST', headers: bearer });
+      expect(bare.status).toBe(415);
+      expect((await harness.send(API_PATHS.authDevices, { headers: bearer })).status).toBe(200);
+
+      const signedOut = await harness.send(API_PATHS.authLogout, {
+        method: 'POST',
+        headers: { ...json, ...bearer },
+        body: '{}',
+      });
+      expect(signedOut.status).toBe(200);
+      expect((await harness.send(API_PATHS.authDevices, { headers: bearer })).status).toBe(401);
+    });
+
     test('another extension is refused while one is allowed', async () => {
       const harness = await allowed();
       expect((await pairFrom(harness, origin(OTHER_ID))).status).toBe(403);

@@ -142,6 +142,30 @@ export async function pair(
   return token === undefined ? fail('failed') : { ok: true, token };
 }
 
+/**
+ * Signs the device out on the server, which revokes its token. `true` when
+ * the server confirmed it. The request is what the server demands of every
+ * write: a JSON body, and no cookie.
+ */
+export async function signOut(
+  fetcher: PairingEnvironment['fetch'],
+  origin: string,
+  token: string,
+): Promise<boolean> {
+  try {
+    const response = await fetcher(`${origin}${API_PATHS.authLogout}`, {
+      method: 'POST',
+      credentials: 'omit',
+      cache: 'no-store',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
 export interface StoredConnection {
   server: string | undefined;
 }

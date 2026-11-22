@@ -5,7 +5,7 @@
  * shows the first-run page.
  */
 import { render } from 'solid-js/web';
-import { API_PATHS, BRAND } from '@answerwall/core/protocol';
+import { BRAND } from '@answerwall/core/protocol';
 import type { WebSiteId } from '@answerwall/core/protocol';
 import { mountEmbedded } from '@answerwall/web/embed';
 import type { WebCellSite } from '@answerwall/web/embed';
@@ -19,6 +19,7 @@ import {
   parseServerAddress,
   readConnection,
   saveConnection,
+  signOut,
   tokenStore,
 } from './pairing.ts';
 import { Setup } from './Setup.tsx';
@@ -88,13 +89,7 @@ function showSetup(root: HTMLElement, notice?: string, server?: string): void {
 async function changeServer(origin: string): Promise<void> {
   if (!window.confirm(t('strip.confirm', { origin }))) return;
   const token = await tokenStore(storage).get();
-  if (token !== undefined) {
-    await fetch(`${origin}${API_PATHS.authLogout}`, {
-      method: 'POST',
-      credentials: 'omit',
-      headers: { Authorization: `Bearer ${token}` },
-    }).catch(() => undefined);
-  }
+  if (token !== undefined) await signOut((input, init) => fetch(input, init), origin, token);
   await forgetConnection(storage);
   window.location.reload();
 }
