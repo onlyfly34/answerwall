@@ -1,0 +1,20 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+.vite/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+Thumbs.db
+
+# Runtime data created by a local server
+.answerwall/
+*.sqlite
+*.sqlite-*
+
+# Playwright
+/e2e/test-results/
+/e2e/playwright-report/

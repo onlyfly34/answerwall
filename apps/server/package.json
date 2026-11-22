@@ -1,0 +1,23 @@
+{
+  "name": "@answerwall/server",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "answerwall": "./dist/main.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "node --watch --conditions=answerwall-source src/main.ts",
+    "start": "node dist/main.js",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@answerwall/core": "workspace:*",
+    "@answerwall/web": "workspace:*"
+  }
+}

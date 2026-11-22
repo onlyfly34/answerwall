@@ -1,0 +1,45 @@
+{
+  "name": "@answerwall/core",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "answerwall-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./protocol": {
+      "answerwall-source": "./src/protocol/index.ts",
+      "types": "./dist/protocol/index.d.ts",
+      "default": "./dist/protocol/index.js"
+    },
+    "./brand": {
+      "answerwall-source": "./src/brand.ts",
+      "types": "./dist/brand.d.ts",
+      "default": "./dist/brand.js"
+    },
+    "./testing": {
+      "answerwall-source": "./src/testing/index.ts",
+      "types": "./dist/testing/index.d.ts",
+      "default": "./dist/testing/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@hono/node-server": "2.1.11",
+    "@peculiar/x509": "3.1.0",
+    "eventsource-parser": "4.1.3",
+    "hono": "4.13.19",
+    "reflect-metadata": "0.2.2",
+    "zod": "4.6.7"
+  }
+}
