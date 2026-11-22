@@ -110,7 +110,24 @@ describe('billingReport', () => {
     expect(report.hint).not.toContain('sk-secret-value');
   });
 
-  test('a kept variable makes the billing source the API key', () => {
+  test.each(['api-key', 'unknown'] as const)(
+    'a kept variable makes the billing source the API key when the CLI reports %s',
+    (fromLogin) => {
+      const report = billingReport(
+        context({ OPENAI_API_KEY: 'sk-secret-value' }),
+        cliInstance('codex', { useEnvApiKey: true }),
+        relevant,
+        fromLogin,
+      );
+
+      expect(report).toEqual({
+        billing: 'api-key',
+        hint: 'Passed to the CLI from the environment: OPENAI_API_KEY.',
+      });
+    },
+  );
+
+  test("the CLI's own status wins over a kept variable when it still reports its login", () => {
     const report = billingReport(
       context({ OPENAI_API_KEY: 'sk-secret-value' }),
       cliInstance('codex', { useEnvApiKey: true }),
@@ -119,8 +136,8 @@ describe('billingReport', () => {
     );
 
     expect(report).toEqual({
-      billing: 'api-key',
-      hint: 'Passed to the CLI from the environment: OPENAI_API_KEY.',
+      billing: 'subscription',
+      hint: 'Passed to the CLI from the environment: OPENAI_API_KEY. The CLI still reports its own login as the one in use.',
     });
   });
 });

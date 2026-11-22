@@ -147,13 +147,30 @@ anything reaches the API, the log or the database.
 - Every request gets a fresh empty work dir under the app data dir; it is the
   child's cwd and is deleted when the slot finishes.
 - Environment: start from the user's environment, then **remove**
-  `CLAUDECODE`, every `CLAUDE_CODE_*`, `CLAUDE_EFFORT`, `CLAUDE_PID`, and by
-  default remove API-key style variables that silently switch billing away
-  from the subscription (`ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`,
-  `ANTHROPIC_BASE_URL`, `CLAUDE_CODE_USE_*`, `CODEX_API_KEY`, `OPENAI_API_KEY`,
-  `XAI_API_KEY`, `GEMINI_API_KEY`, `GOOGLE_API_KEY`). A per-provider setting
-  "use API key from environment" keeps them; the provider page shows which
-  billing source is in effect. Also set `NO_COLOR=1`, `TERM=dumb`.
+  - always: every `ANSWERWALL_*` variable (the app's own settings and
+    secrets; no CLI needs them, and a CLI whose tools can read its
+    environment must never see them);
+  - always: the nested-session markers `CLAUDECODE`, `CLAUDE_EFFORT`,
+    `CLAUDE_PID` and every `CLAUDE_CODE_*`, except `CLAUDE_CODE_OAUTH_TOKEN`
+    and the billing group below. `CLAUDE_CODE_OAUTH_TOKEN` is the CLI's own
+    headless subscription login (rule 2.3): it is passed through as the user
+    set it, and its value is never read, logged or stored;
+  - by default: API-key style variables that silently switch billing away
+    from the subscription (`ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`,
+    `ANTHROPIC_BASE_URL`, `ANTHROPIC_PROFILE`, `ANTHROPIC_FEDERATION_RULE_ID`,
+    `ANTHROPIC_IDENTITY_TOKEN`, `ANTHROPIC_IDENTITY_TOKEN_FILE`,
+    `CLAUDE_CODE_USE_*` together with `CLAUDE_CODE_SKIP_{BEDROCK,VERTEX,FOUNDRY}_AUTH`,
+    `CODEX_API_KEY`, `OPENAI_API_KEY`, `XAI_API_KEY`, `GEMINI_API_KEY`,
+    `GOOGLE_API_KEY`).
+
+  A per-provider setting "use API key from environment" keeps the billing
+  group; the provider page shows which billing source is in effect. When the
+  CLI's own status reports a subscription login although such variables are
+  kept, the page shows that status and a hint that the CLI reports its own
+  login (claude with only `ANTHROPIC_BASE_URL`, codex with `OPENAI_API_KEY`).
+  Exception: codex with `CODEX_API_KEY` kept reports billing `unknown` with a
+  hint, because `codex exec` is documented to use that key for a run; P1
+  settles which one wins. Also set `NO_COLOR=1`, `TERM=dumb`.
 - Run each CLI in its most restricted question-answering configuration: no
   tools where the CLI allows it, no user customisations, no session
   persistence. Where a CLI cannot disable tools, say so in the provider page
@@ -197,8 +214,15 @@ real runs, and updates this section.
   --ephemeral --ignore-user-config --ignore-rules -s read-only -C <workDir>
   -m <model> -c model_reasoning_effort="<e>"` plus `--disable <feature>` for
   `shell_tool`, `unified_exec`, `apps`, `plugins`, `hooks`, `multi_agent`,
-  `image_generation`, `browser_use`, `computer_use`, then a final `-`; prompt
-  on stdin. Use
+  `image_generation`, `browser_use`, `computer_use`, `sleep_tool`,
+  `view_image`, then a final `-`; prompt on stdin. These do not remove every
+  tool: `--disable multi_agent` is a no-op for the default model family, and
+  depending on the model family the model is still offered exec, wait,
+  request_user_input and the collaboration tools. `--ignore-user-config`
+  covers `config.toml` only, so the global `AGENTS.md` and skills still load;
+  the provider page says so in codex's detection hint. A feature name the
+  installed codex does not know makes it exit 1 ("Unknown feature flag"); the
+  adapter reports that as `unsupported`. Use
   `codex debug prompt-input <flags> "hi"` (renders locally, costs nothing) to
   confirm what each flag removes. Login: `codex login status` (message is on
   **stderr**). Models: `codex debug models` (JSON; keep `visibility=="list"`).
@@ -210,17 +234,19 @@ real runs, and updates this section.
   line on stdin, which is then closed; env `AGY_CLI_DISABLE_AUTO_UPDATE=true`.
   `--disable-slash-commands` and the environment variable come from research
   notes, not from `agy --help`, and are unconfirmed. Documented `--mode`
-  values are `accept-edits`, `auto`, `plan`; the safe default mode is
-  selected by leaving `agentMode` empty in settings — verify with
-  `agy --help` after install. No documented flag disables tools; `--sandbox`
+  values are `accept-edits`, `auto`, `plan`. Since v1.5.7 an unset
+  `agentMode` makes `agy -p` run in `auto` where available; P1 tries
+  `--mode default` and confirms with `agy --help` after install. No documented flag disables tools; `--sandbox`
   silently does nothing where unavailable. Credentials live in the OS keyring,
   not in a dot-directory, so containers need extra work. Disabled by default;
   first enable shows the vendor's FAQ wording about third-party wrappers and
   consumer plans. Concurrency fixed at 1.
 - **grok** — `grok --prompt-file <file> --output-format streaming-json
   -m <model> --cwd <workDir> --no-auto-update --max-turns 1 --no-plan
-  --no-subagents --tools ""`, env `GROK_MEMORY=0`, Linux adds
-  `--sandbox read-only`. No effort flag is documented, so effort is not
+  --no-subagents --tools ""`, env `GROK_MEMORY=0`, Linux and macOS add
+  `--sandbox read-only` (best effort: the CLI continues without it if it
+  cannot be applied; the detection hint says so). Windows has no sandbox,
+  so grok's tools are unrestricted there. No effort flag is documented, so effort is not
   passed. Note the
   format name is `streaming-json`. It does not read stdin. Login:
   `grok login --device-auth`. Models: `grok models`.

@@ -55,6 +55,11 @@ export interface CliInvocation {
   files?: { name: string; content: string }[];
   parser: StreamParser;
   streaming: StreamingMode;
+  /**
+   * Recognises, in what a failed run printed, a failure this CLI is known
+   * for; its fixed message then replaces the one derived from the text.
+   */
+  knownFailure?: (printed: string) => Failure | undefined;
 }
 
 /** Unparsable stdout kept for the raw-text fallback. */
@@ -217,7 +222,10 @@ export async function* runCli(
   }
   const rawText = raw.trim();
   if (exit.code !== 0 && !outcome.completed) {
-    yield error(failureFromExit(exit, rawText, executable));
+    yield error(
+      invocation.knownFailure?.(`${exit.stderr}\n${rawText}`) ??
+        failureFromExit(exit, rawText, executable),
+    );
     return;
   }
   if (!answered && !outcome.completed) {

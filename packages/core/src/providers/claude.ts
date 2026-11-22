@@ -8,6 +8,7 @@ import type {
   Usage,
 } from '../protocol/index.ts';
 import { captureCli } from './cli/capture.ts';
+import { hasVariable, LOGIN_TOKEN_VARIABLE } from './cli/child-env.ts';
 import { isRecord, parseJsonLine, runCli } from './cli/run-cli.ts';
 import type { CliContext, ContentEvent, ParserOutcome, StreamParser } from './cli/run-cli.ts';
 import {
@@ -279,6 +280,12 @@ export function createClaudeAdapter(context: CliContext): ProviderAdapter {
         ...joinHints(
           loggedIn === 'no' ? `Not logged in. Run \`${LOGIN_COMMAND}\` in a terminal.` : undefined,
           loggedIn === 'unknown' ? 'The login state could not be determined.' : undefined,
+          loggedIn === 'yes' && fromLogin === 'unknown'
+            ? 'The CLI reports a login method this app does not recognise, so the billing source is unknown.'
+            : undefined,
+          hasVariable(context.env, context.platform, LOGIN_TOKEN_VARIABLE)
+            ? `${LOGIN_TOKEN_VARIABLE} is set in the environment and is passed to the CLI as its own login.`
+            : undefined,
           billing.hint,
         ),
       };

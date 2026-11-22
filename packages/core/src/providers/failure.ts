@@ -40,8 +40,26 @@ export function classifyFailureText(text: string): ProviderErrorCode | undefined
 // eslint-disable-next-line no-control-regex -- terminal escape sequences are control characters
 const ANSI_SEQUENCE = /\u001b\[[0-9;?]*[ -/]*[@-~]/g;
 const EMAIL = /[\w.+-]+@[\w-]+(\.[\w-]+)+/g;
-const WINDOWS_PATH = /\b[A-Za-z]:\\[^\s"'<>|]+/g;
-const POSIX_PATH = /(?<![\w.:/])~?\/[\w.@+-]+(\/[\w.@+-]+)+\/?/g;
+/** `file://` URLs: the form stack traces of Node-based CLIs use. */
+const FILE_URL = /\bfile:\/\/[^\s"'`<>)]+/gi;
+/** A quoted absolute path is redacted up to its closing quote, spaces included. */
+const QUOTED_PATH = /(["'`])(?:[A-Za-z]:[\\/]|\\\\|~?\/(?!\/))[^"'`\n]{0,400}\1/g;
+/**
+ * Unquoted paths. A directory name may hold up to two more space-separated
+ * words ("Application Support"); the last component may not, so the sentence
+ * after a path survives.
+ */
+const WIN_CHAR = '[^\\\\/\\s"\'`<>|:*?]';
+const WIN_TAIL = `(?:${WIN_CHAR}+(?: ${WIN_CHAR}+){0,2}[\\\\/]+)*${WIN_CHAR}*`;
+/** A drive letter followed by either separator. */
+const WINDOWS_PATH = new RegExp(`(?<![A-Za-z0-9])[A-Za-z]:[\\\\/]+${WIN_TAIL}`, 'g');
+const UNC_PATH = new RegExp(`(?<![\\\\\\w])\\\\{2,}${WIN_CHAR}+[\\\\/]+${WIN_TAIL}`, 'g');
+const POSIX_CHAR = '[\\p{L}\\p{N}_.@+%=~-]';
+/** Not after `/` or a word character, so URLs and "and/or" are left alone. */
+const POSIX_PATH = new RegExp(
+  `(?<![\\p{L}\\p{N}_./\\\\<])~?/(?:${POSIX_CHAR}+(?: ${POSIX_CHAR}+){0,2}/)+${POSIX_CHAR}*`,
+  'gu',
+);
 const SECRET = /\b(sk|pk|xai|key|gsk|AIza)[-_][\w-]{8,}|\b[A-Za-z0-9_-]{40,}\b/g;
 
 /**
@@ -52,7 +70,10 @@ export function sanitizeDiagnostic(text: string, maxLength = MAX_MESSAGE_LENGTH)
   const clean = text
     .replace(ANSI_SEQUENCE, '')
     .replace(EMAIL, '<email>')
+    .replace(FILE_URL, '<path>')
+    .replace(QUOTED_PATH, '$1<path>$1')
     .replace(WINDOWS_PATH, '<path>')
+    .replace(UNC_PATH, '<path>')
     .replace(POSIX_PATH, '<path>')
     .replace(SECRET, '<redacted>')
     .replace(/\s+/g, ' ')

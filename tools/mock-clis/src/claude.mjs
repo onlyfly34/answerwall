@@ -94,7 +94,11 @@ function authStatus() {
   const status = loggedIn
     ? {
         loggedIn: true,
-        authMethod: process.env.ANTHROPIC_API_KEY ? 'api_key' : 'claude.ai',
+        authMethod: process.env.ANTHROPIC_API_KEY
+          ? 'api_key'
+          : process.env.CLAUDE_CODE_OAUTH_TOKEN
+            ? 'oauth_token'
+            : 'claude.ai',
         apiProvider: 'firstParty',
         email: 'mock.user@example.com',
         orgId: 'org-mock-0001',

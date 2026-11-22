@@ -426,8 +426,8 @@ export function createOpenAiCompatAdapter(deps: OpenAiCompatDeps): ProviderAdapt
           let ended = false;
           while (!ended) {
             const { done, value } = await body.read();
-            if (done) break;
-            parser.feed(decoder.decode(value, { stream: true }));
+            // A stream may end without the blank line that closes its last event: close it here.
+            parser.feed(done ? `${decoder.decode()}\n\n` : decoder.decode(value, { stream: true }));
             for (const data of pending.splice(0)) {
               if (data.trim() === '[DONE]') {
                 ended = true;
@@ -440,6 +440,7 @@ export function createOpenAiCompatAdapter(deps: OpenAiCompatDeps): ProviderAdapt
                 break;
               }
             }
+            if (done) break;
           }
         }
       } catch (cause) {

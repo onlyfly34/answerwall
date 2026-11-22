@@ -44,7 +44,13 @@ const FEATURE_FLAGS = [
   'browser_use',
   '--disable',
   'computer_use',
+  '--disable',
+  'sleep_tool',
+  '--disable',
+  'view_image',
 ];
+const RESIDUAL =
+  'This CLI still loads your global AGENTS.md and skills, and with some model families the model is still offered built-in tools, including sub-agents; no switch removes them.';
 const fixedArgs = (workDir: string): string[] => [
   'exec',
   '--json',
@@ -92,6 +98,8 @@ describe('buildCodexArgs', () => {
       'image_generation',
       'browser_use',
       'computer_use',
+      'sleep_tool',
+      'view_image',
     ]);
     expect(CODEX_VERSION_ARGS).toEqual(['--version']);
     expect(CODEX_STATUS_ARGS).toEqual(['login', 'status']);
@@ -441,6 +449,18 @@ describe('the codex adapter against the mock CLI', () => {
     });
   });
 
+  test('a CLI version that no longer knows a feature switch gives a clear error', async () => {
+    await harness.cleanup();
+    await setup({ MOCK_CLI_REMOVED_FEATURE: 'view_image' });
+
+    expect((await run()).at(-1)).toEqual({
+      type: 'error',
+      code: 'unsupported',
+      message:
+        'This version of `codex` does not know one of the feature switches this app passes to limit its tools, so it refused to start. Update the app or use a supported CLI version.',
+    });
+  });
+
   test('falls back to the raw text for output in another format', async () => {
     const events = await run('mock-garbage');
 
@@ -489,6 +509,7 @@ describe('the codex adapter against the mock CLI', () => {
         loggedIn: 'yes',
         billing: 'subscription',
         streaming: 'block',
+        hint: RESIDUAL,
       });
       expect((await harness.invocations()).map((call) => call.argv)).toEqual([
         ['--version'],
@@ -504,7 +525,7 @@ describe('the codex adapter against the mock CLI', () => {
         installed: true,
         loggedIn: 'no',
         billing: 'unknown',
-        hint: 'Not logged in. Run `codex login` in a terminal.',
+        hint: `Not logged in. Run \`codex login\` in a terminal. ${RESIDUAL}`,
       });
     });
 
@@ -517,11 +538,32 @@ describe('the codex adapter against the mock CLI', () => {
 
       expect(ignored).toMatchObject({ billing: 'subscription' });
       expect(ignored.hint).toContain('Not passed to the CLI: OPENAI_API_KEY.');
-      expect(used).toMatchObject({
-        billing: 'api-key',
-        hint: 'Passed to the CLI from the environment: OPENAI_API_KEY.',
-      });
+      // The status command, run with the key, still reports the ChatGPT login.
+      expect(used.billing).toBe('subscription');
+      expect(used.hint).toContain(
+        'Passed to the CLI from the environment: OPENAI_API_KEY. The CLI still reports its own login as the one in use.',
+      );
       expect(JSON.stringify([ignored, used])).not.toContain('sk-test-value');
+    });
+
+    test('does not claim a billing source when the documented per-run key is passed on', async () => {
+      await harness.cleanup();
+      await setup({ CODEX_API_KEY: 'sk-test-value' });
+
+      const used = await adapter.detect(cliInstance('codex', { useEnvApiKey: true }));
+
+      expect(used).toMatchObject({ loggedIn: 'yes', billing: 'unknown' });
+      expect(used.hint).toContain('Passed to the CLI from the environment: CODEX_API_KEY.');
+      expect(used.hint).toContain('which one is billed is not known here');
+      expect(used.hint).not.toContain('sk-test-value');
+    });
+
+    test('says what the invocation cannot keep away from the model', async () => {
+      const { hint } = await adapter.detect(instance);
+
+      expect(hint).toContain('AGENTS.md');
+      expect(hint).toContain('skills');
+      expect(hint).toContain('sub-agents');
     });
 
     test('reports a missing CLI', async () => {

@@ -1,5 +1,10 @@
 import { describe, expect, test } from 'vitest';
-import { buildChildEnv, isBillingVariable, presentBillingVariables } from './child-env.ts';
+import {
+  buildChildEnv,
+  hasVariable,
+  isBillingVariable,
+  presentBillingVariables,
+} from './child-env.ts';
 
 const base = {
   PATH: '/usr/bin',
@@ -73,6 +78,86 @@ describe('buildChildEnv', () => {
     expect(env).not.toHaveProperty('CLAUDE_PID');
   });
 
+  test.each([false, true])(
+    "never passes on the application's own settings and secrets (keepApiKeys %s)",
+    (keepApiKeys) => {
+      const env = buildChildEnv(
+        {
+          PATH: '/usr/bin',
+          ANSWERWALL_TOKEN: 'static-token-0123456789',
+          ANSWERWALL_SECRET_PROVIDER_EP1_API_KEY: 'sk-key',
+          ANSWERWALL_SECRET_TLS_SERVER_KEY: 'PEM',
+          ANSWERWALL_DATA_DIR: '/data',
+        },
+        { keepApiKeys, platform: 'linux' },
+      );
+
+      expect(env).toEqual({ PATH: '/usr/bin', NO_COLOR: '1', TERM: 'dumb' });
+    },
+  );
+
+  test("the application's own variables are matched case-insensitively on Windows", () => {
+    const env = buildChildEnv(
+      { Path: 'C:\\bin', AnswerWall_Token: 'static-token-0123456789' },
+      { keepApiKeys: true, platform: 'win32' },
+    );
+
+    expect(env).toEqual({ Path: 'C:\\bin', NO_COLOR: '1', TERM: 'dumb' });
+  });
+
+  test.each([false, true])(
+    "the CLI's own login token always passes through (keepApiKeys %s)",
+    (keepApiKeys) => {
+      const env = buildChildEnv(
+        {
+          CLAUDE_CODE_OAUTH_TOKEN: 'oat',
+          CLAUDE_CODE_SSE_PORT: '1',
+          CLAUDE_CODE_ENTRYPOINT: 'cli',
+        },
+        { keepApiKeys, platform: 'linux' },
+      );
+
+      expect(env).toEqual({ CLAUDE_CODE_OAUTH_TOKEN: 'oat', NO_COLOR: '1', TERM: 'dumb' });
+    },
+  );
+
+  test('the login token passes under any spelling on Windows', () => {
+    const env = buildChildEnv(
+      { Claude_Code_OAuth_Token: 'oat', Claude_Code_Entrypoint: 'cli' },
+      { keepApiKeys: false, platform: 'win32' },
+    );
+
+    expect(env).toEqual({ Claude_Code_OAuth_Token: 'oat', NO_COLOR: '1', TERM: 'dumb' });
+  });
+
+  test('settings of a cloud billing source travel with it', () => {
+    const base = { CLAUDE_CODE_USE_BEDROCK: '1', CLAUDE_CODE_SKIP_BEDROCK_AUTH: '1' };
+
+    expect(buildChildEnv(base, { keepApiKeys: false, platform: 'linux' })).toEqual({
+      NO_COLOR: '1',
+      TERM: 'dumb',
+    });
+    expect(buildChildEnv(base, { keepApiKeys: true, platform: 'linux' })).toMatchObject(base);
+  });
+
+  test('profile and federation credentials are billing variables', () => {
+    const base = {
+      ANTHROPIC_PROFILE: 'p',
+      ANTHROPIC_FEDERATION_RULE_ID: 'r',
+      ANTHROPIC_IDENTITY_TOKEN: 't',
+      ANTHROPIC_IDENTITY_TOKEN_FILE: '/run/token',
+    };
+
+    expect(buildChildEnv(base, { keepApiKeys: false, platform: 'linux' })).toEqual({
+      NO_COLOR: '1',
+      TERM: 'dumb',
+    });
+    expect(buildChildEnv(base, { keepApiKeys: true, platform: 'linux' })).toMatchObject(base);
+    expect(presentBillingVariables(base, 'linux', (name) => name.startsWith('ANTHROPIC_'))).toEqual(
+      Object.keys(base).sort(),
+    );
+  });
+
   test('adapter variables are applied last and win over the user environment', () => {
     const env = buildChildEnv(
       { PATH: '/usr/bin', GROK_MEMORY: '1' },
@@ -123,6 +208,15 @@ describe('isBillingVariable', () => {
       expect(isBillingVariable(name)).toBe(false);
     },
   );
+});
+
+describe('hasVariable', () => {
+  test('is true for a non-empty variable, by canonical name', () => {
+    expect(hasVariable({ A: 'x' }, 'linux', 'A')).toBe(true);
+    expect(hasVariable({ A: '' }, 'linux', 'A')).toBe(false);
+    expect(hasVariable({ a: 'x' }, 'linux', 'A')).toBe(false);
+    expect(hasVariable({ a: 'x' }, 'win32', 'A')).toBe(true);
+  });
 });
 
 describe('presentBillingVariables', () => {

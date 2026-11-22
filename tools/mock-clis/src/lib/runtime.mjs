@@ -42,6 +42,12 @@ export const SCENARIOS = [
 const MODEL_PREFIX = 'mock-';
 const FIXTURE_ROOT = new URL('../../fixtures/', import.meta.url);
 
+/**
+ * The prefix of the application's own settings and secrets (its token, its
+ * secret overlay). A CLI child never gets them; a mock started with one fails.
+ */
+const APP_ENV_PREFIX = 'ANSWERWALL_';
+
 export class UsageError extends Error {}
 
 /**
@@ -256,6 +262,14 @@ export async function play(cli, scenario, context) {
 /** Runs a mock's entry function and turns usage errors into a loud failure. */
 export async function main(kind, entry) {
   try {
+    const leaked = Object.keys(process.env).filter((name) =>
+      name.toUpperCase().startsWith(APP_ENV_PREFIX),
+    );
+    if (leaked.length > 0) {
+      throw new UsageError(
+        `the application's own variables must not reach a CLI: ${leaked.sort().join(', ')}`,
+      );
+    }
     process.exitCode = await entry(process.argv.slice(2));
   } catch (error) {
     if (!(error instanceof UsageError)) throw error;

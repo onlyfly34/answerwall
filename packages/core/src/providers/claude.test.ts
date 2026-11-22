@@ -445,6 +445,30 @@ describe('the claude adapter against the mock CLI', () => {
     }
   });
 
+  test("passes the CLI's own login token on and never the application's own variables", async () => {
+    await harness.cleanup();
+    await setup({
+      CLAUDE_CODE_OAUTH_TOKEN: 'oat-test-value',
+      ANSWERWALL_TOKEN: 'static-token-0123456789',
+      ANSWERWALL_SECRET_PROVIDER_EP_API_KEY: 'sk-endpoint-key',
+    });
+
+    for (const useEnvApiKey of [false, true]) {
+      const events = await collect(
+        adapter.run(cliInstance('claude', { useEnvApiKey }), await harness.request()),
+      );
+      expect(events.at(-1)?.type).toBe('done');
+    }
+    await adapter.detect(instance);
+
+    const calls = await harness.invocations();
+    expect(calls).toHaveLength(4);
+    for (const call of calls) {
+      expect(call.envNames).toContain('CLAUDE_CODE_OAUTH_TOKEN');
+      expect(call.envNames?.filter((name) => name.startsWith('ANSWERWALL_'))).toEqual([]);
+    }
+  });
+
   test('keeps the API key variables when the instance says to use them', async () => {
     await harness.cleanup();
     await setup({ ANTHROPIC_API_KEY: 'sk-ant-test', CLAUDECODE: '1' });
@@ -635,6 +659,41 @@ describe('the claude adapter against the mock CLI', () => {
         billing: 'api-key',
         hint: 'Passed to the CLI from the environment: ANTHROPIC_API_KEY.',
       });
+    });
+
+    test('a base URL alone does not make it API key billing: the status command decides', async () => {
+      await harness.cleanup();
+      await setup({ ANTHROPIC_BASE_URL: 'http://127.0.0.1:1' });
+
+      const detection = await adapter.detect(cliInstance('claude', { useEnvApiKey: true }));
+
+      expect(detection).toMatchObject({ loggedIn: 'yes', billing: 'subscription' });
+      expect(detection.hint).toBe(
+        'Passed to the CLI from the environment: ANTHROPIC_BASE_URL. The CLI still reports its own login as the one in use.',
+      );
+    });
+
+    test('names a profile variable that is present but not passed on', async () => {
+      await harness.cleanup();
+      await setup({ ANTHROPIC_PROFILE: 'work' });
+
+      const detection = await adapter.detect(instance);
+
+      expect(detection.hint).toContain('Not passed to the CLI: ANTHROPIC_PROFILE.');
+      expect((await harness.invocations())[0]?.envNames).not.toContain('ANTHROPIC_PROFILE');
+    });
+
+    test('a login through the token variable is a subscription login, named without its value', async () => {
+      await harness.cleanup();
+      await setup({ CLAUDE_CODE_OAUTH_TOKEN: 'oat-test-value' });
+
+      const detection = await adapter.detect(instance);
+
+      expect(detection).toMatchObject({ loggedIn: 'yes', billing: 'subscription' });
+      expect(detection.hint).toBe(
+        'CLAUDE_CODE_OAUTH_TOKEN is set in the environment and is passed to the CLI as its own login.',
+      );
+      expect(JSON.stringify([detection, harness.logger.entries])).not.toContain('oat-test-value');
     });
 
     test('does not start anything after shutdown', async () => {

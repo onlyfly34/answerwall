@@ -40,6 +40,8 @@ const KNOWN_FEATURES = [
   'image_generation',
   'browser_use',
   'computer_use',
+  'sleep_tool',
+  'view_image',
 ];
 
 /** A complete successful turn; every piece is one whole agent message. */
@@ -80,11 +82,9 @@ function loginStatus() {
     process.stderr.write('Not logged in\n');
     return 1;
   }
-  process.stderr.write(
-    process.env.OPENAI_API_KEY || process.env.CODEX_API_KEY
-      ? 'Logged in using an API key - sk-mock***\n'
-      : 'Logged in using ChatGPT\n',
-  );
+  // The mock's saved login is a ChatGPT login. The real CLI reports it the
+  // same way when OPENAI_API_KEY or CODEX_API_KEY is set (checked on 0.167.0).
+  process.stderr.write('Logged in using ChatGPT\n');
   return 0;
 }
 
@@ -128,7 +128,11 @@ async function exec(argv) {
   if (flags['--enable']) throw new UsageError('no feature may be enabled');
   const disabled = flags['--disable'] ?? [];
   for (const feature of disabled) {
-    if (!KNOWN_FEATURES.includes(feature)) throw new UsageError(`unknown feature: ${feature}`);
+    if (!KNOWN_FEATURES.includes(feature) || feature === process.env.MOCK_CLI_REMOVED_FEATURE) {
+      // The real CLI's wording and exit code for a feature name it does not know.
+      process.stderr.write(`Error: Unknown feature flag: ${feature}\n`);
+      return 1;
+    }
   }
   for (const feature of KNOWN_FEATURES) {
     if (!disabled.includes(feature)) throw new UsageError(`feature not disabled: ${feature}`);

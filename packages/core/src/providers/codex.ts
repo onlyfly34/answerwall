@@ -10,9 +10,11 @@ import type {
 import { captureCli } from './cli/capture.ts';
 import { isRecord, runCli } from './cli/run-cli.ts';
 import type { CliContext, ContentEvent, ParserOutcome, StreamParser } from './cli/run-cli.ts';
+import { hasVariable } from './cli/child-env.ts';
 import {
   billingReport,
   childEnvFor,
+  cliSwitches,
   isEffortArgument,
   joinHints,
   printed,
@@ -28,8 +30,11 @@ const LOGIN_COMMAND = 'codex login';
 /** The documented `exec --json` events carry whole items, not text deltas. */
 const STREAMING: StreamingMode = 'block';
 
+/** Documented as the key `codex exec` uses for a single run. */
+const EXEC_KEY_VARIABLE = 'CODEX_API_KEY';
+
 const isBillingVariable = (name: string): boolean =>
-  name === 'CODEX_API_KEY' || name === 'OPENAI_API_KEY';
+  name === EXEC_KEY_VARIABLE || name === 'OPENAI_API_KEY';
 
 /** Features switched off so that the model is left with as few tools as the CLI allows. */
 export const CODEX_DISABLED_FEATURES: readonly string[] = [
@@ -42,11 +47,29 @@ export const CODEX_DISABLED_FEATURES: readonly string[] = [
   'image_generation',
   'browser_use',
   'computer_use',
+  'sleep_tool',
+  'view_image',
 ];
 
 /**
+ * What the flags above cannot remove, as observed with
+ * `codex debug prompt-input` (0.167.0). Shown with every detection so the
+ * provider page says it.
+ */
+const RESIDUAL_HINT =
+  'This CLI still loads your global AGENTS.md and skills, and with some model families the model is still offered built-in tools, including sub-agents; no switch removes them.';
+
+/** The CLI refuses to start when it no longer knows a feature name it is told to disable. */
+const UNKNOWN_FEATURE = /unknown feature flag/i;
+const UNKNOWN_FEATURE_MESSAGE =
+  'This version of `codex` does not know one of the feature switches this app passes to limit its tools, so it refused to start. Update the app or use a supported CLI version.';
+
+/**
  * The non-interactive invocation: one prompt read from stdin (`-`), JSON
- * events on stdout, no user configuration, no session files, read-only sandbox.
+ * events on stdout, no `config.toml`, no execpolicy rules, no session files,
+ * read-only sandbox. `--ignore-user-config` covers `config.toml` only: the
+ * user's global `AGENTS.md` and skills still reach the model, and no tested
+ * switch removes them (`CODEX_HOME` cannot be moved: the login lives there).
  */
 export function buildCodexArgs(selection: {
   workDir: string;
@@ -253,17 +276,25 @@ export function createCodexAdapter(context: CliContext): ProviderAdapter {
         status.outcome === 'exited'
           ? parseCodexLoginStatus(printed(status), status.code)
           : { loggedIn: 'unknown' as const, billing: 'unknown' as const };
-      const billing = billingReport(context, instance, isBillingVariable, fromLogin);
+      const report = billingReport(context, instance, isBillingVariable, fromLogin);
+      // `login status` reports the saved login, while `exec` is documented to take this key for the run.
+      const overridden =
+        fromLogin === 'subscription' &&
+        cliSwitches(instance).useEnvApiKey &&
+        hasVariable(context.env, context.platform, EXEC_KEY_VARIABLE);
       return {
         installed: true,
         ...(probe.version === undefined ? {} : { version: probe.version }),
         loggedIn,
-        billing: billing.billing,
+        billing: overridden ? 'unknown' : report.billing,
         streaming: STREAMING,
         ...joinHints(
           loggedIn === 'no' ? `Not logged in. Run \`${LOGIN_COMMAND}\` in a terminal.` : undefined,
           loggedIn === 'unknown' ? 'The login state could not be determined.' : undefined,
-          billing.hint,
+          overridden
+            ? `Passed to the CLI from the environment: ${EXEC_KEY_VARIABLE}. The CLI documents that a run uses this key, while its status command reports the ChatGPT login, so which one is billed is not known here.`
+            : report.hint,
+          RESIDUAL_HINT,
         ),
       };
     },
@@ -294,6 +325,10 @@ export function createCodexAdapter(context: CliContext): ProviderAdapter {
           stdin: request.prompt,
           parser: createCodexParser(),
           streaming: STREAMING,
+          knownFailure: (said) =>
+            UNKNOWN_FEATURE.test(said)
+              ? { code: 'unsupported', message: UNKNOWN_FEATURE_MESSAGE }
+              : undefined,
         },
         request,
         context,

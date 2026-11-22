@@ -382,6 +382,14 @@ describe('shim parsing', () => {
     );
   });
 
+  test('cmdShimTarget takes a `$` in the directory name literally', () => {
+    for (const dir of ['C:\\Users\\J $& Smith\\npm', 'C:\\a $1 b', "C:\\a $` $' b"]) {
+      expect(cmdShimTarget('"%_prog%"  "%dp0%\\node_modules\\x\\bin\\x.js" %*', dir)).toBe(
+        `${dir}\\node_modules\\x\\bin\\x.js`,
+      );
+    }
+  });
+
   test('powershellShimTarget returns null when no line passes the arguments on', () => {
     expect(powershellShimTarget('Write-Host "$basedir/x.js"', 'C:\\x')).toBeNull();
   });

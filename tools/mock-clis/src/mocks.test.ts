@@ -20,6 +20,8 @@ const CODEX_FEATURES = [
   'image_generation',
   'browser_use',
   'computer_use',
+  'sleep_tool',
+  'view_image',
 ].flatMap((feature) => ['--disable', feature]);
 
 let workDir: string;
@@ -203,6 +205,18 @@ describe.each(KINDS)('the mock %s CLI', (kind) => {
     expect(result.stderr).toContain(name);
   });
 
+  test("fails loudly when one of the application's own variables reaches it", async () => {
+    for (const name of ['ANSWERWALL_TOKEN', 'answerwall_secret_tls_server_key']) {
+      for (const args of [validArgs(kind), [kind === 'grok' ? 'version' : '--version']]) {
+        const result = await runMock(kind, args, { env: { [name]: 'x' } });
+
+        expect(result.code).toBe(64);
+        expect(result.stderr).toContain(name);
+        expect(result.stdout).toBe('');
+      }
+    }
+  });
+
   test('selects the scenario from the model name or the environment', async () => {
     const modelFlag = kind === 'codex' || kind === 'grok' ? '-m' : '--model';
     const args = validArgs(kind);
@@ -362,6 +376,27 @@ describe('status subcommands', () => {
     };
 
     expect(models.map((model) => model.visibility)).toEqual(['list', 'list', 'hide']);
+  });
+
+  test('codex refuses an unknown feature name the way the real CLI does', async () => {
+    const args = validArgs('codex');
+    const result = await runMock('codex', [
+      ...args.slice(0, -1),
+      '--disable',
+      'no_such_feature',
+      '-',
+    ]);
+
+    expect(result.code).toBe(1);
+    expect(result.stderr).toBe('Error: Unknown feature flag: no_such_feature\n');
+  });
+
+  test('codex reports its ChatGPT login whether or not a key variable is set', async () => {
+    for (const env of [{}, { OPENAI_API_KEY: 'k' }, { CODEX_API_KEY: 'k' }]) {
+      const result = await runMock('codex', ['login', 'status'], { env });
+
+      expect(result).toEqual({ code: 0, stdout: '', stderr: 'Logged in using ChatGPT\n' });
+    }
   });
 
   test('an unknown subcommand is a usage error', async () => {

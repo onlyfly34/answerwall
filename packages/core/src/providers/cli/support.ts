@@ -91,9 +91,11 @@ export interface BillingReport {
 }
 
 /**
- * The billing source in effect: API-key variables in the server's
- * environment win when the instance keeps them; otherwise the CLI's own
- * login decides, and the ignored variables are named.
+ * The billing source in effect. Without kept API-key variables the CLI's own
+ * login decides, and the ignored variables are named. With kept variables the
+ * CLI's status command, which ran with them, still decides when it reports
+ * its own subscription login; only otherwise is the kept key taken as the
+ * source.
  */
 export function billingReport(
   context: CliContext,
@@ -104,12 +106,19 @@ export function billingReport(
   const names = presentBillingVariables(context.env, context.platform, relevant);
   if (names.length === 0) return { billing: fromLogin };
   const list = names.join(', ');
-  return cliSwitches(instance).useEnvApiKey
-    ? { billing: 'api-key', hint: `Passed to the CLI from the environment: ${list}.` }
-    : {
-        billing: fromLogin,
-        hint: `Not passed to the CLI: ${list}. Turn on "use API key from environment" to bill those instead of the CLI's own login.`,
-      };
+  if (!cliSwitches(instance).useEnvApiKey) {
+    return {
+      billing: fromLogin,
+      hint: `Not passed to the CLI: ${list}. Turn on "use API key from environment" to bill those instead of the CLI's own login.`,
+    };
+  }
+  const passed = `Passed to the CLI from the environment: ${list}.`;
+  return fromLogin === 'subscription'
+    ? {
+        billing: 'subscription',
+        hint: `${passed} The CLI still reports its own login as the one in use.`,
+      }
+    : { billing: 'api-key', hint: passed };
 }
 
 /** Joins the parts that exist into one hint within the protocol's length limit. */

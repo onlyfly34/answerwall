@@ -64,6 +64,24 @@ describe('sanitizeDiagnostic', () => {
     );
   });
 
+  test.each([
+    [
+      'Error at file:///home/alice/.nvm/lib/node_modules/@openai/codex/bin/codex.js:95:11',
+      'Error at <path>',
+    ],
+    ['cannot read C:/Users/alice/.codex/config.toml', 'cannot read <path>'],
+    ['config:/home/alice/.grok/auth.json missing', 'config:<path> missing'],
+    ['open \\\\fileserver\\home\\alice\\x failed', 'open <path> failed'],
+    ['cannot read C:\\Users\\Alice Smith\\.codex\\auth.json', 'cannot read <path>'],
+    ['C:\\Users\\John Smith\\AppData\\Roaming\\npm\\x.json not found', '<path> not found'],
+    ['/home/\u5f35\u4e09/.claude/settings.json is bad', '<path> is bad'],
+    ['no /Users/John Smith/Library/Application Support/x/y.json here', 'no <path> here'],
+    ['"C:/Users/bob/AppData/x.json" missing', '"<path>" missing'],
+    ["open '/home/bob/My Files' failed", "open '<path>' failed"],
+  ])('redacts the path in %j', (said, expected) => {
+    expect(sanitizeDiagnostic(said)).toBe(expected);
+  });
+
   test('strips terminal escape sequences and collapses whitespace into one line', () => {
     expect(sanitizeDiagnostic('\u001b[31mError:\u001b[0m  first\r\n\tsecond  ')).toBe(
       'Error: first second',

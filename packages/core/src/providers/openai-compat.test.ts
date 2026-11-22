@@ -397,6 +397,30 @@ describe('the openai-compat adapter', () => {
       expect(typesOf(events)).toEqual(['start', 'delta', 'done']);
     });
 
+    test.each(['', '\n', '\r\n', '\r'])(
+      'keeps a last event that is not closed by a blank line (ending %j)',
+      async (ending) => {
+        endpoint.handler = sse(
+          chunk({ content: 'Hel' }),
+          chunk({ content: 'lo' }).trimEnd() + ending,
+        );
+
+        const events = await run();
+
+        expect(answerOf(events)).toBe('Hello');
+        expect(events.at(-1)?.type).toBe('done');
+      },
+    );
+
+    test('a last event cut off in the middle adds nothing and does not fail the answer', async () => {
+      endpoint.handler = sse(chunk({ content: 'Hel' }), chunk({ content: 'lo' }).slice(0, 20));
+
+      const events = await run();
+
+      expect(answerOf(events)).toBe('Hel');
+      expect(events.at(-1)?.type).toBe('done');
+    });
+
     test('accepts a stream that ends without [DONE]', async () => {
       endpoint.handler = sse(chunk({ content: 'no terminator' }), FINISH);
 

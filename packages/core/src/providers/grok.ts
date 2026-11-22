@@ -32,8 +32,15 @@ export const GROK_PROMPT_FILE = 'prompt.txt';
 
 const isBillingVariable = (name: string): boolean => name === 'XAI_API_KEY';
 
-/** The CLI documents a sandbox for Linux; only there is it part of the invocation. */
-const sandboxed = (platform: NodeJS.Platform): boolean => platform === 'linux';
+/**
+ * The CLI documents a sandbox for Linux (Landlock) and macOS (Seatbelt); only
+ * there is it part of the invocation. It is best effort: the CLI documents
+ * that a sandbox it cannot apply is skipped with a warning.
+ */
+const sandboxed = (platform: NodeJS.Platform): boolean =>
+  platform === 'linux' || platform === 'darwin';
+const SANDBOX_HINT =
+  'The read-only sandbox is best effort: the CLI continues without it when it cannot be applied.';
 
 /**
  * The headless invocation: one turn, no planning, no sub-agents, an empty
@@ -179,6 +186,7 @@ export function createGrokAdapter(context: CliContext): ProviderAdapter {
           billing.billing === 'api-key'
             ? 'The CLI uses the key only when it has no login session.'
             : undefined,
+          sandboxed(context.platform) ? SANDBOX_HINT : undefined,
         ),
       };
     },

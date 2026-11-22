@@ -185,6 +185,26 @@ describe('runCli', () => {
     });
   });
 
+  test("a failure the adapter knows replaces the message derived from the CLI's text", async () => {
+    const seen: string[] = [];
+    const events = await run('mock-exit-nonzero', {
+      knownFailure: (printed) => {
+        seen.push(printed);
+        return { code: 'unsupported', message: 'Known.' };
+      },
+    });
+
+    expect(events.at(-1)).toEqual({ type: 'error', code: 'unsupported', message: 'Known.' });
+    expect(seen.join('')).toContain('internal failure');
+    expect(
+      (await run('mock-exit-nonzero', { knownFailure: () => undefined })).at(-1),
+    ).toMatchObject({ code: 'unknown' });
+    expect(
+      (await run(undefined, { knownFailure: () => ({ code: 'unsupported', message: 'x' }) })).at(-1)
+        ?.type,
+    ).toBe('done');
+  });
+
   test('a usage error of the CLI is an error, never an empty answer', async () => {
     const events = await run(undefined, { args: ['--no-such-flag'] });
 

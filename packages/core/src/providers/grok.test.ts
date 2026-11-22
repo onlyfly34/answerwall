@@ -67,8 +67,11 @@ describe('buildGrokArgs', () => {
     ]);
   });
 
-  test('macOS gets no sandbox flag either', () => {
-    expect(buildGrokArgs({ workDir: '/w', platform: 'darwin' })).not.toContain('--sandbox');
+  test('macOS, where the CLI documents a sandbox too, gets the same flag', () => {
+    expect(buildGrokArgs({ workDir: '/w', platform: 'darwin' }).slice(-2)).toEqual([
+      '--sandbox',
+      'read-only',
+    ]);
   });
 
   test('uses the format name of this CLI and never approves tools', () => {
@@ -224,7 +227,7 @@ describe('the grok adapter against the mock CLI', () => {
       'unrestricted',
     );
     expect(createGrokAdapter({ ...harness.context, platform: 'darwin' }).toolAccess).toBe(
-      'unrestricted',
+      'read-only',
     );
   });
 
@@ -350,6 +353,10 @@ describe('the grok adapter against the mock CLI', () => {
         streaming: 'token',
       });
       expect(detection.hint).toContain('`grok login --device-auth`');
+      // Where the sandbox is part of the invocation, the page says it is best effort.
+      expect(detection.hint?.includes('The read-only sandbox is best effort')).toBe(
+        harness.context.platform !== 'win32',
+      );
       expect((await harness.invocations()).map((call) => call.argv)).toEqual([['version']]);
     });
 

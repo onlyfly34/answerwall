@@ -180,7 +180,8 @@ export function cmdShimTarget(text: string, shimDir: string): string | null {
   const targets = [...line.matchAll(/"([^"]*)"/g)]
     .map((match) => match[1] ?? '')
     .filter((quoted) => /%~dp0|%dp0%/i.test(quoted))
-    .map((quoted) => quoted.replace(/(%~dp0|%dp0%)\\?/gi, `${shimDir}\\`))
+    // A replacer function: a `$` in the directory name must not be read as a replacement pattern.
+    .map((quoted) => quoted.replace(/(%~dp0|%dp0%)\\?/gi, () => `${shimDir}\\`))
     .map((expanded) => path.win32.normalize(expanded))
     .filter((expanded) => !isNodeBinary(expanded));
   return targets.at(-1) ?? null;
