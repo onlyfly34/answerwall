@@ -22,10 +22,10 @@ Actions are pinned to a commit, with the version in a comment. Dependabot
 (`.github/dependabot.yml`) proposes updates weekly. It does not touch npm
 packages; those are pinned and checked by hand.
 
-The end-to-end tests run on Linux and on Windows. The Windows run is allowed
-to fail (`continue-on-error`) until it has proven stable: look at the job
-itself, because the workflow stays green when it fails. To make it binding,
-move `windows-latest` from `include` into `os` in the `e2e` job of `ci.yml`.
+The end-to-end tests run on Linux and on Windows, and both runs are binding.
+In CI the responsiveness test allows a main-thread task of one second
+(`E2E_MAX_LONG_TASK_MS` in `ci.yml`) instead of the 500 ms of a developer
+machine, because the hosted runners share four cores among four workers.
 
 ## Making a release
 

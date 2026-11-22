@@ -52,17 +52,10 @@ jobs:
     name: End-to-end (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
-    # The Windows run reports its result but does not fail the workflow until
-    # it has proven stable; then move it out of `include` and into `os`.
-    continue-on-error: ${{ matrix.experimental }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest]
-        experimental: [false]
-        include:
-          - os: windows-latest
-            experimental: true
+        os: [ubuntu-latest, windows-latest]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -88,6 +81,12 @@ jobs:
       - run: pnpm e2e
         env:
           PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/playwright-browsers
+          # The responsiveness test times the page's main thread while three
+          # other workers share the runner's four cores and nothing draws on
+          # a GPU. Two runs of the same commit measured 390 ms and 680 ms on
+          # the Linux runner, so the limit of a developer machine (500 ms)
+          # decides nothing here. A page that freezes for a second still fails.
+          E2E_MAX_LONG_TASK_MS: '1000'
 
       - name: Upload the traces
         if: ${{ failure() }}
