@@ -147,6 +147,69 @@ describe('the fetch of a remote connection', () => {
     expect(tokens.value).toBe('newer-token-0123456789ab');
   });
 
+  describe('when another page of the extension has stored a newer token', () => {
+    const NEWER = 'newer-token-0123456789ab';
+
+    /** A page that read `TOKEN` before another page signed out and paired again. */
+    async function stalePage(respond: (call: RecordedCall) => Response) {
+      const http = scriptedFetch(respond);
+      const tokens = memoryTokens(TOKEN);
+      const connection = createRemoteConnection({ base: SERVER, tokens, fetch: http.fetch });
+      await connection.fetch('/api/meta');
+      tokens.value = NEWER;
+      http.calls.length = 0;
+      return { http, tokens, connection };
+    }
+    const knowsOnly =
+      (token: string) =>
+      (call: RecordedCall): Response =>
+        authorization(call) === `Bearer ${token}`
+          ? jsonResponse(testMeta())
+          : errorResponse('unauthorized', 401);
+
+    test('a 401 for the old one does not delete the new one: it is taken over and the request repeated', async () => {
+      let signedOut = false;
+      const { http, tokens, connection } = await stalePage((call) =>
+        signedOut ? knowsOnly(NEWER)(call) : jsonResponse(testMeta()),
+      );
+      signedOut = true;
+
+      const response = await connection.fetch('/api/settings', { method: 'PUT', body: '{}' });
+
+      expect(tokens.value).toBe(NEWER);
+      expect(response.status).toBe(200);
+      expect(http.calls.map(authorization)).toEqual([`Bearer ${TOKEN}`, `Bearer ${NEWER}`]);
+      expect(http.calls[1]?.init.body).toBe('{}');
+      await connection.fetch('/api/meta');
+      expect(authorization(http.calls[2])).toBe(`Bearer ${NEWER}`);
+    });
+
+    test('a newer token that is refused as well is forgotten, after one attempt', async () => {
+      let signedOut = false;
+      const { http, tokens, connection } = await stalePage(() =>
+        signedOut ? errorResponse('unauthorized', 401) : jsonResponse(testMeta()),
+      );
+      signedOut = true;
+
+      expect((await connection.fetch('/api/meta')).status).toBe(401);
+      expect(http.calls.map(authorization)).toEqual([`Bearer ${TOKEN}`, `Bearer ${NEWER}`]);
+      expect(tokens.value).toBeUndefined();
+    });
+
+    test('only a request without a body or with a string body is repeated', async () => {
+      let signedOut = false;
+      const { http, tokens, connection } = await stalePage((call) =>
+        signedOut ? knowsOnly(NEWER)(call) : jsonResponse(testMeta()),
+      );
+      signedOut = true;
+
+      const init: RequestInit = { method: 'PUT', body: new FormData() };
+      expect((await connection.fetch('/api/settings', init)).status).toBe(401);
+      expect(http.calls).toHaveLength(1);
+      expect(tokens.value).toBe(NEWER);
+    });
+  });
+
   test('other failures keep the token', async () => {
     const http = scriptedFetch(() => errorResponse('forbidden', 403));
     const tokens = memoryTokens(TOKEN);

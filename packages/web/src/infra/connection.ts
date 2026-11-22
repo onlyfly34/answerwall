@@ -33,7 +33,10 @@ export interface RemoteConnection {
    * the token and never sends or stores a cookie. Refuses any other origin,
    * so the token cannot be sent anywhere else. A `401` for a request that
    * carried the current token forgets it: presenting a dead token again and
-   * again would count against the failed sign-in limit.
+   * again would count against the failed sign-in limit. The store is asked
+   * first, because every page of the extension shares it: when another page
+   * has stored a newer token meanwhile, that one is taken over, and the
+   * request sent once more with it, instead of being deleted.
    */
   readonly fetch: Fetch;
   setToken(token: string | undefined): Promise<void>;
@@ -64,6 +67,28 @@ export function createRemoteConnection(options: RemoteConnectionOptions): Remote
     await tokens.set(token);
   }
 
+  async function request(url: URL, init: RequestInit, again: boolean): Promise<Response> {
+    const token = await current();
+    const headers = new Headers(init.headers);
+    if (token !== undefined) headers.set('Authorization', `Bearer ${token}`);
+    const response = await fetch(url.href, { ...init, headers, credentials: 'omit' });
+    if (response.status !== 401 || token === undefined || cached?.token !== token) return response;
+
+    // The refused token is this page's copy. The store is shared with the
+    // other pages of the extension and may hold a newer one by now.
+    const stored = (await tokens.get()) || undefined;
+    if (cached.token !== token) return response;
+    if (stored === undefined || stored === token) {
+      await setToken(undefined);
+      return response;
+    }
+    cached = { token: stored };
+    // Sent once more with the newer token. Only a body that is certainly
+    // still whole is sent twice; this client sends nothing but strings.
+    const replayable = init.body == null || typeof init.body === 'string';
+    return again && replayable ? request(url, init, false) : response;
+  }
+
   return {
     origin: base.origin,
     setToken,
@@ -72,14 +97,7 @@ export function createRemoteConnection(options: RemoteConnectionOptions): Remote
       if (url.origin !== base.origin) {
         throw new TypeError('A request to another origin than the server was refused');
       }
-      const token = await current();
-      const headers = new Headers(init.headers);
-      if (token !== undefined) headers.set('Authorization', `Bearer ${token}`);
-      const response = await fetch(url.href, { ...init, headers, credentials: 'omit' });
-      if (response.status === 401 && token !== undefined && cached?.token === token) {
-        await setToken(undefined);
-      }
-      return response;
+      return request(url, init, true);
     },
   };
 }
