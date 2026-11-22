@@ -139,9 +139,13 @@ artifact named `release-<something>`, and list the job in `needs` of
 `assets` (and add its file pattern to the check there). File names must be
 unique across all jobs, because the artifacts are merged into one directory.
 
-## Cutting v0.1.0-rc.1, then v0.1.0
+## Cutting v0.2.0-rc.1, then v0.2.0
 
-Before the first release, once:
+`v0.1.0-rc.1` was the first tag; it was released without the browser
+extension, so it has six assets. The next tag is `v0.2.0-rc.1`, whose
+version is already on `main`.
+
+Once, if it has not been done yet:
 
 - **Private vulnerability reporting.** `docs/security.md` sends reports to
   **Security > Report a vulnerability**; that button exists only when
@@ -153,9 +157,9 @@ Before the first release, once:
 1. On an up-to-date `main` with a green CI run:
 
    ```
-   node scripts/check-versions.mjs --set 0.1.0-rc.1
+   node scripts/check-versions.mjs --set 0.2.0-rc.1
    pnpm install --frozen-lockfile && pnpm lint
-   git commit -s -am "chore(release): 0.1.0-rc.1"
+   git commit -s -am "chore(release): 0.2.0-rc.1"
    git push origin main
    ```
 
@@ -168,31 +172,33 @@ Before the first release, once:
 4. Tag that commit and push the tag:
 
    ```
-   git tag -a v0.1.0-rc.1 -m "v0.1.0-rc.1"
-   git push origin v0.1.0-rc.1
+   git tag -a v0.2.0-rc.1 -m "v0.2.0-rc.1"
+   git push origin v0.2.0-rc.1
    ```
 
 5. After the Release workflow is green, check:
-   - The release `v0.1.0-rc.1` is published, marked **Pre-release**, not
-     **Latest**, and lists the seven assets of the table above with `0.1.0-rc.1`
+   - The release `v0.2.0-rc.1` is published, marked **Pre-release**, not
+     **Latest**, and lists the seven assets of the table above with `0.2.0-rc.1`
      in their names.
    - `sha256sum --check SHA256SUMS` passes for the downloaded assets.
-   - `latest.yml` names `answerwall-desktop-0.1.0-rc.1-windows-x64-setup.exe`
-     with `version: 0.1.0-rc.1`.
-   - GHCR: the package `answerwall` exists. **The first push creates it
-     private:** in the package settings (Profile > Packages > answerwall >
-     Package settings) change its visibility to public once, and check that
-     it is linked to this repository. Then, without logging in:
-     `docker buildx imagetools inspect ghcr.io/onlyfly34/answerwall:0.1.0-rc.1`
-     lists `linux/amd64` and `linux/arm64`, and the tags `0.1` and `latest`
-     do not exist yet.
-   - `docker run --rm ghcr.io/onlyfly34/answerwall:0.1.0-rc.1 --version`
-     prints `0.1.0-rc.1`.
-   - The server bundle: extract `answerwall-server-0.1.0-rc.1.tar.gz`,
+   - `latest.yml` names `answerwall-desktop-0.2.0-rc.1-windows-x64-setup.exe`
+     with `version: 0.2.0-rc.1`.
+   - GHCR: the package `answerwall` is public. **The first push created it
+     private:** if it still is, in the package settings (Profile > Packages >
+     answerwall > Package settings) change its visibility to public once, and
+     check that it is linked to this repository. Then, without logging in:
+     `docker buildx imagetools inspect ghcr.io/onlyfly34/answerwall:0.2.0-rc.1`
+     lists `linux/amd64` and `linux/arm64`, and the tags `0.2` and `latest`
+     do not exist yet (no final release has been made).
+   - `docker run --rm ghcr.io/onlyfly34/answerwall:0.2.0-rc.1 --version`
+     prints `0.2.0-rc.1`.
+   - The server bundle: extract `answerwall-server-0.2.0-rc.1.tar.gz`,
      `npm ci --omit=dev`, `node dist/main.js --version`.
    - On a real Windows PC, walk through
      [verify-on-windows.md](verify-on-windows.md) with this installer. Part I
-     (updates) cannot be tested with a pre-release; it waits for v0.1.0.
+     (updates) cannot be tested with a pre-release; it waits for v0.2.0.
+   - The extension zip: on a real Chrome or Edge, walk through
+     [verify-web-cells.md](verify-web-cells.md) with it.
 
 ### 2. The release
 
@@ -200,34 +206,34 @@ Before the first release, once:
    Then:
 
    ```
-   node scripts/check-versions.mjs --set 0.1.0
+   node scripts/check-versions.mjs --set 0.2.0
    pnpm install --frozen-lockfile && pnpm lint
-   git commit -s -am "chore(release): 0.1.0"
+   git commit -s -am "chore(release): 0.2.0"
    git push origin main
    ```
 
 2. Wait for a green CI run on that commit, then:
 
    ```
-   git tag -a v0.1.0 -m "v0.1.0"
-   git push origin v0.1.0
+   git tag -a v0.2.0 -m "v0.2.0"
+   git push origin v0.2.0
    ```
 
 3. After the Release workflow is green, check:
-   - The release `v0.1.0` is published, is **Latest**, not a pre-release, and
-     lists the seven assets with `0.1.0` in their names.
+   - The release `v0.2.0` is published, is **Latest**, not a pre-release, and
+     lists the seven assets with `0.2.0` in their names.
    - `docker buildx imagetools inspect ghcr.io/onlyfly34/answerwall:latest`
-     shows the same digest as `:0.1.0` and `:0.1` (the digest is also in the
+     shows the same digest as `:0.2.0` and `:0.2` (the digest is also in the
      release notes), for both platforms.
    - `cd docker && docker compose pull && docker compose up -d` on a fresh
      machine pulls the image without logging in, and `docker compose logs`
      shows the pairing code.
-   - On Windows, an installed `0.1.0-rc.1` offers `0.1.0` through
-     **File > Check for Updates…** (part I of the checklist).
+   - On Windows, an installed `0.2.0-rc.1` (or `0.1.0-rc.1`) offers `0.2.0`
+     through **File > Check for Updates…** (part I of the checklist).
 
 The draft-then-publish order and the GHCR push are only exercised by a real
 tag. If something fails on the candidate, delete the release and the tag
-(`gh release delete v0.1.0-rc.1 --cleanup-tag`) and the image version in the
+(`gh release delete v0.2.0-rc.1 --cleanup-tag`) and the image version in the
 package settings before tagging again; a published final release is never
 rewritten.
 

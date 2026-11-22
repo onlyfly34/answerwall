@@ -288,8 +288,8 @@ After an installation, press **Refresh** on the providers page.
 
 ### What was checked
 
-On 2026-11-22, on a 64-bit ARM host, each of the four commands above was run
-through the helper in a container started like `compose.yaml` starts it
+On 2026-11-22, on a 64-bit ARM host, the commands for `claude`, `codex`,
+`grok` and `agy` above were run through the helper in a container started like `compose.yaml` starts it
 (read-only root file system, no capabilities). Each tool then reported its
 version to the container's user (claude 2.1.330, codex-cli 0.171.0, grok
 1.0.92, agy 1.5.14), and AnswerWall's providers page reported `claude` and
@@ -304,6 +304,11 @@ mounted): it installed opencode 2.3.2 into `~/.opencode/bin`, about 240 MB,
 and a second container without any network found it on `PATH` and got its
 version. Its detection by a running AnswerWall inside the container, and a
 question through it there, were not tried.
+
+All of these runs predate two changes to the helper: the fixed environment
+of the installer and the dropped version call described above. The real
+installers have not been run again since; the helper's own tests cover
+the change with stand-in installers.
 
 Not checked, because it needs an account: signing in inside the container,
 and answering a question through a real tool inside the container. The

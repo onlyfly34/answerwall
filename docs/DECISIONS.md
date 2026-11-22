@@ -911,7 +911,8 @@ ends with the process, even on `SIGKILL`, so it never goes stale.
 | P3 | Hardening, docs (EN + zh-TW), `docs/verify-on-windows.md`, GHCR publishing |
 | later | Multi-turn conversations, desktop + remote sharing |
 
-Planned additions, not yet scheduled into a phase's contract:
+Additions after the phases above, first planned outside them (both are
+built; what is not yet verified is stated with each):
 
 - **Web cells (browser extension, off by default).** The owner asked for
   cells that show a vendor's own web app next to CLI and API cells, so the
@@ -951,8 +952,8 @@ Planned additions, not yet scheduled into a phase's contract:
     the listed hosts, so that a page of any other site that ends up in that
     tab gets nothing. The wall page removes its rule when it is left, and
     the service worker removes the rule of any tab that no longer shows a
-    wall page. No other request, tab or site is changed. It never changes the user agent or any other request
-    header.
+    wall page. No other request, tab or site is changed. It never changes
+    the user agent or any other request header.
   - **Send.** A content script, active only in a vendor frame whose parent
     is the extension's wall page, types the prompt into the page and submits
     it. When the answer has finished it reads the text of the last answer
