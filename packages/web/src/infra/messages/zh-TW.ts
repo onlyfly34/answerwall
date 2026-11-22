@@ -125,10 +125,10 @@ export const zhTW: Record<keyof typeof en, string> = {
     '請在伺服器的終端機中，以執行伺服器的使用者身分執行這個官方指令。本程式不會看到也不會儲存登入資訊。',
   'app.providers.loginCommand.copy': '複製登入指令',
   'app.providers.loginCommand.helpDesktop':
-    '請在這台電腦的終端機中執行這個官方指令來登入。本程式不會看到也不會儲存登入資訊。完成後請按「重新整理」。',
+    '請在這台電腦的終端機中執行這個官方指令來登入。本程式不會看到也不會儲存登入資訊。完成後請按「重新檢查」。',
   'app.providers.loginTerminal.open': '開啟終端機登入',
   'app.providers.loginTerminal.openOne': '開啟終端機登入 {label}',
-  'app.providers.loginTerminal.opened': '已開啟終端機視窗。請在那裡登入，然後按「重新整理」。',
+  'app.providers.loginTerminal.opened': '已開啟終端機視窗。請在那裡登入，然後按「重新檢查」。',
   'app.providers.loginTerminal.failed': '無法開啟終端機。請複製指令，自行在終端機中執行。',
   'app.providers.concurrency.label': '同時請求數',
   'app.providers.concurrency.help': '介於 {min} 到 {max}。超過的格子會排隊等候。',

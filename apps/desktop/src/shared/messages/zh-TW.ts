@@ -43,7 +43,7 @@ export const zhTW: Record<keyof typeof en, string> = {
   'problem.certificate':
     '這台電腦不信任伺服器的憑證。憑證錯誤一律不會略過：請在 Windows 安裝伺服器的 CA 憑證（受信任的根憑證授權單位），然後再試一次。',
   'problem.timeout': '伺服器回應逾時。',
-  'problem.not_a_server': '這個位址有回應，但不是 {name} 伺服器。',
+  'problem.not_a_server': '這個位址有回應，但不是執行 {name} 的伺服器。',
   'problem.desktop_instance':
     '這個位址屬於某個 {name} 桌面應用程式。它只服務自己的視窗，請改為連線到伺服器。',
   'problem.local_failed': '無法啟動本機伺服器。詳細資訊在記錄資料夾（說明選單）。',

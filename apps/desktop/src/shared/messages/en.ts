@@ -44,9 +44,9 @@ export const en = {
   'problem.certificate':
     'The server’s certificate is not trusted by this computer. Certificate errors are never bypassed: install the server’s CA certificate in Windows (Trusted Root Certification Authorities), then try again.',
   'problem.timeout': 'The server took too long to answer.',
-  'problem.not_a_server': 'Something answered at this address, but it is not a {name} server.',
+  'problem.not_a_server': 'Something answered at this address, but it is not a server running {name}.',
   'problem.desktop_instance':
-    'This address belongs to a {name} desktop app. It serves only its own window; connect to a server instead.',
+    'This address belongs to a desktop app running {name}. It serves only its own window; connect to a server instead.',
   'problem.local_failed':
     'The local server could not be started. The log folder (Help menu) has the details.',
 
