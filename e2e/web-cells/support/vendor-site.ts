@@ -19,6 +19,8 @@ export const VENDOR_HOST = 'vendor.localhost';
 export const SESSION_COOKIE = 'vendor_session';
 /** A `SameSite=None` cookie: the control that shows whether third-party cookies are blocked. */
 export const PROBE_COOKIE = 'vendor_probe';
+/** A `SameSite=Strict` cookie, as some sites use for the session itself. */
+export const STRICT_COOKIE = 'vendor_strict';
 
 export interface VendorRequest {
   method: string;
@@ -187,6 +189,7 @@ export async function startVendorSite(): Promise<VendorSite> {
         Location: '/',
         'Set-Cookie': [
           `${SESSION_COOKIE}=${id}; Path=/; HttpOnly; SameSite=Lax`,
+          `${STRICT_COOKIE}=1; Path=/; HttpOnly; SameSite=Strict`,
           // `Secure` is accepted here because a `localhost` name is a trustworthy origin.
           `${PROBE_COOKIE}=1; Path=/; SameSite=None; Secure`,
         ],

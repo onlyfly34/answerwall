@@ -59,6 +59,10 @@ contradicts it.
 
 - The server **always** serves the web UI and the API from the same origin.
   There is no CORS support at all: no `Access-Control-*` headers are ever sent.
+  One client is on another origin all the same: the wall page of the browser
+  extension (§5.4), accepted under the rules of §7. It is an extension page
+  with host permission for the server, which the browser lets read responses
+  without any CORS header, so none is added for it either.
 - The Electron "connection settings" screen (local/remote switch, remote URL)
   is a small page bundled in the app, not part of the remote UI.
 - Remote windows: `contextIsolation: true`, `sandbox: true`,
@@ -93,24 +97,26 @@ docs              user and developer docs
 Provider **instances** are configured in settings:
 
 ```ts
-type ProviderKind = 'claude' | 'codex' | 'agy' | 'grok' | 'opencode' | 'openai-compat';
+type ProviderKind = 'claude' | 'codex' | 'agy' | 'grok' | 'opencode' | 'openai-compat' | 'web';
 interface ProviderInstance {
-  id: string;            // stable; CLI kinds use the kind as id, openai-compat uses a slug
+  id: string;            // stable; CLI kinds use the kind as id, openai-compat uses a slug, web uses `web-<site>`
   kind: ProviderKind;
   label: string;
   enabled: boolean;
-  concurrency: number;   // CLI kinds: 1..5 (default 2, agy fixed at 1); openai-compat: 1..32 (default 4)
-  models: string[];      // user-editable list; merged with listModels() when available
+  concurrency: number;   // CLI kinds: 1..5 (default 2, agy fixed at 1); openai-compat: 1..32 (default 4); web: 1..8 (default 2)
+  models: string[];      // user-editable list; merged with listModels() when available; always empty for web
   defaultModel?: string;
   // CLI kinds only: useEnvApiKey (§5.1), riskAcknowledged (agy), webSearch (§5.3)
   // openai-compat only: baseUrl, hasApiKey (the key itself lives in SecretStore)
+  // web only: site (§5.4)
 }
 ```
 
 Each CLI kind has exactly one instance, which can be disabled but not removed;
-only openai-compat instances are added and removed. agy (vendor notice) and
-opencode (without a configuration of its own it answers with a hosted model
-the user never chose) are disabled on a new installation.
+openai-compat and web instances are added and removed. agy (vendor notice)
+and opencode (without a configuration of its own it answers with a hosted
+model the user never chose) are disabled on a new installation. The server
+runs every kind through its adapter except `web`, which has none (§5.4).
 
 Adapter contract:
 
@@ -486,6 +492,40 @@ without it reads as off).
   default when `web_search` is not given (the adapter always states it);
   codex's `cached` and `indexed` values, which are not used.
 
+### 5.4 Web providers and web cells
+
+A web provider stands for a vendor's own web app, shown in a frame of the
+browser extension's wall page (§11). The server **never** runs it and never
+contacts the site: it has no adapter, is never detected (`detection` stays
+`null`, `toolAccess` is `unrestricted`, there is no model list) and nothing
+is spawned or fetched for it.
+
+- An entry is a site id from a fixed list plus a display name:
+  `{ kind: 'web', site, id: 'web-<site>', label, enabled, concurrency }`.
+  The list (`WEB_SITES` in `protocol/web.ts`): `claude` (claude.ai),
+  `chatgpt` (chatgpt.com), `gemini` (gemini.google.com), `grok` (grok.com),
+  `zai` (chat.z.ai). There is no free-form address. The id follows from the
+  site, so a site is configured at most once. None exists by default.
+- Settings `webCells`, **all off by default**, also in a document written
+  before they existed:
+  - `enabled` — the master switch. Off: no web slot is accepted and no
+    browser extension is accepted as a client (§7).
+  - `fillPrompt` — the extension may type the prompt into the site and
+    submit it. Enforced by the extension; the server only stores it.
+  - `readAnswer` — the extension may read the finished answer and send it
+    here. Enforced by the server too: while it is off no web slot is
+    accepted (there would be nothing to store) and no answer text is taken.
+  - `extensionIds` — the extensions whose pages may use the API, at most 8
+    exact ids (32 letters `a`–`p`); no wildcard, no pattern.
+- A web slot is part of an ask like any other slot (§6.1 says how it runs).
+  Its answer is the text the client submits; it is stored and rendered
+  through the same path as every answer (Markdown, sanitised in the page,
+  §7), and shows in history on every device.
+- A page that cannot show web cells (the server's own page, the desktop
+  app, the PWA) is not offered web providers for its wall; it shows their
+  stored answers. The settings page of the desktop app has no web cells
+  section.
+
 ## 6. HTTP API
 
 All responses are JSON except the SSE stream. Errors:
@@ -494,7 +534,7 @@ All responses are JSON except the SSE stream. Errors:
 
 ```
 GET    /api/meta                       { name, version, apiVersion, mode, tls, authRequired }
-POST   /api/auth/pair                  { code, deviceName } -> sets session cookie
+POST   /api/auth/pair                  { code, deviceName } -> sets session cookie; to an allowed extension (§7): { device, token }, no cookie
 POST   /api/auth/session               { token }            -> sets session cookie
 POST   /api/auth/logout
 GET    /api/auth/devices
@@ -502,15 +542,34 @@ DELETE /api/auth/devices/:id
 POST   /api/auth/pairing-codes         -> { code, expiresAt }   (from a signed-in device)
 GET    /api/providers
 POST   /api/providers/refresh          { id? }                  re-run detect()/listModels()
-POST   /api/ask                        { prompt, targets: [{ slotId, providerId, model?, effort? }], conversationId? } -> { askId }
+POST   /api/ask                        { prompt, targets: [{ slotId, providerId, model?, effort? }], conversationId?, runsWebSlots? } -> { askId }
 GET    /api/ask/:askId                 snapshot: status and accumulated text per slot
 GET    /api/ask/:askId/stream?after=N  SSE
 POST   /api/ask/:askId/cancel          { slotId? }
+POST   /api/ask/:askId/slots/:slotId/result   the one result of a web slot (§6.1) -> { status, truncated }
 GET/PUT/DELETE /api/presets[/:id]
 GET    /api/history?q=&cursor=&limit=  (paged; list rows carry no answer bodies)
 GET/DELETE /api/history/:askId
 GET/PUT /api/settings                  secrets are write-only: reads return { hasKey: true }
 ```
+
+- `POST /api/ask` with a target of kind `web` is refused unless the request
+  says `runsWebSlots: true` (`web_client_required`, 400) and web cells and
+  the reading of answers are switched on (`provider_disabled`, 400). The ask
+  remembers who created it (the device, or the static token).
+- `POST /api/ask/:askId/slots/:slotId/result` takes exactly one of
+  - `{ outcome: 'done', text }` — the finished answer (not empty),
+  - `{ outcome: 'failed', code, message? }` — `code` is one of
+    `not_logged_in`, `quota`, `rate_limited`, `network`, `prompt_too_long`,
+    `bad_output` (the site rule found no input, submit control or answer),
+    `unsupported` (the site cannot be shown or driven here), `unknown`,
+  - `{ outcome: 'cancelled', reason? }`;
+
+  `message` and `reason` are at most 500 characters. Errors: `not_found`
+  (ask or slot), `bad_request` (not a web slot, malformed body), `forbidden`
+  (the caller did not create the ask; or an answer while reading answers is
+  switched off), `conflict` (the slot is queued, has ended, or already has
+  another result), and the request body limit (§6.2) as for any request.
 
 ### 6.1 Stream protocol
 
@@ -535,6 +594,32 @@ GET/PUT /api/settings                  secrets are write-only: reads return { ha
   `X-Accel-Buffering: no`. No compression on this route.
 - If the server restarts, slots that were running are marked `error` with
   code `unknown` and message "server restarted".
+- **Web slots** (§5.4) use the same state machine and the same events, but
+  nothing runs on the server:
+  - The slot waits for a permit of its provider like any other
+    (`queued`), so `concurrency` bounds the frames of one site that are
+    answering at once. With the permit the server emits `start`
+    (`streaming: 'block'`) and the slot is `running`. The client acts on a
+    web slot only after its `start`.
+  - The client that created the ask submits the slot's one result (§6).
+    `done`: one `delta` with the text, then `done`; text beyond the per-slot
+    output limit is cut on a character boundary and flagged with the
+    `output_truncated` notice, as for any slot. `failed`: `error` with the
+    given code and message. `cancelled`: a `provider` notice with the
+    reason, when one was given, then `cancelled`. `elapsedMs` is measured by
+    the server from `start`.
+  - Exactly one result is accepted per slot. The same result sent again
+    gets the same answer and changes nothing (a client may retry after a
+    lost response); any other result, and any result after the slot has
+    ended, is a `conflict`. Once the ask has left the server's memory (the
+    runner keeps the last few finished asks) a repeated result is a
+    `conflict` too.
+  - The slot timeout (§6.2) ends a web slot with `timeout`; a cancel from
+    **any** signed-in device ends it with `cancelled`; a server restart with
+    the usual `error`. The client learns of all three from the stream and
+    stops working on the cell.
+  - The server never fills in a prompt, never reads a page and never talks
+    to the site.
 
 ### 6.2 Limits (all configurable, all bounded)
 
@@ -558,7 +643,10 @@ leaked token cannot fan out into thousands of processes.
   `Authorization`, cookies and API keys.
 - Browser clients (PWA, Electron remote window): `HttpOnly; SameSite=Strict`
   session cookie, plus `Secure` whenever the request is HTTPS. Non-browser
-  clients and tests: `Authorization: Bearer`.
+  clients and tests: `Authorization: Bearer`. The wall page of the browser
+  extension is on another origin and uses `Authorization: Bearer` with its
+  device token, kept in the extension's own storage; it never gets or uses
+  the cookie (below).
 - Desktop local mode: random port, fresh token per launch; the Electron main
   process injects the `Authorization` header for `http://127.0.0.1:<port>`
   with `session.webRequest.onBeforeSendHeaders`. The token never reaches
@@ -590,6 +678,27 @@ leaked token cannot fan out into thousands of processes.
   without an `Origin` header is accepted only when it carries an
   `Authorization` header and no session cookie (non-browser clients). Being
   on loopback never bypasses auth.
+- **Browser extensions as clients** (web cells, §5.4). A request whose
+  `Origin` is an extension page (`chrome-extension://<id>`, or any other
+  `*-extension://` scheme) is refused on every method unless web cells are
+  switched on and `<id>` is in the settings' `extensionIds`. The list holds
+  exact ids; there is no wildcard and nothing is matched by pattern. Such a
+  request is also refused when it carries the session cookie, so the cookie
+  stays a same-origin credential; an allowed extension authenticates with
+  its bearer token only. `POST /api/auth/pair` answers an allowed extension
+  with `{ device, token }` and sets no cookie; no other response ever
+  carries a token, and no route sets or clears a cookie for an extension.
+  Still **no `Access-Control-*` header** is sent: an extension page with
+  host permission for the server needs none (confirmed in Chromium), and a
+  web page, which would need one, gets none. `Host`, `Content-Type`,
+  authentication, the failed-attempt limit and every other check apply
+  unchanged, and the same-origin cookie path is not changed at all.
+  Chromium sends `Origin` from an extension page on state-changing requests
+  and omits it on `GET` (confirmed), so the allowlist decides who may pair
+  and write, and a read is judged by its credential like any other read.
+  What this does not cover: an extension that has host access to the
+  server's origin can script the server's own page, as it can any site; no
+  server check can prevent that, and docs/security.md says so.
 - Only failed attempts that presented a credential count towards the failed
   auth limit (wrong pairing code, wrong or revoked token or cookie); a 401
   for a request without any credential does not.
@@ -689,9 +798,17 @@ ends with the process, even on `SIGKILL`, so it never goes stale.
   running that command (the page names the provider kind; the command comes
   from the one table `LOGIN_COMMANDS`), never captured, and followed by no
   automatic detection.
-- Settings: providers, limits, layout, TLS/CA download, devices, language;
-  in the desktop app also the release check (§10), which a server never
-  makes and therefore does not show.
+- Settings: providers, limits, layout, TLS/CA download, devices, language,
+  web cells (§5.4: the three switches, the extension ids, the sites; not in
+  the desktop app); in the desktop app also the release check (§10), which a
+  server never makes and therefore does not show.
+- The same UI can be mounted by a page on another origin (the extension's
+  wall page) through `packages/web/src/embed.tsx`: requests go to one
+  configured server origin with the device token as bearer token and
+  without cookies, the event stream is read with `fetch` (it always was, so
+  the header can be sent), routes live in the fragment, no service worker is
+  registered, and only the protocol version must match the server, not the
+  build version.
 - Pairing/sign-in page; a global 401 handler returns to it.
 - PWA: manifest, icons, service worker that caches static assets only and
   never an `/api/` response; the app shell revalidates when
@@ -758,6 +875,12 @@ Planned additions, not yet scheduled into a phase's contract:
   cells that show a vendor's own web app next to CLI and API cells, so the
   web apps' own features (memory, projects, search) stay available, with the
   prompt filled in automatically and the answer kept in history.
+  - **State.** Built: the protocol and the server side (§5.4, §6, §6.1, §7),
+    the web UI's ability to run from the extension's origin (§9), and the
+    proof of the mechanism in a real Chromium against a stand-in site
+    (`e2e/web-cells`). Not built yet: `apps/extension` itself, the site
+    rules, and web cells in the wall. `docs/web-cells.md` holds the results
+    of the proof and the contract the extension builds against.
   - **Where it runs.** In the user's own Chrome or Edge, through an
     extension in `apps/extension` (Manifest V3). Not in the Electron app and
     not on phones or in the PWA; those show the stored answers only. The
@@ -776,9 +899,13 @@ Planned additions, not yet scheduled into a phase's contract:
     instead of rewriting cookies.
   - **Headers.** The extension removes the response headers that refuse
     framing (`X-Frame-Options`, `Content-Security-Policy`) only for
-    sub-frame requests to the listed vendor hosts that the extension's own
-    page started. No other request, tab or site is changed. It never changes
-    the user agent or any other request header.
+    sub-frame requests to the listed vendor hosts **in the tab of its own
+    wall page** (a session rule that names the tab). Scoping by who started
+    the request is not enough: a navigation the site itself starts inside
+    the frame (a redirect after sign-in, a form) has the site as initiator
+    and would be refused again; the proof showed both. No other request, tab
+    or site is changed. It never changes the user agent or any other request
+    header.
   - **Send.** A content script, active only in a vendor frame whose parent
     is the extension's wall page, types the prompt into the page and submits
     it. When the answer has finished it reads the text of the last answer
@@ -822,9 +949,21 @@ Planned additions, not yet scheduled into a phase's contract:
   queueing visible, cancel, reconnect mid-stream, presets, history, pairing,
   hostile Markdown (`<img src=http://…>`, `<script>`, `javascript:` links)
   causes no outbound request.
+- e2e, project `web-cells` (one desktop viewport): a Chromium with its own
+  profile and an unpacked Manifest V3 test extension, against a stand-in
+  vendor site on loopback that refuses framing and signs in with a
+  `SameSite=Lax; HttpOnly` cookie. It proves the mechanism of §11 (framing
+  from the extension page, cookies and storage in the frame with third-party
+  cookies allowed and blocked, the content script, the inertness of all of
+  it outside the wall tab) and drives the compiled server from the extension
+  page (the allowlist, pairing for a token, a web slot from ask to stored
+  answer, the web UI mounted as an extension page). No real site is ever
+  contacted. The main suite covers the settings section and a web slot whose
+  result a scripted client submits.
 - `pnpm smoke:mock`: builds everything and drives the compiled server end to
   end against the mock CLIs and a local OpenAI-compatible stub (pairing, a
-  queued 16-slot ask, resume, cancel, history, presets, settings, static UI
+  queued 16-slot ask, resume, cancel, history, presets, settings, a web slot
+  answered by a scripted client with an extension origin, static UI
   headers, shutdown with no process left behind, restart). No real CLI and
   no network beyond loopback; safe for CI. Interrupted (SIGINT, SIGTERM,
   SIGHUP), it stops the server and every mock CLI and removes its temporary

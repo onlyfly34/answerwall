@@ -253,10 +253,12 @@ function createClient(base) {
  * connection is then closed by the client). Resolves with the events, the
  * response headers and whether the server closed the stream.
  */
-async function readStream(base, pathname, cookie, onEvent = () => false) {
+async function readStream(base, pathname, credential, onEvent = () => false) {
   const controller = new AbortController();
+  // A session cookie, or the headers of a client that signs in another way.
+  const credentials = typeof credential === 'string' ? { cookie: credential } : credential;
   const response = await fetch(new URL(pathname, base), {
-    headers: { cookie, accept: 'text/event-stream', 'accept-encoding': 'gzip, br' },
+    headers: { ...credentials, accept: 'text/event-stream', 'accept-encoding': 'gzip, br' },
     signal: controller.signal,
   });
   if (response.status !== 200) {
@@ -1003,6 +1005,221 @@ async function main() {
       (await api.del(API_PATHS.historyEntry(searchAsk.json.askId))).status < 300,
       'the web search ask is removed from history',
     );
+
+    // ---------------------------------------------------------- web cells
+    // A scripted client stands in for the browser extension: it presents an
+    // extension origin, pairs for a device token and submits the result of a
+    // web slot. No site and no browser is involved.
+    const EXTENSION_ORIGIN = 'chrome-extension://abcdefghijklmnopabcdefghijklmnop';
+    const EXTENSION_ID = EXTENSION_ORIGIN.slice('chrome-extension://'.length);
+    const fresh = (await api.get(API_PATHS.settings)).json.settings;
+    const toInput = ({ hasApiKey: _hasApiKey, ...provider }) => provider;
+    check(
+      fresh.webCells.enabled === false &&
+        fresh.webCells.fillPrompt === false &&
+        fresh.webCells.readAnswer === false &&
+        fresh.webCells.extensionIds.length === 0 &&
+        fresh.providers.every((p) => p.kind !== 'web'),
+      'web cells are off by default and no web provider exists',
+      fresh.webCells,
+    );
+    const pairAsExtension = async () =>
+      api.post(
+        API_PATHS.authPair,
+        {
+          code: (await api.post(API_PATHS.authPairingCodes, {})).json.code,
+          deviceName: 'Smoke extension',
+        },
+        { auth: false, keepCookie: false, headers: { origin: EXTENSION_ORIGIN } },
+      );
+    const refusedExtension = await pairAsExtension();
+    check(
+      refusedExtension.status === 403,
+      'an extension origin is refused while web cells are off',
+      refusedExtension.json,
+    );
+    const webProvider = {
+      id: 'web-claude',
+      kind: 'web',
+      site: 'claude',
+      label: 'Claude (web)',
+      enabled: true,
+      concurrency: 2,
+      models: [],
+    };
+    const withWeb = await api.put(API_PATHS.settings, {
+      providers: [...fresh.providers.map(toInput), webProvider],
+    });
+    check(withWeb.status === 200, 'a web provider is added', withWeb.json);
+    const webTargets = [
+      { slotId: 'w1', providerId: 'web-claude' },
+      { slotId: 'w2', providerId: 'codex' },
+    ];
+    const whileOff = await api.post(API_PATHS.ask, {
+      prompt: 'Smoke test: web cell',
+      targets: webTargets,
+      runsWebSlots: true,
+    });
+    check(
+      whileOff.status === 400 && whileOff.json.error.code === 'provider_disabled',
+      'a web slot is refused while web cells are off',
+      whileOff.json,
+    );
+    const webOn = await api.put(API_PATHS.settings, {
+      webCells: { enabled: true, fillPrompt: true, readAnswer: true, extensionIds: [EXTENSION_ID] },
+    });
+    check(webOn.status === 200, 'web cells are switched on with one allowed extension', webOn.json);
+    const pairedExtension = await pairAsExtension();
+    const extensionToken = pairedExtension.json?.token;
+    check(
+      pairedExtension.status === 200 &&
+        typeof extensionToken === 'string' &&
+        extensionToken.length >= 40 &&
+        pairedExtension.setCookie === null,
+      'the allowed extension pairs for a device token and gets no cookie',
+      { status: pairedExtension.status, setCookie: pairedExtension.setCookie },
+    );
+    check(
+      [...pairedExtension.headers.keys()].every((name) => !name.startsWith('access-control-')),
+      'the answer to the extension carries no CORS header',
+    );
+    const otherExtension = await api.post(
+      API_PATHS.authPair,
+      { code: '00000000', deviceName: 'Other' },
+      {
+        auth: false,
+        keepCookie: false,
+        headers: { origin: 'chrome-extension://ponmlkjihgfedcbaponmlkjihgfedcba' },
+      },
+    );
+    check(otherExtension.status === 403, 'another extension is still refused');
+    const extensionHeaders = {
+      authorization: `Bearer ${extensionToken}`,
+      origin: EXTENSION_ORIGIN,
+    };
+    const extension = (method, pathname, body) =>
+      api.request(method, pathname, body, {
+        auth: false,
+        keepCookie: false,
+        headers: extensionHeaders,
+      });
+    const undeclared = await extension('POST', API_PATHS.ask, {
+      prompt: 'Smoke test: web cell',
+      targets: webTargets,
+    });
+    check(
+      undeclared.status === 400 && undeclared.json.error.code === 'web_client_required',
+      'a web slot needs a client that declares it runs web slots',
+      undeclared.json,
+    );
+    const webAsk = await extension('POST', API_PATHS.ask, {
+      prompt: 'Smoke test: web cell',
+      targets: webTargets,
+      runsWebSlots: true,
+    });
+    check(webAsk.status === 200, 'an ask with a web slot is accepted', webAsk.json);
+    const webAskId = webAsk.json.askId;
+    const WEB_ANSWER = 'Answer read from the web cell: **four**.';
+    let webSubmit;
+    const webStream = await readStream(
+      server.base,
+      API_PATHS.askStream(webAskId),
+      { authorization: `Bearer ${extensionToken}` },
+      (event) => {
+        // Once the server has recorded the slot as running, the client answers it.
+        if (event.type === 'start' && event.slotId === 'w1') {
+          webSubmit = extension('POST', API_PATHS.askSlotResult(webAskId, 'w1'), {
+            outcome: 'done',
+            text: WEB_ANSWER,
+          });
+        }
+        return false;
+      },
+    );
+    const webSubmitted = await webSubmit;
+    check(
+      webSubmitted?.status === 200 &&
+        webSubmitted.json.status === 'done' &&
+        webSubmitted.json.truncated === false,
+      'the result of the web slot is accepted',
+      webSubmitted?.json,
+    );
+    const webEvents = webStream.events.filter((e) => e.slotId === 'w1');
+    check(
+      webEvents.map((e) => e.type).join(',') === 'start,delta,done' &&
+        webEvents[0].streaming === 'block' &&
+        webEvents[1].text === WEB_ANSWER &&
+        webStream.events.at(-1).type === 'ask_done',
+      'the web slot streams start, its text and done like any other slot',
+      webEvents,
+    );
+    const webEntry = await api.get(API_PATHS.historyEntry(webAskId));
+    const webSlot = webEntry.json.slots.find((s) => s.slotId === 'w1');
+    check(
+      webEntry.json.status === 'done' &&
+        webSlot.kind === 'web' &&
+        webSlot.status === 'done' &&
+        webSlot.text === WEB_ANSWER &&
+        webEntry.json.slots.find((s) => s.slotId === 'w2').status === 'done',
+      'another device finds the web answer in the history, next to the CLI answer',
+      webSlot,
+    );
+    const webAgain = await extension('POST', API_PATHS.askSlotResult(webAskId, 'w1'), {
+      outcome: 'done',
+      text: WEB_ANSWER,
+    });
+    const webOther = await extension('POST', API_PATHS.askSlotResult(webAskId, 'w1'), {
+      outcome: 'done',
+      text: 'another answer',
+    });
+    check(
+      webAgain.status === 200 && webOther.status === 409,
+      'the same result may be sent again; a different one is a conflict',
+      [webAgain.status, webOther.status],
+    );
+    const webSecond = await extension('POST', API_PATHS.ask, {
+      prompt: 'Smoke test: web cell cancelled',
+      targets: [{ slotId: 'w1', providerId: 'web-claude' }],
+      runsWebSlots: true,
+    });
+    const webSecondId = webSecond.json.askId;
+    const forged = await api.post(API_PATHS.askSlotResult(webSecondId, 'w1'), {
+      outcome: 'done',
+      text: 'forged',
+    });
+    check(forged.status === 403, 'another device cannot submit the result', forged.json);
+    const webCancel = await api.post(API_PATHS.askCancel(webSecondId), { slotId: 'w1' });
+    check(
+      webCancel.status === 200 && webCancel.json.cancelled.join() === 'w1',
+      'another device can cancel the web slot',
+      webCancel.json,
+    );
+    const webLate = await extension('POST', API_PATHS.askSlotResult(webSecondId, 'w1'), {
+      outcome: 'done',
+      text: 'too late',
+    });
+    const webCancelled = await api.get(API_PATHS.askSnapshot(webSecondId));
+    check(
+      webLate.status === 409 &&
+        webCancelled.json.status === 'done' &&
+        webCancelled.json.slots[0].status === 'cancelled' &&
+        webCancelled.json.slots[0].text === '',
+      'a result after the cancel is refused and nothing of it is stored',
+      [webLate.status, webCancelled.json.slots[0]],
+    );
+    const extensionOut = await extension('POST', API_PATHS.authLogout, {});
+    check(extensionOut.status === 200, 'the extension signs out, which revokes its device');
+    const webOff = await api.put(API_PATHS.settings, {
+      webCells: { enabled: false, fillPrompt: false, readAnswer: false, extensionIds: [] },
+      providers: fresh.providers.map(toInput),
+    });
+    check(webOff.status === 200, 'web cells are switched off again', webOff.json);
+    for (const id of [webAskId, webSecondId]) {
+      check(
+        (await api.del(API_PATHS.historyEntry(id))).status < 300,
+        'a web cell ask is removed from history',
+      );
+    }
 
     // ------------------------------------------------------------- web UI
     const shell = await fetch(new URL('/', server.base));

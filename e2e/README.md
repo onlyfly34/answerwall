@@ -11,6 +11,7 @@ used.
 pnpm --filter ./e2e browsers        # once: download Chromium for Playwright
 pnpm --filter ./e2e test            # all three viewports
 pnpm --filter ./e2e test:phone      # one viewport: test:desktop, test:tablet, test:phone
+pnpm --filter ./e2e test:web-cells  # the web-cell tests with the unpacked test extension
 pnpm --filter ./e2e exec playwright test tests/ask.spec.ts -g "12 slots"
 E2E_HTML_REPORT=1 pnpm --filter ./e2e test   # also write an HTML report
 pnpm --filter ./e2e report          # open that report
@@ -53,6 +54,7 @@ A failed test leaves a trace, a screenshot and the server's log in
 | `support/hostile.ts`         | The hostile Markdown and the checks that rendered content is inert.                                                     |
 | `support/touch.ts`           | A real touch swipe.                                                                                                     |
 | `tests/*.spec.ts`            | The tests, one file per area.                                                                                           |
+| `web-cells/`                 | The `web-cells` project: a test extension, a stand-in vendor site and their tests; see below.                           |
 
 **A server per test.** Every test starts its own server on an ephemeral
 loopback port with its own temporary data directory, so tests share no
@@ -87,6 +89,19 @@ these fails the test that caused it:
 **Viewports.** A test whose title or `describe` carries `@desktop`, `@tablet`
 or `@phone` runs only in that project; everything else runs in all three.
 
+**Web cells.** The `web-cells` project does not use the fixtures above. Each
+of its tests starts a Chromium with a profile of its own and the unpacked
+Manifest V3 extension from `web-cells/extension` (`channel: 'chromium'`: the
+headless shell cannot load extensions), a stand-in vendor site
+(`web-cells/support/vendor-site.ts`, reached as `http://vendor.localhost:<port>`,
+which refuses framing and signs in with a `SameSite=Lax; HttpOnly` cookie)
+and, where needed, a compiled server. The global setup copies the extension
+into the run directory and builds the web UI into it from
+`web-cells/embedded` (the `@answerwall/web/embed` entry), so the UI can be
+driven as an extension page. No real site is ever contacted and no site rule
+for a real site is exercised. [docs/web-cells.md](../docs/web-cells.md)
+explains what each test proves.
+
 ## What is covered
 
 | File                | Subject                                                                                                                                                                                                                        |
@@ -102,6 +117,14 @@ or `@phone` runs only in that project; everything else runs in all three.
 | `security.spec.ts`  | Hostile Markdown streamed in torn pieces, as a prompt, in history and in names: nothing loaded, nothing run. The CSP header on every response; the app running clean under it.                                                 |
 | `pwa.spec.ts`       | Manifest and icons; the service worker installs, serves the shell, never answers for `/api/`, caches nothing at runtime; offline start; a page older than the server.                                                          |
 | `settings.spec.ts`  | Limits and their bounds, enforced by page and server; the about and connection sections.                                                                                                                                       |
+| `web-cells.spec.ts` | The web cells settings; a web slot answered by a scripted client, stored and rendered like any answer (hostile Markdown included); another device cannot answer for it but can cancel it; failure with a reason; timeout.      |
+
+The `web-cells` project (one desktop viewport):
+
+| File                          | Subject                                                                                                                                                                                                                                              |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `web-cells/mechanism.spec.ts` | With third-party cookies allowed and blocked: the extension page frames the stand-in site and nothing else can; the session cookie and storage of a normal tab apply in the frame; the content script fills, submits, reads; inert elsewhere.        |
+| `web-cells/server.spec.ts`    | What an extension page's requests look like; the extension id allowlist; a web page gains nothing; pairing for a token, a web slot from ask to history with the stream read by `fetch`; cancel from another device; the web UI as an extension page. |
 
 Not covered here, because it cannot be done in this setup: a real CLI, a real
 account, TLS modes (the browser would need the private CA installed), the

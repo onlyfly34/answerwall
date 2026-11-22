@@ -134,6 +134,9 @@ test('(d) an extension cannot pair until its id is on the allowlist', async ({
   expect((await pair()).status).toBe(403);
   const write = await callApi(wall, server, token, 'POST', '/api/auth/pairing-codes', {});
   expect(write.status).toBe(403);
+  // A read names no origin, so it is judged by its token alone, as for any
+  // client: revoking the device is what ends an extension's reads.
+  expect((await callApi(wall, server, token, 'GET', '/api/settings')).status).toBe(200);
 });
 
 test('(d) a web page gains nothing from an allowed extension', async ({

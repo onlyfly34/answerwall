@@ -6,7 +6,7 @@
  */
 import type { Frame, Page } from '@playwright/test';
 import { expect, test } from './support/fixtures.ts';
-import { PROBE_COOKIE, SESSION_COOKIE } from './support/vendor-site.ts';
+import { PROBE_COOKIE, SESSION_COOKIE, STRICT_COOKIE } from './support/vendor-site.ts';
 
 const cell = (page: Page) => page.frameLocator('#cell');
 
@@ -134,6 +134,9 @@ for (const blockThirdPartyCookies of [false, true]) {
       const document = vendor.requests.find((request) => request.secFetchDest === 'iframe');
       expect(document, 'the frame document request').toBeDefined();
       expect(document?.cookies).toContain(SESSION_COOKIE);
+      // A SameSite=Strict cookie travels too: under the extension's page the
+      // frame counts as the site's own context.
+      expect(document?.cookies).toContain(STRICT_COOKIE);
       test.info().annotations.push({
         type: 'frame document request',
         description: JSON.stringify(document),

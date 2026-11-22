@@ -14,7 +14,7 @@ and are not repeated here.
 | `apps/server`     | Process entry: environment → `AppConfig` → `createServer`; the `pair` command calls `createPairingCode`.                                                             |
 | `apps/desktop`    | Electron shell: main process, the core host (core's server in a utility process), the connection page; see [desktop.md](desktop.md).                                 |
 | `tools/mock-clis` | Fake CLIs for tests; put `tools/mock-clis/bin` and a directory holding only `node` on the `env.PATH` given to `createServer`.                                        |
-| `e2e`             | Playwright suite against the compiled server and the mock CLIs, three viewports; see its README.                                                                     |
+| `e2e`             | Playwright suite against the compiled server and the mock CLIs, three viewports, and the web-cell tests with an unpacked test extension; see its README.             |
 | `docker/`         | Not a package: compose files, entry point, health check and CLI install helper of the image built by `apps/server/Dockerfile`; [deploy-docker.md](deploy-docker.md). |
 
 Workspace packages resolve to each other's TypeScript sources through the
@@ -66,6 +66,10 @@ Rules that keep the units independent (enforced by ESLint):
   `../storage/…` from `runner/`, and so on.
 - `protocol/**` imports nothing but zod, `../brand.ts` and its own files.
 - `packages/web/src/wall/**` does not import `app/`, `infra/` or `pages/`.
+- `packages/web` has two entries: `src/main.tsx` for the page the server
+  serves, and `src/embed.tsx` (`mountEmbedded`) for a page on another
+  origin, exported as `@answerwall/web/embed` to workspace packages that
+  build it from source (the browser extension, the web-cell tests).
 - Vendor SDK packages and native modules are forbidden everywhere
   (`scripts/forbidden-packages.mjs`, also checked against the lockfile).
 
@@ -133,7 +137,11 @@ throwing an `AppError`.
 
    `originGuard` runs before authentication, so it decides on headers alone:
    a present `Origin` must be allowed; a missing one passes only with an
-   `Authorization` header and no session cookie. `authRateLimit` counts the
+   `Authorization` header and no session cookie. The page of a browser
+   extension is allowed only while web cells are on and its id is in the
+   settings' allowlist, and never with the session cookie; the guard then
+   sets `extensionOrigin`, which makes the auth routes hand the device token
+   to that client in the response body instead of a cookie. `authRateLimit` counts the
    requests on which `requireAuth` or an auth route set `authFailure` (a
    credential was presented and rejected), not every 401.
 
@@ -179,6 +187,12 @@ timeoutMs, signal, workDir })` and translates each `ProviderEvent` into a
    (`isTerminalStreamEvent`): `ask_done`, or, for an ask that is already done
    with nothing left to replay, a single `snapshot` whose status is `done`.
    A client that sees a stream end without one resumes from its last `seq`.
+   A slot of a web provider (`kind: 'web'`) takes the same path up to its
+   permit and then runs nothing: no work dir, no adapter. The runner emits
+   `start`, keeps the permit and waits. `POST /api/ask/:askId/slots/:slotId/result`
+   (`AskManager.submitWebResult`, callable only by the caller that created
+   the ask) turns the client's one result into the slot's `delta` and
+   terminal event; cancel, timeout and shutdown end it like any other slot.
 6. The runner writes dirty slots to `Storage.turns.save` periodically and
    when the ask completes, emits `ask_done`, then prunes history to the
    configured bounds.

@@ -53,7 +53,10 @@ has no paired devices and refuses to create pairing codes.
   compose file publishes the port on `127.0.0.1` unless you change it.
 - Every request must name a host the server knows: a loopback name, or one
   of `ANSWERWALL_PUBLIC_ORIGINS`. Every request that changes something must
-  come from the server's own pages. There is no cross-origin access at all.
+  come from the server's own pages. A web page on another origin gets no
+  access at all. The one exception is a browser extension you listed
+  yourself, and only while web cells are switched on; see
+  [Web cells and the browser extension](#web-cells-and-the-browser-extension).
 - **Plain HTTP stays local.** With TLS off and a non-loopback address,
   connections from other machines are refused, except from a reverse proxy
   you listed in `ANSWERWALL_TRUSTED_PROXIES`.
@@ -115,6 +118,48 @@ Windows, assume that anything your user can read or change is within reach.
   servers, never a tool that fetches addresses from your machine.
 
 Details per CLI: [providers.md](providers.md).
+
+## Web cells and the browser extension
+
+Off by default, and the extension is not part of a release yet; what is
+described here is the server side, which exists.
+
+A web cell shows a site's own web app inside the wall page of the AnswerWall
+browser extension, in the browser where you are signed in to that site.
+**Settings > Web cells** has a master switch, two separate switches for what
+the extension may do on a site (fill in the prompt; read the answer), the
+IDs of the extensions that may connect, and the sites.
+
+- **Who may connect.** The extension's page is the only client on another
+  origin the server accepts, only while web cells are on, and only for the
+  extension IDs you listed. There is no wildcard. The server still sends no
+  cross-origin (CORS) permission to anyone, so a web page on another origin
+  can read nothing from it, whether an extension is listed or not.
+- **How it signs in.** Like any device: with a pairing code. It gets its own
+  token, keeps it in the extension's storage, where web pages cannot read
+  it, and sends it with each request. It never gets the cookie, and a
+  request from an extension that carries the cookie is refused. It appears
+  under **Settings > Devices** and is revoked there.
+- **What a listed extension can do.** Everything a paired device can. List
+  only an extension you installed yourself from this repository. The
+  browser names the extension on requests that change something, which is
+  where the list is checked; reading always needs the token.
+- **What the list cannot do.** An extension that the browser has given
+  access to the server's address can read and change the server's own page,
+  as it can any website, listed here or not. No server can prevent that.
+  Keep the browser you use for AnswerWall free of extensions you do not
+  trust.
+- **The answer of a web cell** is text the extension read from a web page.
+  It is treated like every other answer: stored as text, sanitised before it
+  reaches a page. Only the device that created an ask can submit its web
+  answers, once per cell, within the time limit and the answer size limit;
+  any device can cancel.
+- **What the server does not do.** It never contacts these sites, never
+  sees your sign-in to them and never sees their cookies.
+- **Terms.** These sites restrict automated access to their web apps, more
+  explicitly than for their command-line tools. That is why filling in the
+  prompt and reading the answer are separate switches that start off.
+  AnswerWall makes no statement about what a site's terms permit.
 
 ## Answers and the page
 
