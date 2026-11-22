@@ -367,9 +367,17 @@ lists the evidence item by item.
     (a model or variant the configuration does not list), `unknown` (`Invalid
     model reference`, `Agent not found`, `You must provide a message`). For
     transport, 5xx and rate-limit failures **the CLI retries by itself**, ten
-    times over 83 to 89 seconds, printing a `retry` line each time; no
-    documented switch turns that off. The adapter shows one notice and adds no
-    retry of its own (rule 2.4).
+    times over 83 to 89 seconds, printing a `retry` line before each new
+    attempt; no documented switch turns that off. One Send is one request
+    (rule 2.4), so **the adapter ends the run at the first `retry` line**:
+    it kills the process tree and reports the failure that line names
+    (`rate_limited`, `network`, or the message of a 5xx), with a message
+    that says the CLI was stopped. Confirmed with the real CLI against the
+    stub answering 429 and 500: the stub saw one request, the run ended
+    0.7 s after its start, no second request came in the 20 s after it and
+    no process was left. How long the CLI waits before its second attempt
+    was not measured; the stop relies on that wait being longer than the
+    kill.
   - Effort: the CLI's name for it is a variant, selected as
     `provider/model#variant`; an effort without a model is refused.
   - Cancel: SIGTERM, and SIGKILL, to the process group of the run ended it

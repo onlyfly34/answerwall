@@ -125,7 +125,7 @@ export function loadFixture(kind, name) {
     .filter((line) => line.trim() !== '' && !line.startsWith('#'));
 }
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+export const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** Keeps the process alive until it is killed. */
 function hang() {
@@ -140,9 +140,10 @@ function write(stream, text) {
   });
 }
 
-const writeLines = (lines) => write(process.stdout, lines.map((line) => `${line}\n`).join(''));
+export const writeLines = (lines) =>
+  write(process.stdout, lines.map((line) => `${line}\n`).join(''));
 
-function log(entry) {
+export function log(entry) {
   const file = process.env[LOG_ENV];
   // `at` tells a reader whether a process id it finds later is still this process.
   if (file) appendFileSync(file, `${JSON.stringify({ ...entry, at: Date.now() })}\n`);

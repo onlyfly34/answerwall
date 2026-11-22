@@ -4,6 +4,8 @@
 import { readFileSync } from 'node:fs';
 import {
   UsageError,
+  loadFixture,
+  log,
   logInvocation,
   main,
   parseFlags,
@@ -11,6 +13,8 @@ import {
   readStdin,
   requireFlag,
   scenarioFor,
+  sleep,
+  writeLines,
 } from './lib/runtime.mjs';
 
 const KIND = 'opencode';
@@ -113,13 +117,31 @@ function parseModel(reference) {
   return match ? { model: match[2], variant: match[3] } : { invalid: true };
 }
 
+/** Milliseconds between a `retry` line and the next attempt (default 1500). */
+const RETRY_DELAY_ENV = 'MOCK_OPENCODE_RETRY_MS';
+
+/**
+ * A failure the real CLI answers by trying again: it prints a `retry` line,
+ * waits, and sends the question once more, ten times before the `error`
+ * line. The mock waits once, after the first `retry` line, and logs `resent`
+ * when it gets that far, which a caller that stops the CLI in time never sees.
+ */
+async function playRetries(scenario) {
+  const lines = loadFixture(KIND, scenario);
+  const first = lines.findIndex((line) => JSON.parse(line).type === 'retry');
+  await writeLines(lines.slice(0, first + 1));
+  await sleep(Number(process.env[RETRY_DELAY_ENV] ?? 1500));
+  log({ kind: KIND, resent: true });
+  await writeLines(lines.slice(first + 1));
+  return 1;
+}
+
 const cli = {
   kind: KIND,
   generate,
   failures: {
     'logged-out': { exitCode: 1 },
     quota: { exitCode: 1 },
-    'rate-limited': { exitCode: 1 },
     'model-not-found': { exitCode: 1 },
   },
 };
@@ -208,6 +230,7 @@ main(KIND, async (argv) => {
   const prompt = await readStdin();
   logInvocation(KIND, { scenario, prompt, variant: reference.variant ?? null });
   if (prompt.trim() === '') return fail('You must provide a message');
+  if (scenario === 'rate-limited') return playRetries(scenario);
   // The real CLI has one output mode: whole parts.
   return play(cli, scenario === 'block' ? 'ok' : scenario, { prompt });
 });

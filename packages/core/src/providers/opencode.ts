@@ -173,6 +173,9 @@ const AGENT_NOT_LOADED: Failure = {
     'opencode did not load the agent that switches its tools off, so nothing was sent. ' +
     'Its project configuration is probably disabled on this machine (OPENCODE_DISABLE_PROJECT_CONFIG).',
 };
+/** Leads the message of a run that was ended at the CLI's first `retry` line. */
+const RETRY_STOPPED =
+  'opencode was about to send the question again by itself and was stopped; press Send to try again.';
 const OLD_VERSION: Failure = {
   code: 'unsupported',
   message: `This opencode does not accept the arguments used here. Version ${SUPPORTED_MAJOR} or later is needed.`,
@@ -212,8 +215,10 @@ const toolName = (value: unknown): string =>
  * Maps `run --format json` lines. A turn is a series of steps; each ends with
  * `step_finish`, and the one whose reason is not `tool-calls` ends the
  * answer. There is no event after it: the process just exits with code 0. A
- * failure is one `error` line and exit code 1, after `retry` lines when the
- * CLI first tried again on its own.
+ * failure is one `error` line and exit code 1. A `retry` line says that a
+ * request failed and that the CLI is about to send the question again by
+ * itself (up to ten times). One Send is one request (rule 2.4), so the run
+ * is stopped at that line and the failure it names is the result.
  */
 export function createOpencodeParser(): StreamParser {
   const sent = new Map<string, number>();
@@ -222,6 +227,7 @@ export function createOpencodeParser(): StreamParser {
   let answerPart: string | undefined;
   let completed = false;
   let failure: ParserOutcome['failure'];
+  let stopped = false;
   const total = { input: 0, output: 0, reasoning: 0 };
   let counted = false;
 
@@ -243,6 +249,8 @@ export function createOpencodeParser(): StreamParser {
 
   return {
     event(value) {
+      // Whatever the CLI still prints while it is being killed is not part of the result.
+      if (stopped) return [];
       const part = isRecord(value.part) ? value.part : {};
       switch (value.type) {
         case 'text': {
@@ -268,13 +276,13 @@ export function createOpencodeParser(): StreamParser {
           );
         }
         case 'retry': {
-          const reason = isRecord(value.error)
-            ? sanitizeDiagnostic(text(value.error.message) ?? '', 120)
-            : '';
-          return once(
-            'retry',
-            `The model provider reported an error${reason === '' ? '' : ` (${reason})`}. The CLI is trying again on its own.`,
-          );
+          const reported = failureOf(value.error);
+          failure = {
+            ...reported,
+            message: `${RETRY_STOPPED} The model provider reported: ${sanitizeDiagnostic(reported.message, 180)}`,
+          };
+          stopped = true;
+          return [];
         }
         case 'step_finish': {
           const usage = stepUsage(part.tokens);
@@ -294,6 +302,7 @@ export function createOpencodeParser(): StreamParser {
           return [];
       }
     },
+    stopped: () => stopped,
     outcome(): ParserOutcome {
       const usage: Usage | undefined = counted
         ? {

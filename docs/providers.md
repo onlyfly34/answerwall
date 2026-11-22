@@ -447,10 +447,15 @@ skills out.
   on `127.0.0.1` ports 11434, 1234 and 8000. No documented switch for either
   was found, and AnswerWall sets none. Update checks follow `update` in
   opencode's own global configuration; none was seen during a run.
-- **opencode retries on its own.** After a connection error, a 5xx answer or
-  a rate-limit answer it tried again ten times over about 85 seconds before
-  it gave up. The cell shows a note at the first retry. AnswerWall itself
-  never retries.
+- **opencode would retry on its own, so AnswerWall stops it.** After a
+  connection error, a 5xx answer or a rate-limit answer, opencode sends the
+  question again by itself: ten times over about 85 seconds when left
+  alone, and it has no documented switch for that. AnswerWall ends the run
+  the moment opencode announces its first retry, and the cell shows the
+  error of the first attempt. One press of Send is one request; press Send
+  again to try again. Against a local test endpoint exactly one request
+  arrived. This relies on opencode waiting longer before its second attempt
+  than it takes to stop it; how long it waits was not measured.
 - While a question runs, the private server listens on a random port on
   `127.0.0.1`. Its API answered 401 without credentials.
 - opencode creates a directory named `opencode` in the system's temporary

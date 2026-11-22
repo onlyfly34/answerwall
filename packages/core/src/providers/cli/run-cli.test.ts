@@ -329,6 +329,38 @@ describe('runCli', () => {
     await until(() => !isAlive(pid) && !isAlive(grandchild));
   });
 
+  test('a parser that says stop ends the run there, kills the tree and reports its failure', async () => {
+    const request = await harness.request();
+    let stopped = false;
+    const parser: StreamParser = {
+      event(value) {
+        // The first line of the mock, which then hangs with a child that ignores SIGTERM.
+        if (value.type === 'text') stopped = true;
+        return [];
+      },
+      stopped: () => stopped,
+      outcome: () => ({
+        completed: false,
+        failure: { code: 'rate_limited', message: 'stopped before a second request' },
+      }),
+    };
+
+    const events = await collect(
+      runCli(invocation(request.workDir, { parser }, 'mock-tree'), request, harness.context),
+    );
+
+    expect(events).toEqual([
+      { type: 'start', streaming: 'token' },
+      { type: 'error', code: 'rate_limited', message: 'stopped before a second request' },
+    ]);
+    const calls = await harness.invocations();
+    const pid = calls.find((call) => call.kind === 'grok')?.pid;
+    const grandchild = calls.find((call) => call.grandchildPid !== undefined)?.grandchildPid;
+    if (pid === undefined || grandchild === undefined) throw new Error('pids were not recorded');
+    expect(isAlive(pid)).toBe(false);
+    await until(() => !isAlive(grandchild));
+  });
+
   test('a consumer that abandons the iteration leaves no process behind', async () => {
     const request = await harness.request();
 

@@ -55,6 +55,8 @@ export interface MockInvocation {
   envNames?: string[];
   env?: Record<string, string | null>;
   scenario?: string;
+  /** The mock `opencode` got as far as sending the question again by itself. */
+  resent?: boolean;
   prompt?: string;
   grandchildPid?: number;
 }

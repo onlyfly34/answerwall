@@ -245,26 +245,51 @@ describe('createOpencodeParser', () => {
     expect(feed(recording(name)).outcome).toEqual({ completed: false, failure });
   });
 
-  test('the retries of the CLI are announced once, before the final error', () => {
-    const limited = feed(recording('rate-limited'));
+  const STOPPED =
+    'opencode was about to send the question again by itself and was stopped; press Send to try again. The model provider reported: ';
 
-    expect(limited.content).toEqual([
+  test.each([
+    [
+      'rate-limited',
+      { code: 'rate_limited', message: 'Rate limit reached for requests (HTTP 429)' },
+    ],
+    [
+      'network',
       {
-        type: 'notice',
-        message:
-          'The model provider reported an error (Rate limit reached for requests). The CLI is trying again on its own.',
+        code: 'network',
+        message: 'ECONNREFUSED: Unable to connect. Is the computer able to access the url?',
       },
-    ]);
-    expect(limited.outcome.failure).toEqual({
-      code: 'rate_limited',
-      message: 'Rate limit reached for requests (HTTP 429)',
-    });
-
-    expect(feed(recording('network')).outcome.failure).toMatchObject({ code: 'network' });
+    ],
     // A server error has no code of its own; it is judged by its message.
-    expect(feed(recording('server-error')).outcome.failure).toEqual({
-      message: 'internal stub failure (HTTP 500)',
-    });
+    ['server-error', { message: 'internal stub failure (HTTP 500)' }],
+  ] as const)(
+    'the first retry line of the recorded %s failure stops the run with that failure',
+    (name, reported) => {
+      const lines = recording(name);
+      const first = lines.findIndex((line) => line.type === 'retry');
+      const parser = createOpencodeParser();
+
+      for (const line of lines.slice(0, first)) parser.event(line);
+      expect(parser.stopped?.()).toBe(false);
+      expect(parser.event(lines[first]!)).toEqual([]);
+
+      expect(parser.stopped?.()).toBe(true);
+      const failure = { ...reported, message: STOPPED + reported.message };
+      expect(parser.outcome()).toEqual({ completed: false, failure });
+      // What the CLI prints while it is being killed changes nothing.
+      for (const line of lines.slice(first + 1)) expect(parser.event(line)).toEqual([]);
+      expect(parser.outcome()).toEqual({ completed: false, failure });
+    },
+  );
+
+  test('a run without a retry line is never stopped', () => {
+    const parser = createOpencodeParser();
+
+    for (const name of ['ok', 'quota', 'tool-denied']) {
+      for (const line of recording(name)) parser.event(line);
+    }
+
+    expect(parser.stopped?.()).toBe(false);
   });
 
   test('a run that did not load the agent says why instead of the CLI message', () => {
@@ -446,7 +471,6 @@ describe('the opencode adapter against the mock CLI', () => {
   test.each([
     ['mock/mock-logged-out', 'not_logged_in'],
     ['mock/mock-quota', 'quota'],
-    ['mock/mock-rate-limited', 'rate_limited'],
     ['mock/mock-model-not-found', 'model_not_found'],
     ['no-slash', 'model_not_found'],
   ] as const)('%s ends with the error code %s', async (model, code) => {
@@ -456,6 +480,26 @@ describe('the opencode adapter against the mock CLI', () => {
     expect(events.filter((event) => event.type === 'done' || event.type === 'error')).toHaveLength(
       1,
     );
+  });
+
+  test('a failure the CLI would answer by sending the question again ends the run at once', async () => {
+    await harness.cleanup();
+    await setup({ MOCK_OPENCODE_RETRY_MS: '300' });
+
+    const events = await run('mock/mock-rate-limited');
+
+    expect(typesOf(events)).toEqual(['start', 'error']);
+    expect(events.at(-1)).toEqual({
+      type: 'error',
+      code: 'rate_limited',
+      message:
+        'opencode was about to send the question again by itself and was stopped; press Send to try again. The model provider reported: Rate limit reached for requests (HTTP 429)',
+    });
+    const [call] = await harness.invocations();
+    expect(call?.pid !== undefined && isAlive(call.pid)).toBe(false);
+    // Past the moment the CLI would have tried again: it never got that far.
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expect((await harness.invocations()).some((entry) => entry.resent)).toBe(false);
   });
 
   test.each([

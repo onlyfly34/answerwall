@@ -47,6 +47,12 @@ export interface StreamParser {
   /** One JSON object from stdout. Unknown shapes return nothing. */
   event(value: Record<string, unknown>): ContentEvent[];
   outcome(): ParserOutcome;
+  /**
+   * `true` once the CLI announced something it must not be left to do (send
+   * the question again by itself). The run is ended there, the process tree
+   * is killed, and the failure of `outcome()` is reported.
+   */
+  stopped?(): boolean;
 }
 
 /** One invocation, as data. */
@@ -133,6 +139,7 @@ export async function* runCli(
   const { executable, parser } = invocation;
 
   let exit: CliExit | undefined;
+  let stopped = false;
   let answered = false;
   let truncatedLines = 0;
   let raw = '';
@@ -191,6 +198,11 @@ export async function* runCli(
         if (event.type === 'delta' && event.text !== '') answered = true;
         yield event;
       }
+      if (parser.stopped?.()) {
+        // Leaving the loop kills the process tree and waits until it is gone.
+        stopped = true;
+        break;
+      }
     }
   } catch (cause) {
     context.logger.warn('provider run failed unexpectedly', {
@@ -200,13 +212,21 @@ export async function* runCli(
     yield error({ code: 'unknown', message: `\`${executable}\` could not be run.` });
     return;
   }
+  if (truncatedLines > 0) {
+    yield { type: 'notice', message: 'Part of the output was too large and was dropped.' };
+  }
+  if (stopped) {
+    const failure = request.signal.aborted ? undefined : parser.outcome().failure;
+    yield error(
+      failure === undefined
+        ? { code: 'cancelled', message: 'The CLI was stopped.' }
+        : failureFromText(failure.message, `\`${executable}\` was stopped.`, failure.code),
+    );
+    return;
+  }
   if (exit === undefined) {
     yield error({ code: 'unknown', message: `\`${executable}\` ended unexpectedly.` });
     return;
-  }
-
-  if (truncatedLines > 0) {
-    yield { type: 'notice', message: 'Part of the output was too large and was dropped.' };
   }
   if (exit.aborted) {
     yield error({ code: 'cancelled', message: 'The CLI was stopped.' });
